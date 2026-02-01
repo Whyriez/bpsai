@@ -8,42 +8,99 @@ Project terintegrasi yang menggabungkan **Backend Python Flask** dengan dua apli
 
 ```plaintext
 bpsai/
-├── backend/            # Python Flask API & Static File Server
-├── dashboard-bpsai/    # Frontend Dashboard (React + Vite)
-├── chatbot-bpsai/      # Frontend Chatbot SIGAP (React + Vite)
-├── build_apps.sh       # Script otomatisasi build & integrasi (Linux/Mac)
-└── build_apps.bat      # Script otomatisasi build & integrasi (Windows)
+├── backend/                # Python Flask API & Static File Server
+│   └── app/static/
+│       ├── dashboard/      # Build hasil Dashboard
+│       └── chatbot/        # Build hasil Chatbot
+├── dashboard-bpsai/        # Frontend Dashboard (React + Vite)
+├── chatbot-bpsai/          # Frontend Chatbot SIGAP (React + Vite)
+├── build_apps.sh           # Script build frontend (Linux/Mac/WSL)
+└── build_apps.bat          # Script build frontend (Windows)
 ```
 
 ---
 
 ## 🚀 Cara Menjalankan (Satu Paket)
 
-Ikuti langkah-langkah berikut untuk menggabungkan frontend ke dalam backend dan menjalankan layanannya:
+Alur kerja project ini adalah:
+1. **Build frontend (Dashboard / Chatbot)**
+2. **Aset frontend dipindahkan ke backend**
+3. **Backend Flask dijalankan sebagai satu service**
 
-### 1️⃣ Build Frontend Otomatis
+---
 
-Jalankan script otomatis untuk memproses build produksi React dan memindahkan asetnya ke dalam folder static Flask.
+## 1️⃣ Build Frontend Otomatis
 
-**Linux / Mac / WSL**
+Script build sekarang **mendukung build parsial**, sehingga Anda bisa membangun:
+- hanya Dashboard
+- hanya Chatbot
+- atau keduanya sekaligus
+
+---
+
+### 🔹 Linux / Mac / WSL (`build_apps.sh`)
+
+Pastikan script bisa dieksekusi:
 ```bash
 chmod +x build_apps.sh
-./build_apps.sh
 ```
 
-**Windows**
+#### ▶ Build Dashboard saja
+```bash
+./build_apps.sh dashboard
+```
+
+#### ▶ Build Chatbot saja
+```bash
+./build_apps.sh chatbot
+```
+
+#### ▶ Build Dashboard + Chatbot
+```bash
+./build_apps.sh all
+```
+
+📌 Proses yang dilakukan script:
+- Menjalankan `npm run build` di folder frontend
+- Menghapus aset lama di `backend/app/static/`
+- Menyalin hasil build terbaru ke:
+  - `backend/app/static/dashboard`
+  - `backend/app/static/chatbot`
+
+---
+
+### 🔹 Windows (`build_apps.bat`)
+
+Jalankan:
 ```bat
 build_apps.bat
 ```
 
-### 2️⃣ Jalankan Backend Flask
+Anda akan melihat menu interaktif:
 
-Setelah proses build selesai, Anda hanya perlu menjalankan satu service yaitu backend.
+```
+1. Build Dashboard
+2. Build Chatbot
+3. Build All
+```
+
+Pilih sesuai kebutuhan:
+- `1` → hanya Dashboard
+- `2` → hanya Chatbot
+- `3` → build semuanya
+
+📌 Script Windows melakukan proses yang sama dengan versi Bash, termasuk pembersihan aset lama dan penyalinan hasil build ke backend.
+
+---
+
+## 2️⃣ Menjalankan Backend Flask
+
+Setelah frontend dibuild, jalankan **satu service backend**.
 
 ```bash
 cd backend
 
-# Rekomendasi Produksi (Gunicorn)
+# Rekomendasi Production
 gunicorn -w 4 -b 0.0.0.0:5000 run:app
 
 # Development
@@ -54,11 +111,16 @@ python run.py
 
 ## 🔗 Alamat Akses (Satu Domain)
 
-Secara default semua fitur diakses melalui satu domain dan satu port:
+Semua layanan diakses melalui **satu port**:
 
-- **Dashboard Admin**: http://localhost:5000/dashboard/
-- **Chatbot SIGAP**: http://localhost:5000/chatbot/
-- **API Backend**: http://localhost:5000/api/
+- **Dashboard Admin**  
+  http://localhost:5000/dashboard/
+
+- **Chatbot SIGAP**  
+  http://localhost:5000/chatbot/
+
+- **API Backend**  
+  http://localhost:5000/api/
 
 ---
 
@@ -66,7 +128,7 @@ Secara default semua fitur diakses melalui satu domain dan satu port:
 
 ### 1️⃣ Vite Config (`vite.config.js`)
 
-Pastikan properti `base` sudah disetel agar Flask bisa menemukan file `.js` dan `.css`.
+Pastikan `base` disesuaikan dengan lokasi static Flask.
 
 **Dashboard**
 ```js
@@ -82,19 +144,25 @@ base: '/static/chatbot/'
 
 ### 2️⃣ Flask Route Integration
 
-File `backend/app/__init__.py` atau `run.py` menggunakan `send_from_directory` untuk melayani file `index.html` dari masing-masing folder frontend guna mendukung **Client-Side Routing (React Router)**.
+Backend menggunakan `send_from_directory` untuk:
+- Melayani file `index.html`
+- Mendukung **Client-Side Routing (React Router)**
+
+Contoh konsep:
+- `/dashboard/*` → `static/dashboard/index.html`
+- `/chatbot/*` → `static/chatbot/index.html`
 
 ---
 
-### 3️⃣ Reverse Proxy (Nginx / Caddy)
+## 🌐 Reverse Proxy (Nginx / Caddy)
 
-Karena seluruh layanan berjalan di satu backend (port `5000`), reverse proxy dapat digunakan baik untuk **satu domain** maupun **multi domain/subdomain**.
+Karena backend berjalan di satu port (`5000`), reverse proxy dapat diarahkan dengan mudah.
 
 ---
 
-#### A. Satu Domain (Default)
+### 🔹 Satu Domain
 
-##### Nginx
+#### Nginx
 ```nginx
 server {
     listen 80;
@@ -108,7 +176,7 @@ server {
 }
 ```
 
-##### Caddy
+#### Caddy
 ```caddyfile
 domain-anda.com {
     reverse_proxy 127.0.0.1:5000
@@ -117,19 +185,16 @@ domain-anda.com {
 
 ---
 
-#### B. Domain / Subdomain Terpisah (Dashboard & Chatbot)
+### 🔹 Domain / Subdomain Terpisah
 
 Contoh:
-- **Dashboard** → `dashboard.domain-anda.com`
-- **Chatbot** → `chatbot.domain-anda.com`
-- **API** → `api.domain-anda.com` (opsional)
+- Dashboard → `dashboard.domain-anda.com`
+- Chatbot → `chatbot.domain-anda.com`
+- API → `api.domain-anda.com`
 
 Backend **tetap satu**, hanya routing proxy yang dipisah.
 
----
-
-##### 🔹 Nginx (Multi Server Block)
-
+#### Nginx
 ```nginx
 server {
     listen 80;
@@ -137,8 +202,6 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:5000/dashboard/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 
@@ -148,8 +211,6 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:5000/chatbot/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 
@@ -159,21 +220,13 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:5000/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 ```
 
----
-
-##### 🔹 Caddy (Multi Domain – Recommended)
-
+#### Caddy (Recommended)
 ```caddyfile
 dashboard.domain-anda.com {
-    reverse_proxy 127.0.0.1:5000 {
-        header_up Host {host}
-    }
     handle_path /* {
         reverse_proxy 127.0.0.1:5000/dashboard
     }
@@ -192,24 +245,8 @@ api.domain-anda.com {
 }
 ```
 
-> ✅ **Caddy otomatis mengelola HTTPS (Let's Encrypt)**  
-> ✅ Sangat cocok untuk arsitektur multi-subdomain tanpa ribet SSL
-
----
-
-### 4️⃣ Penyesuaian Frontend untuk Multi Domain
-
-Jika frontend diakses via domain terpisah:
-
-- Gunakan **relative API URL** (`/api/...`)
-- Atau set `VITE_API_BASE_URL` via `.env.production`
-
-Contoh:
-```env
-VITE_API_BASE_URL=https://api.domain-anda.com
-```
-
-Pastikan juga CORS di Flask sudah mengizinkan domain terkait.
+> ✅ Caddy otomatis mengelola HTTPS (Let's Encrypt)  
+> ✅ Sangat cocok untuk deployment multi-subdomain
 
 ---
 
@@ -217,7 +254,7 @@ Pastikan juga CORS di Flask sudah mengizinkan domain terkait.
 
 **Backend**
 - Python Flask
-- ChromaDB (Vector DB)
+- ChromaDB (Vector Database)
 - LangChain
 
 **Frontend**
@@ -226,12 +263,14 @@ Pastikan juga CORS di Flask sudah mengizinkan domain terkait.
 - Tailwind CSS
 
 **Integrasi**
-- Automation Shell Script / Batch Script
+- Shell Script (Linux/Mac/WSL)
+- Batch Script (Windows)
 
 ---
 
-## 📝 Catatan
+## 📝 Catatan Penting
 
-- Jalankan kembali **`build_apps`** setiap ada perubahan frontend
+- Jalankan `build_apps` **setiap kali frontend berubah**
+- Gunakan build parsial (`dashboard` / `chatbot`) untuk mempercepat workflow
 - Backend tetap **satu service**, meskipun domain dipisah
-- Arsitektur ini siap untuk **scale horizontal & production deployment**
+- Restart Flask/Gunicorn jika diperlukan setelah update aset

@@ -5,32 +5,65 @@ BACKEND_DIR="./backend"
 DASHBOARD_DIR="./dashboard-bpsai"
 CHATBOT_DIR="./chatbot-bpsai"
 
-echo "--- Memulai proses build terintegrasi ---"
+# Fungsi untuk build Dashboard
+build_dashboard() {
+    echo "========================================"
+    echo "BUILDING DASHBOARD FRONTEND..."
+    echo "========================================"
+    cd $DASHBOARD_DIR
+    npm run build
+    cd ..
+    
+    echo "Cleaning old Dashboard files in backend..."
+    rm -rf $BACKEND_DIR/app/static/dashboard
+    mkdir -p $BACKEND_DIR/app/static/dashboard
+    
+    echo "Copying Dashboard build to backend static folder..."
+    cp -r $DASHBOARD_DIR/dist/* $BACKEND_DIR/app/static/dashboard/
+}
 
-# 1. Build Dashboard
-echo "Building Dashboard..."
-cd $DASHBOARD_DIR
-npm run build
-cd ..
+# Fungsi untuk build Chatbot
+build_chatbot() {
+    echo "========================================"
+    echo "BUILDING CHATBOT FRONTEND..."
+    echo "========================================"
+    cd $CHATBOT_DIR
+    npm run build
+    cd ..
+    
+    echo "Cleaning old Chatbot files in backend..."
+    rm -rf $BACKEND_DIR/app/static/chatbot
+    mkdir -p $BACKEND_DIR/app/static/chatbot
+    
+    echo "Copying Chatbot build to backend static folder..."
+    cp -r $CHATBOT_DIR/dist/* $BACKEND_DIR/app/static/chatbot/
+}
 
-# 2. Build Chatbot
-echo "Building Chatbot..."
-cd $CHATBOT_DIR
-npm run build
-cd ..
+# Cek parameter yang dimasukkan oleh user
+case "$1" in
+    dashboard)
+        build_dashboard
+        ;;
+    chatbot)
+        build_chatbot
+        ;;
+    all)
+        build_dashboard
+        build_chatbot
+        ;;
+    *)
+        echo "Error: Parameter salah atau kosong!"
+        echo "Penggunaan: ./build_apps.sh [dashboard|chatbot|all]"
+        echo "------------------------------------------------"
+        echo "Contoh: ./build_apps.sh chatbot   -> Hanya update chatbot"
+        echo "Contoh: ./build_apps.sh dashboard -> Hanya update dashboard"
+        echo "Contoh: ./build_apps.sh all       -> Update semuanya"
+        exit 1
+        ;;
+esac
 
-# 3. Bersihkan folder static di backend jika sudah ada
-echo "Cleaning up old static files..."
-rm -rf $BACKEND_DIR/app/static/dashboard
-rm -rf $BACKEND_DIR/app/static/chatbot
-
-# 4. Buat folder tujuan jika belum ada
-mkdir -p $BACKEND_DIR/app/static/dashboard
-mkdir -p $BACKEND_DIR/app/static/chatbot
-
-# 5. Copy hasil build ke backend
-echo "Copying files to Backend..."
-cp -r $DASHBOARD_DIR/dist/* $BACKEND_DIR/app/static/dashboard/
-cp -r $CHATBOT_DIR/dist/* $BACKEND_DIR/app/static/chatbot/
-
-echo "--- Selesai! Sekarang jalankan backend Anda ---"
+echo "========================================"
+echo "PROSES SELESAI!"
+echo "Aset frontend telah diperbarui di folder backend."
+echo "Silakan restart service Flask Anda jika diperlukan."
+echo "========================================"
