@@ -1,5 +1,5 @@
 import os
-from flask import Flask
+from flask import Flask, send_from_directory
 from dotenv import load_dotenv
 from .models import db
 from flask_cors import CORS
@@ -66,6 +66,23 @@ def create_app():
     db.init_app(app)
     jwt = JWTManager(app)
     nltk.download('stopwords')
+
+    # Route untuk Dashboard
+    @app.route('/dashboard/', defaults={'path': ''})
+    @app.route('/dashboard/<path:path>')
+    def serve_dashboard(path):
+        if path != "" and os.path.exists(app.static_folder + '/dashboard/' + path):
+            return send_from_directory(app.static_folder + '/dashboard', path)
+        return send_from_directory(app.static_folder + '/dashboard', 'index.html')
+
+    # Route untuk Chatbot
+    @app.route('/chatbot/', defaults={'path': ''})
+    @app.route('/chatbot/<path:path>')
+    def serve_chatbot(path):
+        if path != "" and os.path.exists(app.static_folder + '/chatbot/' + path):
+            return send_from_directory(app.static_folder + '/chatbot', path)
+        return send_from_directory(app.static_folder + '/chatbot', 'index.html')
+
     # Daftarkan Blueprints
     from .routes.auth import auth_bp
     from .routes.chat import chat_bp

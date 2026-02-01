@@ -61,7 +61,7 @@ export default function Header({ onMenuClick }) {
           <div className="flex items-center space-x-3">
             <div className="w-15 h-15 bg-gradient-to-br  rounded-lg flex items-center justify-center">
               <img
-                src="/assets/bpslogo.png"
+                src="/dashboard/assets/bpslogo.png"
                 alt="Logo SIGAP BPS Gorontalo"
                 className="h-full w-full object-contain"
               />
