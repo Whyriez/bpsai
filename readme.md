@@ -84,8 +84,9 @@ File `backend/app/__init__.py` atau `run.py` menggunakan `send_from_directory` u
 
 ### 3️⃣ Nginx / Reverse Proxy
 
-Karena semua layanan sudah menjadi satu paket di port `5000`, konfigurasi Nginx menjadi sangat sederhana:
+Karena semua layanan sudah menjadi satu paket di port `5000`, konfigurasi reverse proxy menjadi sangat sederhana.
 
+#### Nginx
 ```nginx
 server {
     listen 80;
@@ -98,6 +99,15 @@ server {
     }
 }
 ```
+
+#### Caddy
+```caddyfile
+domain-anda.com {
+    reverse_proxy 127.0.0.1:5000
+}
+```
+
+> Caddy secara otomatis menangani HTTPS (Let's Encrypt) tanpa konfigurasi tambahan, sehingga sangat cocok untuk deployment cepat dan sederhana.
 
 ---
 
