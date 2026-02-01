@@ -52,9 +52,9 @@ python run.py
 
 ---
 
-## 🔗 Alamat Akses
+## 🔗 Alamat Akses (Satu Domain)
 
-Setelah service berjalan, semua fitur dapat diakses di port yang sama:
+Secara default semua fitur diakses melalui satu domain dan satu port:
 
 - **Dashboard Admin**: http://localhost:5000/dashboard/
 - **Chatbot SIGAP**: http://localhost:5000/chatbot/
@@ -78,15 +78,23 @@ base: '/static/dashboard/'
 base: '/static/chatbot/'
 ```
 
+---
+
 ### 2️⃣ Flask Route Integration
 
-File `backend/app/__init__.py` atau `run.py` menggunakan `send_from_directory` untuk melayani file `index.html` dari masing-masing folder frontend guna mendukung Client-Side Routing (React Router).
+File `backend/app/__init__.py` atau `run.py` menggunakan `send_from_directory` untuk melayani file `index.html` dari masing-masing folder frontend guna mendukung **Client-Side Routing (React Router)**.
 
-### 3️⃣ Nginx / Reverse Proxy
+---
 
-Karena semua layanan sudah menjadi satu paket di port `5000`, konfigurasi reverse proxy menjadi sangat sederhana.
+### 3️⃣ Reverse Proxy (Nginx / Caddy)
 
-#### Nginx
+Karena seluruh layanan berjalan di satu backend (port `5000`), reverse proxy dapat digunakan baik untuk **satu domain** maupun **multi domain/subdomain**.
+
+---
+
+#### A. Satu Domain (Default)
+
+##### Nginx
 ```nginx
 server {
     listen 80;
@@ -100,14 +108,108 @@ server {
 }
 ```
 
-#### Caddy
+##### Caddy
 ```caddyfile
 domain-anda.com {
     reverse_proxy 127.0.0.1:5000
 }
 ```
 
-> Caddy secara otomatis menangani HTTPS (Let's Encrypt) tanpa konfigurasi tambahan, sehingga sangat cocok untuk deployment cepat dan sederhana.
+---
+
+#### B. Domain / Subdomain Terpisah (Dashboard & Chatbot)
+
+Contoh:
+- **Dashboard** → `dashboard.domain-anda.com`
+- **Chatbot** → `chatbot.domain-anda.com`
+- **API** → `api.domain-anda.com` (opsional)
+
+Backend **tetap satu**, hanya routing proxy yang dipisah.
+
+---
+
+##### 🔹 Nginx (Multi Server Block)
+
+```nginx
+server {
+    listen 80;
+    server_name dashboard.domain-anda.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000/dashboard/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+
+server {
+    listen 80;
+    server_name chatbot.domain-anda.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000/chatbot/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+
+server {
+    listen 80;
+    server_name api.domain-anda.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+---
+
+##### 🔹 Caddy (Multi Domain – Recommended)
+
+```caddyfile
+dashboard.domain-anda.com {
+    reverse_proxy 127.0.0.1:5000 {
+        header_up Host {host}
+    }
+    handle_path /* {
+        reverse_proxy 127.0.0.1:5000/dashboard
+    }
+}
+
+chatbot.domain-anda.com {
+    handle_path /* {
+        reverse_proxy 127.0.0.1:5000/chatbot
+    }
+}
+
+api.domain-anda.com {
+    handle_path /* {
+        reverse_proxy 127.0.0.1:5000/api
+    }
+}
+```
+
+> ✅ **Caddy otomatis mengelola HTTPS (Let's Encrypt)**  
+> ✅ Sangat cocok untuk arsitektur multi-subdomain tanpa ribet SSL
+
+---
+
+### 4️⃣ Penyesuaian Frontend untuk Multi Domain
+
+Jika frontend diakses via domain terpisah:
+
+- Gunakan **relative API URL** (`/api/...`)
+- Atau set `VITE_API_BASE_URL` via `.env.production`
+
+Contoh:
+```env
+VITE_API_BASE_URL=https://api.domain-anda.com
+```
+
+Pastikan juga CORS di Flask sudah mengizinkan domain terkait.
 
 ---
 
@@ -130,4 +232,6 @@ domain-anda.com {
 
 ## 📝 Catatan
 
-Selalu jalankan kembali script **build_apps** setiap kali Anda melakukan perubahan kode di folder frontend agar aset di backend tetap sinkron.
+- Jalankan kembali **`build_apps`** setiap ada perubahan frontend
+- Backend tetap **satu service**, meskipun domain dipisah
+- Arsitektur ini siap untuk **scale horizontal & production deployment**
