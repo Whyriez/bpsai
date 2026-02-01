@@ -44,3 +44,14 @@ app/static/*
 # But NOT app/static/pdf_images and its contents
 !app/static/pdf_images/
 !app/static/pdf_images/**
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

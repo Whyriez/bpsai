@@ -8,7 +8,7 @@ const Header = ({ onThemeToggle, theme }) => (
           <div className="flex items-center space-x-3">
             <div className="w-15 h-15 bg-gradient-to-br  rounded-lg flex items-center justify-center">
               <img
-                src="/sigap-app/bpslogo.png"
+                src="/bpslogo.png"
                 alt="Logo SIGAP BPS Gorontalo"
                 className="h-full w-full object-contain"
               />
