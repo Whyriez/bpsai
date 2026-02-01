@@ -1,0 +1,46 @@
+# Ignore env
+env/
+venv/
+
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore dotenv files
+.env
+
+# Ignore editor settings
+.vscode/
+
+# Ignore everything in data/
+data/*
+
+# Tapi foldernya tetap di-track
+!data/
+
+# Izinkan subfolder utama
+!data/onlineData/
+!data/scrap/
+
+# Izinkan struktur folder di dalamnya
+!data/onlineData/**/
+!data/scrap/**/
+
+# Abaikan file PDF & PNG di onlineData
+data/onlineData/**/*.pdf
+data/onlineData/**/*.png
+
+# Abaikan file di scrap
+data/scrap/**
+
+# But NOT data/chunkpdf and its contents
+!data/chunkpdf/
+!data/chunkpdf/**
+
+# Ignore everything in app/static/
+app/static/*
+
+# But NOT app/static/pdf_images and its contents
+!app/static/pdf_images/
+!app/static/pdf_images/**

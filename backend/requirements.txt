@@ -1,0 +1,32 @@
+# Web Framework & Extensions
+Flask
+Flask-SQLAlchemy
+Flask-JWT-Extended
+Flask-Cors
+python-dotenv
+
+# Database & Vector Store
+SQLAlchemy
+psycopg2-binary
+pgvector
+chromadb
+numpy
+
+# API & Services Interaction
+requests
+google-genai
+
+# Data Processing & Utilities
+pandas
+PyMuPDF
+nltk
+click
+pytz
+cachetools
+
+flasgger
+
+Flask-Caching
+
+dotenv
+

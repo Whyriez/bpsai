@@ -1,0 +1,12 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /ngedit/
+
+  # Jika file atau folder benar-benar ada, biarkan
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Selain itu, arahkan ke index.html (React router)
+  RewriteRule ^ index.html [L]
+</IfModule>
