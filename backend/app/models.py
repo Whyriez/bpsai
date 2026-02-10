@@ -167,7 +167,7 @@ class BeritaBps(db.Model):
     ringkasan = db.Column(db.Text, nullable=False)
     link = db.Column(db.Text, nullable=False)
     tags = db.Column(JSON, nullable=True)
-    embedding = db.Column(Vector(768), nullable=True)
+    embedding = db.Column(Vector(3072), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))
 
@@ -271,7 +271,7 @@ class DocumentChunk(db.Model):
     page_number = db.Column(Integer, nullable=False)
     chunk_content = db.Column(Text, nullable=False)
     reconstructed_content = db.Column(Text, nullable=True) 
-    embedding = db.Column(Vector(768), nullable=True)
+    embedding = db.Column(Vector(3072), nullable=True)
     chunk_metadata = db.Column(JSON, nullable=True) # Metadata spesifik chunk (misal: ada tabel di halaman ini)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))

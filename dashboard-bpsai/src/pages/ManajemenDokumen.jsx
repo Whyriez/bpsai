@@ -99,7 +99,7 @@ const ChunkingProgress = ({ jobStatus, onStart, onStop }) => {
 
   if (status === "RUNNING" || status === "STOPPING") {
     return (
-      <div className="w-full md:w-80 border border-gray-200 p-3 rounded-lg bg-white">
+      <div className="w-full md:w-130 border border-gray-200 p-3 rounded-lg bg-white">
         <div className="flex justify-between items-center mb-1">
           <span className="text-sm font-semibold text-gray-700">
             {status === "STOPPING"

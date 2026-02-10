@@ -628,63 +628,67 @@ def update_chunk_content(chunk_id):
 def run_pdf_chunking(app, job_name):
     """
     Worker yang berjalan di background untuk memproses semua PDF di folder.
-    Dengan mekanisme interrupt dan laporan kegagalan yang detail.
+    Versi ROBUST dengan jaminan cleanup state.
     """
     job_id = None
+    # Variabel untuk tracking hasil akhir
+    processed_count = 0
+    error_count = 0
+    skipped_count = 0
+    total_files = 0
+    failed_files_details = []
     
     with app.app_context():
         try:
-            # 1. VALIDASI INITIAL STATE
+            # 1. VALIDASI INITIAL STATE & AMBIL JOB ID
+            # Kita gunakan commit segera untuk melepas lock row
             job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
             if not job or job.status != JobStatus.RUNNING:
-                app.logger.warning(f"PDF Chunking worker for {job_name} started but job is not in RUNNING state.")
+                app.logger.warning(f"[CHUNKING] Worker started but job not RUNNING.")
                 return
             
             job_id = job.id
+            db.session.commit() # PENTING: Lepas lock agar API /stop bisa update status nanti
+
             app.logger.info(f"[CHUNKING] Starting job {job_name} (ID: {job_id})")
 
             # 2. VALIDASI DIREKTORI
             pdf_directory = app.config.get('PDF_CHUNK_DIRECTORY')
             if not pdf_directory or not os.path.isdir(pdf_directory):
-                raise Exception(f"PDF directory not found or invalid: {pdf_directory}")
+                raise Exception(f"PDF directory not found: {pdf_directory}")
 
             pdf_files = [f for f in os.listdir(pdf_directory) if f.lower().endswith('.pdf')]
             total_files = len(pdf_files)
 
-            if total_files == 0:
-                app.logger.info(f"[CHUNKING] No PDF files to process.")
-                cleanup_job_state(job_name, JobStatus.COMPLETED, "Tidak ada file PDF untuk diproses.")
-                return
-
-            app.logger.info(f"[CHUNKING] Found {total_files} PDF files to process.")
-
-            # 3. PROSES SETIAP FILE DENGAN INTERRUPT CHECKING
-            processed_count = 0
-            error_count = 0
-            skipped_count = 0
+            # Update total items di DB
+            update_job_heartbeat(job_id, message=f"Menemukan {total_files} file PDF.")
             
-            # <--- PERUBAHAN 1: Tambahkan list untuk menyimpan detail kegagalan --->
-            failed_files_details = []
+            if total_files == 0:
+                return # Akan lari ke finally untuk cleanup
 
+            # 3. PROSES SETIAP FILE
             for i, filename in enumerate(pdf_files, 1):
+                # --- CEK SINYAL STOP ---
+                # Cek langsung ke DB apakah status berubah jadi STOPPING
+                current_job_state = db.session.get(BatchJob, job_id)
+                if current_job_state and current_job_state.status == JobStatus.STOPPING:
+                    app.logger.info(f"[CHUNKING] Stop signal received at file {i}")
+                    # Update pesan error terakhir agar user tahu kenapa berhenti
+                    current_job_state.last_error = "Proses dihentikan paksa oleh pengguna."
+                    db.session.commit()
+                    return # Keluar loop, langsung ke finally
+                
+                # --- PROSES FILE ---
                 try:
-                    # Cek stop signal
-                    if check_job_should_stop(job_id):
-                        app.logger.info(f"[CHUNKING] Stop signal detected before processing file {i}/{total_files}")
-                        # Pesan saat berhenti juga bisa lebih informatif
-                        stop_msg = f"Proses dihentikan oleh pengguna. Berhasil: {processed_count}, Gagal: {error_count}, Dilewati: {skipped_count}."
-                        cleanup_job_state(job_name, JobStatus.IDLE, stop_msg)
-                        return
-
-                    status_msg = f"Mempersiapkan file {i}/{total_files}: {filename}"
+                    status_msg = f"Memproses {i}/{total_files}: {filename}"
                     update_job_heartbeat(job_id, message=status_msg)
-                    app.logger.info(f"[CHUNKING] Processing {i}/{total_files}: {filename}")
-
+                    
                     pdf_path = os.path.join(pdf_directory, filename)
                     
+                    # Callback progress
                     def progress_callback(message: str):
-                        update_job_heartbeat(job_id, message=message)
-                        app.logger.info(f"[CHUNKING]   -> {message}")
+                        # Hanya update timestamp heartbeat, jangan spam DB update message berlebihan
+                        update_job_heartbeat(job_id) 
                     
                     result = process_and_save_pdf(
                         pdf_path, 
@@ -692,87 +696,95 @@ def run_pdf_chunking(app, job_name):
                         progress_callback=progress_callback
                     )
 
-                    # <--- PERUBAHAN 2: Logika untuk mencatat status setiap file --->
                     status = result.get("status")
-                    reason = result.get("reason", "Unknown error")
+                    reason = result.get("reason", "Unknown")
 
                     if status == "stopped":
-                        app.logger.info(f"[CHUNKING] Processing of {filename} was stopped by user.")
-                        stop_msg = f"Proses dihentikan pada file '{filename}'. Berhasil: {processed_count}, Gagal: {error_count}, Dilewati: {skipped_count}."
-                        cleanup_job_state(job_name, JobStatus.IDLE, stop_msg)
-                        return
+                        app.logger.info(f"[CHUNKING] Service returned stopped status.")
+                        return # Ke finally
                     elif status == "success":
                         processed_count += 1
-                        app.logger.info(f"[CHUNKING] ✓ Success: {filename}")
                     elif status == "skipped":
                         skipped_count += 1
-                        app.logger.info(f"[CHUNKING] ○ Skipped: {filename} - {reason}")
-                    else: # "error" atau "failed"
+                    else:
                         error_count += 1
-                        # Simpan nama file dan alasan kegagalan
                         failed_files_details.append(f"- {filename}: {reason}")
-                        app.logger.error(f"[CHUNKING] ✗ Failed: {filename} - {reason}")
-                    
+                        app.logger.error(f"[CHUNKING] Failed {filename}: {reason}")
+
+                    # Update progress count
                     update_job_heartbeat(job_id, processed_count=(processed_count + skipped_count + error_count))
+                    
+                    # Jeda sedikit agar CPU tidak 100% dan memberi kesempatan DB sync
                     time.sleep(0.5)
 
-                except Exception as iter_error:
+                except Exception as file_error:
                     error_count += 1
-                    error_msg = f"Error kritis pada iterasi '{filename}': {str(iter_error)}"
+                    error_msg = str(file_error)
                     failed_files_details.append(f"- {filename}: {error_msg}")
-                    app.logger.error(f"[CHUNKING] ✗ {error_msg}")
-                    app.logger.error(traceback.format_exc())
-
-            # 4. FINALISASI DENGAN PESAN YANG LEBIH DETAIL
-            # <--- PERUBAHAN 3: Buat pesan akhir yang informatif --->
-            final_status = JobStatus.COMPLETED
-            final_msg = f"Selesai. Berhasil: {processed_count}, Gagal: {error_count}, Dilewati: {skipped_count} dari total {total_files} file."
-
-            if error_count > 0:
-                # Jika ada error, ubah status dan tambahkan detail kegagalan
-                final_status = JobStatus.FAILED if processed_count == 0 else JobStatus.COMPLETED
-                final_msg = f"Selesai dengan peringatan. Berhasil: {processed_count}, Gagal: {error_count}, Dilewati: {skipped_count}."
-                
-                # Gabungkan detail kegagalan menjadi satu string
-                failures_string = "\n".join(failed_files_details)
-                final_msg += f"\n\nDetail Kegagalan:\n{failures_string}"
-
-            cleanup_job_state(job_name, final_status, final_msg)
-            app.logger.info(f"[CHUNKING] Job completed: {final_msg}")
+                    app.logger.error(f"[CHUNKING] Error processing file {filename}: {file_error}")
+                    # Jangan break loop, lanjut ke file berikutnya
 
         except Exception as e:
-            error_trace = traceback.format_exc()
-            app.logger.error(f"[CHUNKING] FATAL ERROR in worker: {e}")
-            app.logger.error(error_trace)
-            cleanup_job_state(job_name, JobStatus.FAILED, f"Error fatal: {str(e)[:200]}")
-
-        finally:
+            app.logger.error(f"[CHUNKING] CRITICAL JOB ERROR: {e}")
+            app.logger.error(traceback.format_exc())
+            # Simpan error global
             try:
-                db.session.remove()
+                job = BatchJob.query.get(job_id)
+                if job:
+                    job.last_error = f"Critical Error: {str(e)[:200]}"
+                    db.session.commit()
             except:
                 pass
+
+        finally:
+            # --- BLOK CLEANUP UTAMA (SELALU DIJALANKAN) ---
+            # Ini memastikan status tidak pernah stuck di RUNNING/STOPPING
+            try:
+                app.logger.info("[CHUNKING] Entering cleanup phase...")
+                
+                # Gunakan session baru/bersih untuk final update agar tidak terpengaruh error sebelumnya
+                db.session.remove()
+                
+                job = BatchJob.query.get(job_id)
+                if job:
+                    # Tentukan status akhir
+                    final_status = JobStatus.COMPLETED
+                    
+                    # Jika user minta stop (status saat ini STOPPING), kembalikan ke IDLE
+                    if job.status == JobStatus.STOPPING:
+                        final_status = JobStatus.IDLE
+                        result_msg = "Proses dihentikan oleh pengguna."
+                    elif error_count > 0 and processed_count == 0:
+                        final_status = JobStatus.FAILED
+                        result_msg = "Gagal memproses semua file."
+                    else:
+                        final_status = JobStatus.COMPLETED if error_count == 0 else JobStatus.IDLE
+                        result_msg = "Selesai."
+
+                    # Susun pesan detail
+                    detail_msg = f"{result_msg} Berhasil: {processed_count}, Gagal: {error_count}, Dilewati: {skipped_count}."
+                    if failed_files_details:
+                        detail_msg += f"\nDetail Gagal: {', '.join(failed_files_details[:3])}..."
+
+                    job.status = final_status
+                    job.completed_at = datetime.utcnow()
+                    job.last_error = detail_msg # Simpan laporan di sini
+                    job.processed_items = processed_count + skipped_count + error_count
+                    
+                    db.session.commit()
+                    app.logger.info(f"[CHUNKING] Cleanup succes. Status: {final_status.value}. Msg: {detail_msg}")
+            except Exception as cleanup_error:
+                app.logger.error(f"[CHUNKING] CLEANUP FAILED: {cleanup_error}")
+                db.session.rollback()
+            finally:
+                db.session.remove()
 
 # --- ENDPOINT API BARU UNTUK KONTROL CHUNKING JOB ---
 @document_bp.route('/chunking/start', methods=['POST'])
 # @jwt_required()
 def start_chunking_job():
     """
-    Memulai background job untuk memproses semua PDF di folder.
-    ---
-    tags:
-      - Document Jobs (Chunking)
-    summary: Memulai background job pemrosesan PDF.
-    security:
-      - Bearer: []
-    responses:
-      202:
-        description: Proses chunking PDF dimulai.
-      200:
-        description: Tidak ada file PDF baru untuk diproses.
-      409:
-        description: Proses chunking sudah berjalan.
-      500:
-        description: "Gagal memulai proses (misal: folder tidak ada)."
+    Memulai background job dengan Auto-Reset untuk job yang stuck.
     """
     job_name = 'pdf_chunking_process'
     
@@ -785,48 +797,50 @@ def start_chunking_job():
             db.session.add(job)
             db.session.flush()
         
-        # CEK APAKAH JOB STUCK (RUNNING TAPI SUDAH LAMA TIDAK UPDATE)
-        if job.status == JobStatus.RUNNING:
-            if job.last_updated:
-                time_since_update = datetime.utcnow() - job.last_updated
-                if time_since_update > timedelta(minutes=JOB_TIMEOUT_MINUTES):
-                    app_logger = current_app.logger
-                    app_logger.warning(f"[CHUNKING] Job stuck detected! Last update: {job.last_updated}. Resetting...")
-                    
-                    # RESET JOB YANG STUCK
-                    job.status = JobStatus.IDLE
-                    job.last_error = f"Job direset karena stuck (tidak ada update sejak {job.last_updated})"
-                    db.session.commit()
-                else:
-                    return jsonify({
-                        "error": "Proses chunking sudah berjalan.",
-                        "last_update": job.last_updated.isoformat(),
-                        "progress": f"{job.processed_items}/{job.total_items}"
-                    }), 409
+        # --- LOGIKA AUTO-RESET ---
+        if job.status in [JobStatus.RUNNING, JobStatus.STOPPING]:
+            # Cek kapan terakhir update
+            last_active = job.last_updated or job.started_at or datetime.utcnow()
+            time_since_active = datetime.utcnow() - last_active
+            
+            # Jika sudah > 2 menit tidak ada kabar dari worker (heartbeat mati)
+            # Atau status STOPPING tapi tidak kunjung IDLE
+            is_stuck = time_since_active > timedelta(minutes=2)
+            
+            if is_stuck:
+                current_app.logger.warning(f"Job {job_name} terdeteksi STUCK di {job.status.value}. Melakukan Auto-Reset.")
+                job.status = JobStatus.IDLE
+                job.last_error = "Auto-reset karena stuck (worker mati)."
+                db.session.commit()
+                # Lanjut ke logika start di bawah...
+                # Refresh object
+                job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
             else:
-                return jsonify({"error": "Proses chunking sudah berjalan."}), 409
+                return jsonify({
+                    "error": f"Proses sedang berjalan (Status: {job.status.value}).",
+                    "last_update": last_active.isoformat()
+                }), 409
 
         # VALIDASI DIREKTORI
         pdf_directory = current_app.config.get('PDF_CHUNK_DIRECTORY')
         if not pdf_directory or not os.path.isdir(pdf_directory):
-            return jsonify({"error": "Folder PDF tidak dikonfigurasi atau tidak ditemukan."}), 500
+            return jsonify({"error": "Folder PDF tidak dikonfigurasi/ditemukan."}), 500
 
-        # HITUNG FILE YANG AKAN DIPROSES
         files_to_process = [f for f in os.listdir(pdf_directory) if f.lower().endswith('.pdf')]
         if not files_to_process:
-            return jsonify({"message": "Tidak ada file PDF baru untuk diproses."}), 200
+            return jsonify({"message": "Tidak ada file PDF untuk diproses."}), 200
 
         # INISIALISASI JOB
         job.status = JobStatus.RUNNING
         job.total_items = len(files_to_process)
         job.processed_items = 0
         job.started_at = datetime.utcnow()
-        job.last_updated = datetime.utcnow()  # TAMBAHKAN HEARTBEAT TIMESTAMP
+        job.last_updated = datetime.utcnow()
         job.completed_at = None
-        job.last_error = "Memulai proses chunking..."
+        job.last_error = "Memulai worker..."
         db.session.commit()
 
-        # JALANKAN WORKER THREAD
+        # JALANKAN WORKER
         thread = threading.Thread(
             target=run_pdf_chunking, 
             args=(current_app._get_current_object(), job_name),
@@ -836,15 +850,15 @@ def start_chunking_job():
         thread.start()
 
         return jsonify({
-            "message": "Proses chunking PDF dimulai.",
+            "message": "Proses chunking dimulai.",
             "job_id": job.id,
             "total_files": len(files_to_process)
         }), 202
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error starting chunking job: {e}")
-        return jsonify({"error": "Gagal memulai proses chunking", "details": str(e)}), 500
+        current_app.logger.error(f"Error starting job: {e}")
+        return jsonify({"error": "Gagal memulai proses", "details": str(e)}), 500
 
 @document_bp.route('/chunking/stop', methods=['POST'])
 # @jwt_required()

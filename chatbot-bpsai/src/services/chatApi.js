@@ -1,7 +1,7 @@
 // src/services/chatApi.js
 // const API_BASE_URL = 'https://10.75.0.13';
 // const API_BASE_URL = 'https://10.75.0.13';
-const API_BASE_URL = "http://127.0.0.1:5005";
+const API_BASE_URL = "http://127.0.0.1:5000";
 // const API_BASE_URL = "https://chatbot.bps7500.my.id";
 
 /**

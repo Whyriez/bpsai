@@ -32,7 +32,7 @@ function Settings() {
                         </div>
                         <div className="flex justify-between items-center">
                             <span className="text-sm text-gray-600">Terakhir Update</span>
-                            <span className="text-sm font-medium">20 Sep 2025</span>
+                            <span className="text-sm font-medium">10 Feb 2026</span>
                         </div>
                         <div className="flex justify-between items-center">
                             <span className="text-sm text-gray-600">Status Database</span>
