@@ -63,6 +63,12 @@ const EditIcon = () => (
   </svg>
 );
 
+const RefreshIcon = () => (
+    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+);
+
 const ViewIcon = () => (
   <svg
     className="w-4 h-4"
@@ -86,7 +92,7 @@ const ViewIcon = () => (
 );
 
 // --- Komponen UI (tidak berubah) ---
-const ChunkingProgress = ({ jobStatus, onStart, onStop }) => {
+const ChunkingProgress = ({ jobStatus, onStart, onStop, onReset }) => {
   if (!jobStatus) {
     return (
       <div className="w-full md:w-auto animate-pulse">
@@ -114,17 +120,37 @@ const ChunkingProgress = ({ jobStatus, onStart, onStop }) => {
             style={{ width: `${progress}%` }}
           ></div>
         </div>
-        <div className="flex justify-between items-center">
-          <p className="text-xs text-gray-500 truncate" title={message}>
-            {message || "Memuat..."}
-          </p>
-          <button
-            onClick={onStop}
-            disabled={status === "STOPPING"}
-            className="text-xs text-red-600 hover:underline disabled:opacity-50"
-          >
-            Hentikan
-          </button>
+        <div className="flex justify-between items-end">
+          <div className="flex-1 pr-2">
+            <p
+              className="text-xs text-gray-500 truncate max-w-[220px]"
+              title={message}
+            >
+              {message || "Memuat..."}
+            </p>
+          </div>
+
+          {/* GROUP TOMBOL AKSI */}
+          <div className="flex items-center gap-2">
+            {/* 1. Tombol RESET (Darurat) - Muncul jika user merasa stuck */}
+            <button
+              onClick={onReset}
+              title="Klik ini jika proses macet (Stuck)"
+              className="text-xs text-gray-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded border border-transparent hover:border-red-200 transition-all flex items-center gap-1"
+            >
+              <RefreshIcon />
+              <span className="hidden sm:inline">Reset Paksa</span>
+            </button>
+
+            {/* 2. Tombol STOP (Normal) */}
+            <button
+              onClick={onStop}
+              disabled={status === "STOPPING"}
+              className="text-xs bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 hover:text-red-800 px-3 py-1 rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Hentikan
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -138,6 +164,15 @@ const ChunkingProgress = ({ jobStatus, onStart, onStop }) => {
       >
         Proses Semua PDF di Folder
       </button>
+      {status === "FAILED" && (
+        <button
+          onClick={onReset}
+          className="text-gray-400 hover:text-red-500 p-2"
+          title="Reset Status Error"
+        >
+          <RefreshIcon />
+        </button>
+      )}
       {status === "FAILED" && (
         <p className="text-xs text-red-500 max-w-xs">
           Gagal: {message || "Terjadi kesalahan."}
@@ -349,6 +384,48 @@ const DokumenTable = () => {
     }
   };
 
+  const handleResetJob = async () => {
+    // Menggunakan toast custom untuk konfirmasi agar tidak sembarangan keklik
+    toast(
+      (t) => (
+        <div className="flex flex-col gap-2 p-2">
+          <span className="font-bold text-gray-800">Reset Status Job?</span>
+          <span className="text-sm text-gray-600">
+            Gunakan hanya jika proses macet (stuck).
+          </span>
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={async () => {
+                toast.dismiss(t.id);
+                try {
+                  // Panggil endpoint admin reset yang sudah anda buat tadi
+                  // Pastikan URL-nya sesuai dengan route backend anda
+                  await apiFetch("/documents/admin/force-reset-all", {
+                    method: "POST",
+                  });
+                  toast.success("Status job berhasil di-reset ke IDLE.");
+                  fetchChunkingJobStatus();
+                } catch (err) {
+                  toast.error(`Gagal reset: ${err.message}`);
+                }
+              }}
+              className="bg-red-500 text-white px-3 py-1 rounded text-xs font-bold hover:bg-red-600"
+            >
+              Ya, Reset Paksa
+            </button>
+            <button
+              onClick={() => toast.dismiss(t.id)}
+              className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs hover:bg-gray-300"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: 5000, icon: "⚠️" },
+    );
+  };
+
   const handleDeleteDocument = (docId, docFilename) => {
     toast(
       (t) => (
@@ -391,7 +468,7 @@ const DokumenTable = () => {
       {
         duration: 6000,
         // Posisi untuk toast ini sekarang diatur oleh <Toaster /> utama
-      }
+      },
     );
   };
 
@@ -442,6 +519,7 @@ const DokumenTable = () => {
           jobStatus={chunkingJobStatus}
           onStart={handleStartChunking}
           onStop={handleStopChunking}
+          onReset={handleResetJob}
         />
       </div>
 
@@ -583,7 +661,7 @@ const DokumenTable = () => {
               <span className="font-semibold">
                 {Math.min(
                   pagination.current_page * pagination.per_page,
-                  pagination.total_items
+                  pagination.total_items,
                 )}
               </span>{" "}
               dari{" "}

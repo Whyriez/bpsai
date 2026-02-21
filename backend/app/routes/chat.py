@@ -7,7 +7,6 @@ import io
 from flask import Blueprint, request, Response, session, current_app, jsonify, send_file
 from app.models import db, BeritaBps, DocumentChunk, PromptLog, Feedback, PdfDocument
 from app.services import EmbeddingService, GeminiService
-from app.vector_db import get_collections
 from app.helpers import (
     extract_years, detect_intent, extract_keywords, build_context,
     build_final_prompt, expand_query_with_synonyms, BPS_ACRONYM_DICTIONARY,
@@ -15,6 +14,7 @@ from app.helpers import (
     rerank_with_dss, expand_query_with_years
 )
 from sqlalchemy.orm import aliased
+from sqlalchemy import select, extract, or_, func
 from app import cache
 
 chat_bp = Blueprint('chat', __name__)
@@ -26,157 +26,146 @@ def send_thinking_status(status, detail=""):
     """Helper untuk mengirim status thinking ke client"""
     return f"data: {json.dumps({'thinking': True, 'status': status, 'detail': detail})}\n\n"
 
+def reorder_for_llm(results):
+    """
+    Optimasi "Lost in the Middle": 
+    LLM (seperti Gemini) cenderung fokus pada awal dan akhir prompt, 
+    dan "lupa" dengan isi di tengah. Fungsi ini menaruh hasil pencarian 
+    paling relevan di awal dan di akhir array.
+    """
+    if not results:
+        return []
+        
+    results = list(results)
+    # Pastikan terurut berdasarkan distance (terkecil/terdekat di index 0)
+    results.sort(key=lambda x: x[1]) 
+    
+    reordered = []
+    for i in range(len(results)):
+        if i % 2 == 0:
+            reordered.insert(0, results[i]) # Genap: disisipkan ke paling awal
+        else:
+            reordered.append(results[i])    # Ganjil: ditambahkan ke paling akhir
+    return reordered
 
-def get_combined_relevant_results(user_prompt: str, requested_years: list = [], specific_document: str = None,
-                                  limit: int = 15):
+def get_combined_relevant_results(user_prompt: str, requested_years: list = [], specific_document: str = None, limit: int = 15):
     """
-    Mengambil hasil gabungan dari BeritaBps dan DocumentChunk dengan strategi:
-    1. Expand query (sinonim & tahun).
-    2. Pre-filtering ChromaDB (untuk tahun).
-    3. Hybrid search (dokumen spesifik vs umum).
+    Mengambil hasil gabungan dari BeritaBps dan DocumentChunk menggunakan PostgreSQL pgvector.
+    Sudah teroptimasi dengan batas toleransi jarak dan reordering context.
     """
+    # Batas toleransi jarak Cosine (Semakin kecil semakin ketat/relevan)
+    # Range cosine pgvector: 0 (Sama persis) sampai 2 (Sangat bertolak belakang)
+    DISTANCE_THRESHOLD = 0.65 
+
     # 1. Expand Query
     expanded_prompt = expand_query_with_synonyms(user_prompt, BPS_ACRONYM_DICTIONARY)
 
-    # Cek apakah user meminta dokumen spesifik (jika belum terdeteksi sebelumnya)
     if not specific_document:
         doc_pattern = re.search(r'(?:dokumen|file|pdf)\s+([\w\s\-\.]+)', user_prompt, re.IGNORECASE)
         if doc_pattern:
             specific_document = doc_pattern.group(1)
 
-    # Tambahkan tahun ke prompt agar embedding lebih sadar konteks waktu
     if requested_years:
         expanded_prompt = expand_query_with_years(expanded_prompt, requested_years)
 
     current_app.logger.info(f"Original prompt: '{user_prompt}', Expanded to: '{expanded_prompt}'")
 
-    # Generate Embedding
+    # 2. Generate Embedding dari Prompt
     prompt_embedding = embedding_service.generate(expanded_prompt)
     if not prompt_embedding:
         return []
 
-    berita_collection, document_collection = get_collections()
     combined_results = []
 
-    # --- KONSTRUKSI FILTER TAHUN (FIX FATAL #1) ---
-    # Kita buat filter untuk ChromaDB agar HANYA mengambil data di tahun yang diminta
-    berita_where_filter = None
-    if requested_years:
-        min_year = min(requested_years)
-        max_year = max(requested_years)
-
-        # Filter range tanggal ISO (YYYY-MM-DD)
-        # ChromaDB mendukung operator $gte (>=) dan $lte (<=) untuk string tanggal
-        berita_where_filter = {
-            "$and": [
-                {"year": {"$gte": min_year}},
-                {"year": {"$lte": max_year}}
-            ]
-        }
-        current_app.logger.info(f"Applying ChromaDB Filter: {berita_where_filter}")
-
-    # --- LOGIKA PENCARIAN ---
-
-    # KASUS A: PENCARIAN DOKUMEN SPESIFIK
+    # --- KASUS A: PENCARIAN DOKUMEN SPESIFIK ---
     if specific_document:
         current_app.logger.info(f"MODE PENCARIAN SPESIFIK: Mengunci pencarian ke dokumen '{specific_document}'")
+        
+        # pgvector search + filter nama dokumen + filter threshold
+        stmt = select(DocumentChunk, DocumentChunk.embedding.cosine_distance(prompt_embedding).label('distance'))\
+            .join(PdfDocument)\
+            .filter(func.lower(PdfDocument.filename).contains(specific_document.lower()))\
+            .filter(DocumentChunk.embedding.cosine_distance(prompt_embedding) < DISTANCE_THRESHOLD)\
+            .order_by('distance')\
+            .limit(limit * 2)
 
-        # 1. Vector Search pada DocumentChunk
-        chunk_results = document_collection.query(
-            query_embeddings=[prompt_embedding],
-            n_results=limit * 2  # Ambil lebih banyak untuk difilter manual nama filenya
-        )
+        chunk_results = db.session.execute(stmt).all()
+        for chunk_obj, distance in chunk_results:
+            combined_results.append((chunk_obj, float(distance)))
 
-        # 2. Filter hasil berdasarkan nama file
-        if chunk_results['ids'][0]:
-            for i, item_id in enumerate(chunk_results['ids'][0]):
-                distance = chunk_results['distances'][0][i]
-                chunk_obj = db.session.get(DocumentChunk, item_id)
-
-                if chunk_obj and chunk_obj.document:
-                    # Normalisasi nama untuk matching
-                    doc_filename = chunk_obj.document.filename.lower().replace('.pdf', '')
-                    search_term = specific_document.lower().replace('.pdf', '')
-
-                    if search_term in doc_filename:
-                        combined_results.append((chunk_obj, distance))
-                        current_app.logger.debug(f"✓ Cocok: {chunk_obj.document.filename}")
-
-        # 3. Fallback: SQL Search jika Vector gagal menemukan dokumen spesifik
+        # Fallback murni SQL jika tidak ada vektor yang lolos threshold
         if not combined_results:
-            current_app.logger.warning(f"Vector search kosong untuk '{specific_document}', mencoba SQL query.")
-            from sqlalchemy import func
+            current_app.logger.warning(f"Vector search kosong untuk '{specific_document}', mencoba fallback SQL.")
             direct_chunks = DocumentChunk.query.join(PdfDocument).filter(
                 func.lower(PdfDocument.filename).contains(specific_document.lower())
             ).limit(10).all()
 
             for chunk in direct_chunks:
-                combined_results.append((chunk, 0.7))  # Beri skor jarak default
+                combined_results.append((chunk, 0.7)) # Beri nilai distance moderat (0.7)
 
-    # KASUS B: PENCARIAN UMUM (SEMUA DATA)
+    # --- KASUS B: PENCARIAN UMUM ---
     else:
-        current_app.logger.info("MODE PENCARIAN UMUM: Mencari di semua sumber data.")
+        current_app.logger.info("MODE PENCARIAN UMUM: Mencari di pgvector dengan threshold < 0.65")
 
-        # 1. Query BeritaBps DENGAN FILTER TAHUN (Ini perbaikan utamanya)
-        berita_results = berita_collection.query(
-            query_embeddings=[prompt_embedding],
-            n_results=limit,
-            where=berita_where_filter  # Filter diterapkan di level DB
-        )
-        current_app.logger.debug("Chroma berita_results ids=%s distances=%s", berita_results.get('ids'),
-                                 berita_results.get('distances'))
+        # 1. Query BeritaBps via pgvector (dengan batas relevansi)
+        berita_stmt = select(BeritaBps, BeritaBps.embedding.cosine_distance(prompt_embedding).label('distance'))\
+            .filter(BeritaBps.embedding.cosine_distance(prompt_embedding) < DISTANCE_THRESHOLD)
+        
+        if requested_years:
+            year_filters = [extract('year', BeritaBps.tanggal_rilis) == y for y in requested_years]
+            berita_stmt = berita_stmt.filter(or_(*year_filters))
+            
+        berita_stmt = berita_stmt.order_by('distance').limit(limit)
+        berita_results = db.session.execute(berita_stmt).all()
+        
+        for berita_obj, distance in berita_results:
+            combined_results.append((berita_obj, float(distance)))
 
-        # 2. Query DocumentChunk
-        # (PDF saat ini belum punya metadata tahun di Chroma, jadi ambil raw dulu)
-        chunk_results = document_collection.query(
-            query_embeddings=[prompt_embedding],
-            n_results=limit * 2
-        )
-        current_app.logger.debug("Chroma chunk_results ids=%s distances=%s", chunk_results.get('ids'),
-                                 chunk_results.get('distances'))
+        # 2. Query DocumentChunk via pgvector (dengan batas relevansi)
+        chunk_stmt = select(DocumentChunk, DocumentChunk.embedding.cosine_distance(prompt_embedding).label('distance'))\
+            .filter(DocumentChunk.embedding.cosine_distance(prompt_embedding) < DISTANCE_THRESHOLD)\
+            .order_by('distance')\
+            .limit(limit * 2)
+            
+        chunk_results = db.session.execute(chunk_stmt).all()
+        for chunk_obj, distance in chunk_results:
+            penalty = 0.0
+            # Fallback penalti filter tahun manual untuk PDF
+            if chunk_obj.document and chunk_obj.document.filename:
+                doc_year_match = re.search(r'20\d{2}', chunk_obj.document.filename)
+                if requested_years and doc_year_match:
+                    doc_year = int(doc_year_match.group(0))
+                    if doc_year not in requested_years:
+                        penalty = 0.5 # Menambah distance agar menjauh dari prioritas
+            
+            # Pastikan setelah penalti tidak melebihi batasan (misal batas wajar 1.0)
+            final_distance = float(distance) + penalty
+            if final_distance <= 1.0: 
+                combined_results.append((chunk_obj, final_distance))
 
-        # Proses Hasil Berita
-        if berita_results['ids'][0]:
-            for i, item_id in enumerate(berita_results['ids'][0]):
-                distance = berita_results['distances'][0][i]
-                berita_obj = db.session.get(BeritaBps, int(item_id))
-                if berita_obj:
-                    # Tidak perlu filter tahun manual lagi di sini karena sudah di DB
-                    combined_results.append((berita_obj, distance))
-
-        # Proses Hasil Chunk (PDF)
-        if chunk_results['ids'][0]:
-            for i, item_id in enumerate(chunk_results['ids'][0]):
-                distance = chunk_results['distances'][0][i]
-                chunk_obj = db.session.get(DocumentChunk, item_id)
-                if chunk_obj and chunk_obj.document:
-                    # Fallback filter tahun manual untuk PDF (karena metadata belum lengkap)
-                    doc_year_match = re.search(r'20\d{2}', chunk_obj.document.filename)
-                    penalty = 0
-
-                    if requested_years and doc_year_match:
-                        doc_year = int(doc_year_match.group(0))
-                        if doc_year not in requested_years:
-                            # Kita tidak skip total, tapi beri penalti agar prioritas turun
-                            penalty = 0.5
-
-                    combined_results.append((chunk_obj, distance + penalty))
-
-    # Jika hasil masih sangat sedikit untuk tahun yang diminta, lakukan fallback SQL
+    # Jika hasil pencarian kurang dari target setelah difilter vektor, coba tarik data Fallback
     if requested_years and len(combined_results) < 3 and not specific_document:
-        current_app.logger.warning(f"Hasil kurang untuk tahun {requested_years}, mencoba fallback SQL query.")
+        current_app.logger.warning(f"Hasil terlalu sedikit untuk tahun {requested_years}, injeksi data SQL.")
         for year in requested_years:
             additional_news = BeritaBps.query.filter(
-                db.extract('year', BeritaBps.tanggal_rilis) == year
+                extract('year', BeritaBps.tanggal_rilis) == year
             ).limit(3).all()
             for news in additional_news:
-                # Cek duplikasi sebelum append
+                # Hindari duplikasi
                 if not any(isinstance(item, BeritaBps) and item.id == news.id for item, _ in combined_results):
-                    combined_results.append((news, 0.6))  # Skor default
+                    combined_results.append((news, 0.6)) # Distance moderate
 
-    # Sort berdasarkan jarak (semakin kecil semakin relevan)
+    # 3. Optimasi Penyusunan Akhir (Lost In the Middle)
+    # Urutkan dulu dari yang paling relevan (distance terkecil)
     combined_results.sort(key=lambda x: x[1])
-    return combined_results[:limit]
+    
+    # Ambil sebatas limit (misal 15)
+    final_results = combined_results[:limit]
+    
+    # Terapkan reordering (Yang paling relevan ditaruh di list teratas dan terbawah)
+    final_results = reorder_for_llm(final_results)
+
+    return final_results
 
 @chat_bp.route('/stream', methods=['POST'])
 def stream():

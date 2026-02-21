@@ -1,8 +1,10 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from app.models import db, BeritaBps
 from sqlalchemy import or_
 import datetime
 from flask_jwt_extended import jwt_required
+
+from app.services import EmbeddingService
 
 # Membuat Blueprint untuk rute berita
 berita_bp = Blueprint('berita', __name__, url_prefix='/api')
@@ -197,13 +199,25 @@ def add_berita():
         # Jika tidak ada tags atau formatnya salah, default ke list kosong
         processed_tags = []
 
+    text_to_embed = f"{judul_berita}\n{ringkasan}"
+    if processed_tags:
+        text_to_embed += f"\nTags: {', '.join(processed_tags)}"
+
+    embedding_service = EmbeddingService()
+    try:
+        berita_vector = embedding_service.generate(text_to_embed)
+    except Exception as e:
+        current_app.logger.error(f"Gagal generate vektor untuk berita: {e}")
+        berita_vector = None
+
     # Membuat instance baru dari model BeritaBps
     new_berita = BeritaBps(
         judul_berita=judul_berita,
         tanggal_rilis=tanggal_rilis,
         link=link_sumber,
         tags=processed_tags,
-        ringkasan=ringkasan
+        ringkasan=ringkasan,
+        embedding=berita_vector
     )
 
     try:
@@ -333,6 +347,18 @@ def update_berita(berita_id):
         elif isinstance(tags, list):
             berita.tags = tags
 
+    text_to_embed = f"{berita.judul_berita}\n{berita.ringkasan}"
+    if berita.tags:
+        text_to_embed += f"\nTags: {', '.join(berita.tags)}"
+
+    embedding_service = EmbeddingService()
+    try:
+        new_vector = embedding_service.generate(text_to_embed)
+        if new_vector:
+            berita.embedding = new_vector
+    except Exception as e:
+        current_app.logger.error(f"Gagal update vektor untuk berita {berita_id}: {e}")
+    
     try:
         db.session.commit()
         return jsonify({'message': f'Data Berita BPS dengan ID {berita_id} berhasil diperbarui.'})

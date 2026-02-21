@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import relationship
-from sqlalchemy import JSON, Enum, event, inspect, ForeignKey, Uuid, DateTime, Integer, Text, String
+from sqlalchemy import JSON, Enum, event, inspect, ForeignKey, Uuid, DateTime, Integer, Text, String, Index
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta  
 import uuid
@@ -171,6 +171,14 @@ class BeritaBps(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))
 
+    __table_args__ = (
+        Index('ix_berita_bps_embedding_hnsw', 
+              'embedding', 
+              postgresql_using='hnsw', 
+              postgresql_with={'m': 16, 'ef_construction': 64}, 
+              postgresql_ops={'embedding': 'halfvec_cosine_ops'}),
+    )
+
 def generate_embedding_listener(mapper, connection, target):
     """
     Fungsi ini akan dijalankan sebelum insert atau update pada model BeritaBps.
@@ -278,6 +286,14 @@ class DocumentChunk(db.Model):
 
     document = relationship('PdfDocument', back_populates='chunks')
 
+    __table_args__ = (
+        Index('ix_document_chunks_embedding_hnsw', 
+              'embedding', 
+              postgresql_using='hnsw', 
+              postgresql_with={'m': 16, 'ef_construction': 64}, 
+              postgresql_ops={'embedding': 'halfvec_cosine_ops'}),
+    )
+    
     def __repr__(self):
         return f'<DocumentChunk Page {self.page_number} of Doc ID {self.document_id}>'
 

@@ -1,7 +1,7 @@
 import os
 from flask import Blueprint, jsonify, current_app, request, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt
-from ..services import process_and_save_pdf, GeminiService
+from ..services import process_and_save_pdf, GeminiService, EmbeddingService
 from ..models import db, PdfDocument, DocumentChunk, BatchJob, JobStatus 
 from datetime import datetime, timedelta
 from sqlalchemy import cast, String, func
@@ -606,14 +606,16 @@ def update_chunk_content(chunk_id):
 
         new_content = data['content']
         
-        # PENTING: Update kedua kolom
-        # 'reconstructed_content' untuk melacak status
-        # 'chunk_content' untuk memicu event listener agar embedding di-update otomatis
+        # Inisialisasi dan Generate Ulang Vektor
+        embedding_service = EmbeddingService()
+        new_vector = embedding_service.generate(new_content)
+        
         chunk.reconstructed_content = new_content
         chunk.chunk_content = new_content
+        if new_vector:
+            chunk.embedding = new_vector # Timpa vektor lama dengan yang baru!
         
         db.session.commit()
-        
         return jsonify({"message": f"Chunk untuk halaman {chunk.page_number} berhasil diperbarui."}), 200
 
     except Exception as e:
@@ -627,157 +629,114 @@ def update_chunk_content(chunk_id):
 # ===================================================================
 def run_pdf_chunking(app, job_name):
     """
-    Worker yang berjalan di background untuk memproses semua PDF di folder.
-    Versi ROBUST dengan jaminan cleanup state.
+    Worker background dengan update progress PER HALAMAN.
     """
-    job_id = None
-    # Variabel untuk tracking hasil akhir
-    processed_count = 0
-    error_count = 0
-    skipped_count = 0
-    total_files = 0
-    failed_files_details = []
-    
     with app.app_context():
+        chunking_job_id = None
         try:
-            # 1. VALIDASI INITIAL STATE & AMBIL JOB ID
-            # Kita gunakan commit segera untuk melepas lock row
-            job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
+            # 1. SETUP AWAL
+            job = BatchJob.query.filter_by(job_name=job_name).first()
             if not job or job.status != JobStatus.RUNNING:
-                app.logger.warning(f"[CHUNKING] Worker started but job not RUNNING.")
                 return
             
-            job_id = job.id
-            db.session.commit() # PENTING: Lepas lock agar API /stop bisa update status nanti
-
-            app.logger.info(f"[CHUNKING] Starting job {job_name} (ID: {job_id})")
-
-            # 2. VALIDASI DIREKTORI
+            chunking_job_id = job.id
+            
+            # Konfigurasi & List File
             pdf_directory = app.config.get('PDF_CHUNK_DIRECTORY')
-            if not pdf_directory or not os.path.isdir(pdf_directory):
-                raise Exception(f"PDF directory not found: {pdf_directory}")
-
             pdf_files = [f for f in os.listdir(pdf_directory) if f.lower().endswith('.pdf')]
             total_files = len(pdf_files)
-
-            # Update total items di DB
-            update_job_heartbeat(job_id, message=f"Menemukan {total_files} file PDF.")
             
-            if total_files == 0:
-                return # Akan lari ke finally untuk cleanup
+            processed_count = 0
+            error_count = 0
+            skipped_count = 0
 
-            # 3. PROSES SETIAP FILE
+            # Update awal
+            update_job_heartbeat(chunking_job_id, message=f"Persiapan: {total_files} dokumen antre...")
+
+            # 2. LOOPING FILE
             for i, filename in enumerate(pdf_files, 1):
-                # --- CEK SINYAL STOP ---
-                # Cek langsung ke DB apakah status berubah jadi STOPPING
-                current_job_state = db.session.get(BatchJob, job_id)
-                if current_job_state and current_job_state.status == JobStatus.STOPPING:
-                    app.logger.info(f"[CHUNKING] Stop signal received at file {i}")
-                    # Update pesan error terakhir agar user tahu kenapa berhenti
-                    current_job_state.last_error = "Proses dihentikan paksa oleh pengguna."
-                    db.session.commit()
-                    return # Keluar loop, langsung ke finally
+                # --- A. CEK STOP SIGNAL ---
+                db.session.expire_all() 
+                current_job = db.session.get(BatchJob, chunking_job_id)
                 
-                # --- PROSES FILE ---
+                if not current_job or current_job.status == JobStatus.STOPPING:
+                    current_job.status = JobStatus.IDLE
+                    current_job.last_error = "Dihentikan oleh pengguna."
+                    current_job.completed_at = datetime.utcnow()
+                    db.session.commit()
+                    return
+
+                # --- B. DEFINISI CALLBACK UPDATE HALAMAN ---
+                # Ini fungsi yang akan dipanggil oleh process_and_save_pdf setiap ganti halaman
+                def progress_callback(message=None, **kwargs):
+                    try:
+                        # Format pesan gabungan: "File 1/6: NamaFile.pdf - Halaman 5/20"
+                        # 'message' di sini dikirim dari process_and_save_pdf (misal: "Halaman 5/20")
+                        base_info = f"File {i}/{total_files}: {filename}"
+                        full_status = f"{base_info} | {message}" if message else base_info
+                        
+                        # Update langsung ke DB agar Frontend bisa baca real-time
+                        # Kita gunakan query update() agar atomic dan tidak perlu load object full
+                        db.session.query(BatchJob).filter_by(id=chunking_job_id).update({
+                            "last_error": full_status, 
+                            "last_updated": datetime.utcnow()
+                        })
+                        db.session.commit()
+                    except Exception as e:
+                        # Jangan sampai error update status menghentikan proses utama
+                        app.logger.warning(f"Gagal update status halaman: {e}")
+
+                # Update status awal file ini (sebelum masuk fungsi processing)
+                progress_callback(message="Membuka file...")
+
+                # --- C. PROSES INTI ---
                 try:
-                    status_msg = f"Memproses {i}/{total_files}: {filename}"
-                    update_job_heartbeat(job_id, message=status_msg)
-                    
                     pdf_path = os.path.join(pdf_directory, filename)
                     
-                    # Callback progress
-                    def progress_callback(message: str):
-                        # Hanya update timestamp heartbeat, jangan spam DB update message berlebihan
-                        update_job_heartbeat(job_id) 
+                    # Pass callback ke service
+                    result = process_and_save_pdf(pdf_path, chunking_job_id, progress_callback=progress_callback)
                     
-                    result = process_and_save_pdf(
-                        pdf_path, 
-                        job_id,
-                        progress_callback=progress_callback
-                    )
-
                     status = result.get("status")
-                    reason = result.get("reason", "Unknown")
-
-                    if status == "stopped":
-                        app.logger.info(f"[CHUNKING] Service returned stopped status.")
-                        return # Ke finally
-                    elif status == "success":
+                    if status == "success":
                         processed_count += 1
                     elif status == "skipped":
                         skipped_count += 1
                     else:
                         error_count += 1
-                        failed_files_details.append(f"- {filename}: {reason}")
-                        app.logger.error(f"[CHUNKING] Failed {filename}: {reason}")
-
-                    # Update progress count
-                    update_job_heartbeat(job_id, processed_count=(processed_count + skipped_count + error_count))
-                    
-                    # Jeda sedikit agar CPU tidak 100% dan memberi kesempatan DB sync
-                    time.sleep(0.5)
-
-                except Exception as file_error:
+                
+                except Exception as e:
                     error_count += 1
-                    error_msg = str(file_error)
-                    failed_files_details.append(f"- {filename}: {error_msg}")
-                    app.logger.error(f"[CHUNKING] Error processing file {filename}: {file_error}")
-                    # Jangan break loop, lanjut ke file berikutnya
+                    app.logger.error(f"Error file {filename}: {e}")
+
+                # Update progress bar (Persentase File Selesai)
+                db.session.query(BatchJob).filter_by(id=chunking_job_id).update({
+                    "processed_items": processed_count + skipped_count + error_count,
+                    "last_updated": datetime.utcnow()
+                })
+                db.session.commit()
+                
+                time.sleep(0.5)
+
+            # 3. FINISH
+            final_job = db.session.get(BatchJob, chunking_job_id)
+            if final_job:
+                final_job.status = JobStatus.COMPLETED
+                final_job.completed_at = datetime.utcnow()
+                final_job.last_error = f"Selesai! Berhasil: {processed_count}, Gagal: {error_count}"
+                db.session.commit()
 
         except Exception as e:
-            app.logger.error(f"[CHUNKING] CRITICAL JOB ERROR: {e}")
-            app.logger.error(traceback.format_exc())
-            # Simpan error global
-            try:
-                job = BatchJob.query.get(job_id)
-                if job:
-                    job.last_error = f"Critical Error: {str(e)[:200]}"
-                    db.session.commit()
-            except:
-                pass
-
+            if chunking_job_id:
+                try:
+                    err_job = db.session.get(BatchJob, chunking_job_id)
+                    if err_job:
+                        err_job.status = JobStatus.FAILED
+                        err_job.last_error = str(e)
+                        db.session.commit()
+                except:
+                    pass
         finally:
-            # --- BLOK CLEANUP UTAMA (SELALU DIJALANKAN) ---
-            # Ini memastikan status tidak pernah stuck di RUNNING/STOPPING
-            try:
-                app.logger.info("[CHUNKING] Entering cleanup phase...")
-                
-                # Gunakan session baru/bersih untuk final update agar tidak terpengaruh error sebelumnya
-                db.session.remove()
-                
-                job = BatchJob.query.get(job_id)
-                if job:
-                    # Tentukan status akhir
-                    final_status = JobStatus.COMPLETED
-                    
-                    # Jika user minta stop (status saat ini STOPPING), kembalikan ke IDLE
-                    if job.status == JobStatus.STOPPING:
-                        final_status = JobStatus.IDLE
-                        result_msg = "Proses dihentikan oleh pengguna."
-                    elif error_count > 0 and processed_count == 0:
-                        final_status = JobStatus.FAILED
-                        result_msg = "Gagal memproses semua file."
-                    else:
-                        final_status = JobStatus.COMPLETED if error_count == 0 else JobStatus.IDLE
-                        result_msg = "Selesai."
-
-                    # Susun pesan detail
-                    detail_msg = f"{result_msg} Berhasil: {processed_count}, Gagal: {error_count}, Dilewati: {skipped_count}."
-                    if failed_files_details:
-                        detail_msg += f"\nDetail Gagal: {', '.join(failed_files_details[:3])}..."
-
-                    job.status = final_status
-                    job.completed_at = datetime.utcnow()
-                    job.last_error = detail_msg # Simpan laporan di sini
-                    job.processed_items = processed_count + skipped_count + error_count
-                    
-                    db.session.commit()
-                    app.logger.info(f"[CHUNKING] Cleanup succes. Status: {final_status.value}. Msg: {detail_msg}")
-            except Exception as cleanup_error:
-                app.logger.error(f"[CHUNKING] CLEANUP FAILED: {cleanup_error}")
-                db.session.rollback()
-            finally:
-                db.session.remove()
+            db.session.close()
 
 # --- ENDPOINT API BARU UNTUK KONTROL CHUNKING JOB ---
 @document_bp.route('/chunking/start', methods=['POST'])
@@ -886,86 +845,59 @@ def stop_chunking_job():
     try:
         job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
         
-        if not job:
-            return jsonify({"error": "Job tidak ditemukan."}), 404
+        if not job or job.status != JobStatus.RUNNING:
+            return jsonify({"message": "Tidak ada proses berjalan."}), 200
         
-        if job.status not in [JobStatus.RUNNING, JobStatus.STOPPING]:
-            return jsonify({
-                "error": f"Tidak ada proses yang berjalan. Status saat ini: {job.status.value}"
-            }), 400
-        
-        # SET STATUS STOPPING
+        # Cukup ubah status, worker yang akan menangani cleanup
         job.status = JobStatus.STOPPING
-        job.last_error = "Mengirim sinyal berhenti..."
-        job.last_updated = datetime.utcnow()
+        job.last_error = "Sedang berhenti..."
         db.session.commit()
         
-        return jsonify({
-            "message": "Sinyal berhenti telah dikirim. Proses akan berhenti setelah file saat ini selesai."
-        }), 200
-    
+        return jsonify({"message": "Permintaan berhenti dikirim."}), 200
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error stopping chunking job: {e}")
-        return jsonify({"error": "Gagal menghentikan proses", "details": str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 @document_bp.route('/chunking/status', methods=['GET'])
 # @jwt_required()
 def get_chunking_job_status():
-    """
-    Mendapatkan status terkini dari background job chunking.
-    ---
-    tags:
-      - Document Jobs (Chunking)
-    summary: Mendapatkan status job pemrosesan PDF.
-    security:
-      - Bearer: []
-    responses:
-      200:
-        description: Status job saat ini.
-      500:
-        description: Gagal mengambil status.
-    """
     job_name = 'pdf_chunking_process'
     
-    try:
-        job = BatchJob.query.filter_by(job_name=job_name).first()
-        
-        if not job:
-            return jsonify({
-                "status": JobStatus.IDLE.value,
-                "progress": 0,
-                "total_items": 0,
-                "processed_items": 0,
-                "message": "Belum ada proses yang berjalan.",
-                "is_stuck": False
-            }), 200
-        
-        # DETEKSI STUCK
-        is_stuck = False
-        stuck_duration = None
-        
-        if job.status == JobStatus.RUNNING and job.last_updated:
-            time_since_update = datetime.utcnow() - job.last_updated
-            if time_since_update > timedelta(minutes=JOB_TIMEOUT_MINUTES):
-                is_stuck = True
-                stuck_duration = int(time_since_update.total_seconds() / 60)
-        
-        return jsonify({
-            "status": job.status.value,
-            "progress": job.get_progress(),
-            "total_items": job.total_items,
-            "processed_items": job.processed_items,
-            "message": job.last_error,
-            "started_at": job.started_at.isoformat() if job.started_at else None,
-            "last_updated": job.last_updated.isoformat() if job.last_updated else None,
-            "is_stuck": is_stuck,
-            "stuck_duration_minutes": stuck_duration
-        }), 200
+    # Gunakan commit=True untuk memastikan kita baca data terbaru
+    job = BatchJob.query.filter_by(job_name=job_name).first()
     
-    except Exception as e:
-        current_app.logger.error(f"Error getting chunking status: {e}")
-        return jsonify({"error": "Gagal mengambil status", "details": str(e)}), 500
+    if not job:
+        return jsonify({"status": "IDLE", "progress": 0}), 200
+
+    # --- LOGIKA AUTO-HEALING / LAZY RECOVERY ---
+    # Jika status RUNNING/STOPPING tapi tidak ada update dalam 1 menit terakhir
+    # Kita asumsikan worker-nya sudah mati (Zombie Job).
+    
+    is_zombie = False
+    if job.status in [JobStatus.RUNNING, JobStatus.STOPPING]:
+        last_active = job.last_updated or job.started_at
+        if last_active:
+            time_since_active = datetime.utcnow() - last_active
+            # Jika lebih dari 1 menit tidak ada kabar (heartbeat)
+            if time_since_active > timedelta(minutes=1):
+                is_zombie = True
+                
+                # AUTO FIX DI DATABASE
+                job.status = JobStatus.FAILED
+                job.last_error = "Proses terhenti secara tidak wajar (Worker Timeout/Killed)."
+                job.completed_at = datetime.utcnow()
+                db.session.commit()
+                
+                current_app.logger.warning(f"Zombie job detected and reset: {job.id}")
+
+    return jsonify({
+        # Jika baru saja di-reset, return FAILED, jika tidak return status asli
+        "status": JobStatus.FAILED.value if is_zombie else job.status.value,
+        "progress": job.get_progress(),
+        "total_items": job.total_items,
+        "processed_items": job.processed_items,
+        "message": job.last_error,
+        "is_stuck": is_zombie # Beritahu frontend bahwa ini hasil auto-fix
+    }), 200
     
 @document_bp.route('/chunking/reset', methods=['POST'])
 # @jwt_required()
@@ -1143,6 +1075,12 @@ def run_batch_reconstruction(app, job_name, document_id):
                     if reconstructed_text:
                         chunk.reconstructed_content = reconstructed_text
                         chunk.chunk_content = reconstructed_text # Update konten utama agar embedding diperbarui
+                        
+                        # --- TAMBAHKAN 3 BARIS INI UNTUK VEKTOR ---
+                        embedding_service = EmbeddingService()
+                        new_vector = embedding_service.generate(reconstructed_text)
+                        if new_vector:
+                            chunk.embedding = new_vector
                     db.session.commit()
 
                     current_processed_items = job.processed_items + 1
@@ -1338,4 +1276,67 @@ def get_batch_reconstruction_status(document_id):
         "last_error": job.last_error
     }), 200
 
+@document_bp.route('/admin/force-reset-all', methods=['POST'])
+# @jwt_required() # SANGAT DISARANKAN UNTUK PROTEKSI ROUTE INI
+def force_reset_all_jobs():
+    """
+    EMERGENCY: Mereset paksa SEMUA job yang statusnya 'RUNNING' atau 'STOPPING' menjadi 'IDLE'.
+    Gunakan ini jika server restart mendadak dan database masih mengira job berjalan.
+    ---
+    tags:
+      - Admin Utilities
+    summary: Force reset semua job stuck di database.
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Berhasil mereset job.
+    """
+    try:
+        # Kita gunakan bulk update SQLAlchemy agar efisien
+        # Cari semua job yang statusnya RUNNING atau STOPPING
+        stuck_jobs_count = db.session.query(BatchJob).filter(
+            BatchJob.status.in_([JobStatus.RUNNING, JobStatus.STOPPING])
+        ).update({
+            "status": JobStatus.IDLE,
+            "last_error": f"Di-reset paksa oleh Admin pada {datetime.utcnow()}",
+            "completed_at": datetime.utcnow()
+        }, synchronize_session=False) # synchronize_session=False bikin lebih cepat untuk bulk update
 
+        db.session.commit()
+
+        current_app.logger.warning(f"[ADMIN] Force reset performed on {stuck_jobs_count} jobs.")
+
+        return jsonify({
+            "message": "Reset massal berhasil.",
+            "reset_count": stuck_jobs_count,
+            "details": "Semua job RUNNING/STOPPING telah diubah menjadi IDLE."
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error force resetting jobs: {e}")
+        return jsonify({"error": "Gagal mereset database", "details": str(e)}), 500
+
+@document_bp.route('/admin/nuke-batch-jobs', methods=['DELETE'])
+# @jwt_required() # SANGAT DISARANKAN PROTEKSI
+def nuke_all_batch_jobs():
+    """
+    DANGER: Menghapus (TRUNCATE) seluruh isi tabel BatchJob.
+    Hanya gunakan jika ingin membersihkan history job dari nol.
+    ---
+    tags:
+      - Admin Utilities
+    summary: Menghapus SEMUA data di tabel BatchJob.
+    """
+    try:
+        num_rows_deleted = db.session.query(BatchJob).delete()
+        db.session.commit()
+        
+        return jsonify({
+            "message": "Tabel BatchJob berhasil dikosongkan (Nuke).",
+            "deleted_rows": num_rows_deleted
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Gagal mengosongkan tabel", "details": str(e)}), 500

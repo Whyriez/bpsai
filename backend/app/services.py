@@ -553,6 +553,8 @@ def process_and_save_pdf(pdf_path: str, job_id: int = None, progress_callback=No
     detector = RobustTableDetector()
     doc = fitz.open(pdf_path)
 
+    embedding_service = EmbeddingService()
+
     text_buffer = ""
     buffer_start_page = start_page
 
@@ -561,46 +563,46 @@ def process_and_save_pdf(pdf_path: str, job_id: int = None, progress_callback=No
             if page_num < start_page:
                 continue
 
-            # Cek interupsi job
             if job_id and check_job_should_stop(job_id):
                 doc.close()
-                logging.info(f"Proses dihentikan oleh pengguna sebelum halaman {page_num}.")
                 return {"status": "stopped", "filename": original_filename, "reason": f"Dihentikan oleh pengguna pada halaman {page_num}"}
 
-            # --- UPDATE PROGRESS (PENTING UNTUK FRONTEND) ---
             if progress_callback:
                 progress_callback(message=f"Menganalisis {original_filename}: Halaman {page_num}/{total_pages}...")
 
-            # Ekstrak Teks & Deteksi Tabel
             raw_text = page.get_text("text")
             is_table, reason = detector._detect_table_page(raw_text, page_num)
 
             if reason == "excluded_page":
                 continue
 
-            # --- LOGIKA HYBRID CHUNKING ---
-
             # KONDISI A: HALAMAN TABEL / GAMBAR
             if is_table or reason == "image_only_page":
-                # 1. Flush buffer teks sebelumnya (jika ada)
+                # 1. Flush buffer teks sebelumnya
                 if text_buffer:
                     text_chunks = semantic_sliding_window_chunker(text_buffer)
                     for txt_content in text_chunks:
+                        chunk_vector = embedding_service.generate(txt_content) # ⬅️ GENERATE VEKTOR
                         chunk_obj = DocumentChunk(
                             document_id=document.id,
                             page_number=buffer_start_page, 
                             chunk_content=txt_content,
+                            embedding=chunk_vector, # ⬅️ MASUKKAN VEKTOR
                             chunk_metadata={"type": "text", "source": "buffered_text"}
                         )
                         db.session.add(chunk_obj)
-                    text_buffer = "" # Reset buffer
+                    text_buffer = ""
 
                 # 2. Simpan Halaman Tabel
                 image_path = detector._save_page_screenshot(page, base_filename, page_num)
+                clean_table_text = detector._clean_text_for_rag(raw_text)
+                table_vector = embedding_service.generate(clean_table_text) # ⬅️ GENERATE VEKTOR TABEL
+                
                 table_chunk = DocumentChunk(
                     document_id=document.id,
                     page_number=page_num,
-                    chunk_content=detector._clean_text_for_rag(raw_text),
+                    chunk_content=clean_table_text,
+                    embedding=table_vector, # ⬅️ MASUKKAN VEKTOR
                     chunk_metadata={
                         "type": "table" if is_table else "image",
                         "image_path": image_path,
@@ -608,7 +610,7 @@ def process_and_save_pdf(pdf_path: str, job_id: int = None, progress_callback=No
                     }
                 )
                 db.session.add(table_chunk)
-                db.session.commit() # Commit tabel + teks buffer sebelumnya
+                db.session.commit()
                 
                 buffer_start_page = page_num + 1
                 continue
@@ -622,36 +624,37 @@ def process_and_save_pdf(pdf_path: str, job_id: int = None, progress_callback=No
                 text_chunks = semantic_sliding_window_chunker(text_buffer)
                 
                 if text_chunks:
-                    # Simpan yang terakhir untuk overlap/kontinuitas
                     last_chunk_to_keep = text_chunks.pop() 
 
                     for txt_content in text_chunks:
+                        chunk_vector = embedding_service.generate(txt_content) # ⬅️ GENERATE VEKTOR
                         chunk_obj = DocumentChunk(
                             document_id=document.id,
-                            page_number=page_num, # Aproksimasi
+                            page_number=page_num, 
                             chunk_content=txt_content,
+                            embedding=chunk_vector, # ⬅️ MASUKKAN VEKTOR
                             chunk_metadata={"type": "text"}
                         )
                         db.session.add(chunk_obj)
 
-                    text_buffer = last_chunk_to_keep # Sisa dikembalikan ke buffer
+                    text_buffer = last_chunk_to_keep 
                     db.session.commit()
 
-        # --- 3. FINAL FLUSH (WAJIB DITAMBAHKAN) ---
-        # Untuk menyimpan sisa teks di akhir dokumen
+        # --- 3. FINAL FLUSH ---
         if text_buffer:
             text_chunks = semantic_sliding_window_chunker(text_buffer)
             for txt_content in text_chunks:
+                chunk_vector = embedding_service.generate(txt_content) # ⬅️ GENERATE VEKTOR
                 chunk_obj = DocumentChunk(
                     document_id=document.id,
-                    page_number=total_pages, # Set ke halaman terakhir
+                    page_number=total_pages, 
                     chunk_content=txt_content,
+                    embedding=chunk_vector, # ⬅️ MASUKKAN VEKTOR
                     chunk_metadata={"type": "text", "source": "final_buffer"}
                 )
                 db.session.add(chunk_obj)
             db.session.commit()
-            logging.info(f"Final flush completed for {original_filename}")
-
+            
         doc.close()
         return {"status": "success", "filename": original_filename, "reason": "Completed"}
 
