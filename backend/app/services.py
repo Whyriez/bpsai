@@ -9,11 +9,11 @@ import fitz
 import re
 import time
 import hashlib
-from datetime import datetime  # ✅ TAMBAHKAN INI
-import pytz  # ✅ TAMBAHKAN INI
+from datetime import datetime
+import pytz
 from typing import List, Dict, Any
 from .models import db, PdfDocument, DocumentChunk, GeminiApiKeyConfig
-from flask import current_app
+from flask import current_app, has_app_context
 from cachetools import TTLCache
 import shutil
 from .job_utils import check_job_should_stop
@@ -59,24 +59,25 @@ class EmbeddingService:
 
     def _update_url(self):
         """Update URL dengan API key saat ini"""
-        if self.current_key_index < len(self.api_keys):
+        if self.api_keys and self.current_key_index < len(self.api_keys):
             current_key = self.api_keys[self.current_key_index]
             self.url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={current_key}"
         else:
             self.url = None
-            logging.error("No valid API keys available for EmbeddingService")
 
     def _rotate_key(self):
-        """Rotasi ke API key berikutnya"""
-        if self.current_key_index < len(self.api_keys) - 1:
-            self.current_key_index += 1
-            self._update_url()
-            logging.info(f"Rotated to API key index: {self.current_key_index}")
-            return True  # ✅ Berhasil rotate
-        else:
-            logging.error("No more API keys to rotate to")
+        """Rotasi ke API key berikutnya secara sirkular (looping ke awal jika habis)"""
+        if not self.api_keys:
+            logging.error("No API keys to rotate to")
             self.url = None
-            return False  # ✅ Tidak ada key lagi
+            return False
+            
+        # Gunakan Modulo (%) agar kembali ke 0 jika sudah mencapai batas akhir list
+        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+        self._update_url()
+        
+        logging.info(f"EmbeddingService rotated to API key index: {self.current_key_index}")
+        return True
 
     def generate(self, text: str) -> list | None:
         if not text:
@@ -207,6 +208,10 @@ class GeminiService:
         if self.current_key_index >= len(self.api_keys):
             return None
             
+        # PENCEGAHAN ERROR: Working outside of application context
+        if not has_app_context():
+            return None
+            
         try:
             alias = f"{self.current_key_index + 1}"
             config = GeminiApiKeyConfig.query.filter_by(key_alias=alias).first()
@@ -217,16 +222,19 @@ class GeminiService:
 
     def _initialize_client(self):
         """Inisialisasi client dengan API key saat ini"""
-        if self.current_key_index >= len(self.api_keys):
+        if not self.api_keys:
             self.client = None
-            logging.warning("All Gemini API keys have been exhausted.")
+            logging.warning("No Gemini API keys found.")
             return False
+            
+        # Pastikan index selalu valid (jaga-jaga jika ada pergantian env)
+        self.current_key_index = self.current_key_index % len(self.api_keys)
         
         try:
             # Cek dan reset quota status untuk key yang akan digunakan
             key_config = self._get_current_key_config()
             if key_config:
-                key_config.check_and_reset_quota()  # <- TAMBAHKAN INI
+                key_config.check_and_reset_quota() 
                 
                 # Skip key yang masih quota exceeded
                 if key_config.quota_exceeded:
@@ -250,23 +258,41 @@ class GeminiService:
             return False
 
     def _rotate_key(self):
-        """Rotasi ke API key berikutnya"""
+        """Rotasi ke API key berikutnya secara sirkular dan terus mencari yang tidak limit"""
         try:
-            current_key_config = self._get_current_key_config()
-            if current_key_config:
-                current_key_config.mark_quota_exceeded()
+            if has_app_context():
+                current_key_config = self._get_current_key_config()
+                if current_key_config:
+                    current_key_config.mark_quota_exceeded()
         except Exception as e:
             logging.warning(f"Could not mark quota exceeded in database: {e}")
         
+        if not self.api_keys:
+            return False
+            
         logging.warning(f"API key at index {self.current_key_index} exceeded quota. Rotating to next key.")
-        self.current_key_index += 1
         
-        return self._initialize_client()  # ✅ Return hasil inisialisasi
+        # Coba lompat mencari key berikutnya yang valid (maksimal coba sebanyak jumlah key)
+        for _ in range(len(self.api_keys)):
+            self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+            
+            # Jika inisialisasi berhasil (artinya key tidak limit), rotasi sukses!
+            if self._initialize_client():
+                return True
+                
+        # Jika loop berputar penuhi semua key dan semuanya limit
+        return False
 
     def stream_generate_content(self, prompt: str):
         """Stream generate content dari Gemini API."""
         max_attempts = len(self.api_keys)
         
+        # Pastikan client siap, jika gagal putar terus sampai dapat key yang aktif
+        if not self.client:
+            if not self._initialize_client():
+                if not self._rotate_key():
+                    raise Exception("All API keys have exceeded their quota")
+            
         for attempt in range(max_attempts):
             if not self.client:
                 if not self._initialize_client():
@@ -328,6 +354,12 @@ class GeminiService:
         """Generate content tanpa streaming (synchronous)."""
         max_attempts = len(self.api_keys)
         
+        # Pastikan client siap, jika gagal putar terus sampai dapat key yang aktif
+        if not self.client:
+            if not self._initialize_client():
+                if not self._rotate_key():
+                    return None
+            
         for attempt in range(max_attempts):
             if not self.client:
                 if not self._initialize_client():

@@ -73,7 +73,9 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
     # 2. Generate Embedding dari Prompt
     prompt_embedding = embedding_service.generate(expanded_prompt)
     if not prompt_embedding:
-        return []
+        # Lempar error spesifik agar proses dihentikan secara paksa, 
+        # jangan return [] yang membuat Gemini mengira data benar-benar tidak ada.
+        raise Exception("API_LIMIT_EMBEDDING_EXHAUSTED")
 
     combined_results = []
 
@@ -387,6 +389,13 @@ def stream():
                 
             except Exception as e:
                 app.logger.error(f'Error in stream generation: {e}')
+
+                if "API_LIMIT_EMBEDDING_EXHAUSTED" in str(e):
+                    pesan_limit = "Mohon maaf, limit sistem pencarian data (Google Embedding) sedang penuh karena tingginya beban server. Mohon tunggu sekitar 1 menit sebelum mencoba lagi."
+                    yield f"data: {json.dumps({'text': pesan_limit})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                
                 model_response_buffer = f"Error: {str(e)}"
                 error_msg = json.dumps({'error': {'message': str(e)}})
                 yield f"data: {error_msg}\n\n"
