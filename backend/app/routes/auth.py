@@ -147,15 +147,96 @@ def generate_user_token(user):
     }), 200
 
 
-# Route Refresh & Profile tetap sama, karena menggunakan JWT Identity (ID User)
-# Tidak perlu perubahan pada route di bawah ini.
+@auth_bp.route('/google', methods=['POST'])
+def google_login():
+    """Endpoint untuk login user via Google OAuth.
+    ---
+    tags:
+      - Authentication
+    summary: Login user menggunakan Akun Google.
+    """
+    data = request.json or {}
+    token = data.get('token')
+    email = data.get('email')
+    name = data.get('name')
+    google_id = data.get('google_id') or data.get('sub')
+    picture = data.get('picture')
+
+    # Verify token via Google TokenInfo if token is provided
+    if token:
+        try:
+            import requests
+            resp = requests.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={token}", timeout=5)
+            if resp.status_code == 200:
+                info = resp.json()
+                email = info.get('email') or email
+                name = info.get('name') or info.get('given_name') or name or email.split('@')[0]
+                google_id = info.get('sub') or google_id
+                if info.get('picture'):
+                    picture = info.get('picture')
+        except Exception as e:
+            print("Google token verification note:", e)
+
+    if not email:
+        return jsonify({"msg": "Email Google tidak valid"}), 400
+
+    base_username = email.split('@')[0]
+    username = base_username
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        counter = 1
+        while User.query.filter_by(username=username).first():
+            username = f"{base_username}{counter}"
+            counter += 1
+
+        user = User(
+            username=username,
+            name=name,
+            email=email,
+            role='user',
+            google_id=google_id,
+            picture=picture
+        )
+        db.session.add(user)
+        db.session.commit()
+    else:
+        if name and not getattr(user, 'name', None):
+            user.name = name
+        if google_id and not getattr(user, 'google_id', None):
+            user.google_id = google_id
+        if picture:
+            user.picture = picture
+        db.session.commit()
+
+    additional_claims = {"role": user.role}
+    access_token = create_access_token(identity=str(user.id), additional_claims=additional_claims)
+    refresh_token = create_refresh_token(identity=str(user.id))
+
+    return jsonify({
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user": user.to_dict()
+    }), 200
+
 
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
     current_user_id = get_jwt_identity()
-    new_access_token = create_access_token(identity=current_user_id)
-    return jsonify(access_token=new_access_token)
+    user = User.query.get(int(current_user_id))
+    if not user:
+        return jsonify({"msg": "User tidak ditemukan"}), 404
+
+    additional_claims = {"role": user.role}
+    new_access_token = create_access_token(identity=str(user.id), additional_claims=additional_claims)
+    new_refresh_token = create_refresh_token(identity=str(user.id))
+
+    return jsonify({
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "user": user.to_dict()
+    }), 200
 
 
 @auth_bp.route('/profile', methods=['GET'])
@@ -169,6 +250,48 @@ def profile():
             id=user.id,
             username=getattr(user, 'username', user.email.split('@')[0]),
             email=user.email,
+            picture=getattr(user, 'picture', None),
             role=user.role
         )
     return jsonify({"msg": "User tidak ditemukan"}), 404
+
+
+@auth_bp.route('/delete-account', methods=['DELETE', 'POST'])
+def delete_account():
+    """Endpoint untuk menghapus akun user beserta seluruh data riwayatnya."""
+    from app.models import PromptLog
+    data = request.json or {}
+    user_id = data.get('user_id') or request.args.get('user_id', type=int)
+
+    try:
+        from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+        verify_jwt_in_request(optional=True)
+        jwt_user_id = get_jwt_identity()
+        if jwt_user_id:
+            user_id = int(jwt_user_id)
+    except Exception:
+        pass
+
+    if not user_id:
+        return jsonify({'error': 'User ID diperlukan untuk menghapus akun'}), 400
+
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'Akun pengguna tidak ditemukan'}), 404
+
+        # Hapus seluruh riwayat percakapan milik user (feedback terhapus via cascade)
+        PromptLog.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+
+        # Hapus user dari database
+        db.session.delete(user)
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Akun Anda beserta seluruh riwayat percakapan berhasil dihapus.',
+            'user_id': user_id
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error deleting user account {user_id}: {e}")
+        return jsonify({'error': f'Gagal menghapus akun: {str(e)}'}), 500

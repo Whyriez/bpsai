@@ -54,6 +54,11 @@ class EmbeddingService:
             old_keys_list = [key.strip() for key in old_keys_str.split(',') if key.strip()]
             keys.extend(old_keys_list)
         
+        if not keys:
+            single_key = os.getenv('GEMINI_API_KEY')
+            if single_key and single_key.strip():
+                keys.append(single_key.strip())
+        
         logging.info(f"Loaded {len(keys)} API keys for EmbeddingService")
         return keys
 
@@ -79,14 +84,15 @@ class EmbeddingService:
         logging.info(f"EmbeddingService rotated to API key index: {self.current_key_index}")
         return True
 
-    def generate(self, text: str) -> list | None:
+    def generate(self, text: str, dimensionality: int = 3072) -> list | None:
         if not text:
             return None
 
         # Check cache
-        if text in self.cache:
+        cache_key = f"{text}_{dimensionality}"
+        if cache_key in self.cache:
             logging.info(f"Embedding cache hit for text: '{text[:50]}...'")
-            return self.cache[text]
+            return self.cache[cache_key]
 
         if not self.api_keys or not self.url:
             logging.error("Embedding generation failed: No API keys available")
@@ -99,12 +105,16 @@ class EmbeddingService:
         for key_attempt in range(max_key_attempts):  # ✅ Loop untuk setiap key
             for retry in range(retries_per_key):
                 try:
+                    payload = {
+                        'model': 'models/gemini-embedding-001', 
+                        'content': {'parts': [{'text': text}]}
+                    }
+                    if dimensionality:
+                        payload['outputDimensionality'] = dimensionality
+
                     response = requests.post(
                         self.url,
-                        json={
-                            'model': 'models/gemini-embedding-001', 
-                            'content': {'parts': [{'text': text}]}
-                        },
+                        json=payload,
                         timeout=30
                     )
                     
@@ -131,7 +141,9 @@ class EmbeddingService:
                     embedding_values = result.get('embedding', {}).get('values')
 
                     if embedding_values:
-                        self.cache[text] = embedding_values
+                        if dimensionality and len(embedding_values) > dimensionality:
+                            embedding_values = embedding_values[:dimensionality]
+                        self.cache[cache_key] = embedding_values
                         return embedding_values
                     else:
                         logging.error("No embedding values in response")
@@ -300,7 +312,7 @@ class GeminiService:
             
             try:
                 response = self.client.models.generate_content_stream(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.5-flash',
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         thinking_config=types.ThinkingConfig(thinking_budget=0)
@@ -367,7 +379,7 @@ class GeminiService:
             
             try:
                 response = self.client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.5-flash',
                     contents=prompt
                 )
                 

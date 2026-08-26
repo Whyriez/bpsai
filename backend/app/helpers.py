@@ -90,8 +90,16 @@ def build_context(relevant_items: list, requested_years: list = []) -> str:
     if not relevant_items:
         return "Tidak ditemukan data yang relevan. Mohon informasikan kepada pengguna."
 
-    news_items = [item for item in relevant_items if isinstance(item, BeritaBps)]
-    doc_chunks = [item for item in relevant_items if isinstance(item, DocumentChunk)]
+    # Handle item tuple (item, distance) dari pgvector / RAG search
+    unpacked_items = []
+    for item in relevant_items:
+        if isinstance(item, (tuple, list)) and len(item) > 0:
+            unpacked_items.append(item[0])
+        else:
+            unpacked_items.append(item)
+
+    news_items = [item for item in unpacked_items if isinstance(item, BeritaBps)]
+    doc_chunks = [item for item in unpacked_items if isinstance(item, DocumentChunk)]
 
     # Logika untuk mengambil tabel lanjutan
     augmented_chunks_map = {chunk.id: chunk for chunk in doc_chunks}
@@ -204,14 +212,28 @@ def build_context(relevant_items: list, requested_years: list = []) -> str:
                 context += f"{chunk.chunk_content}\n\n"
 
     if requested_years:
-        found_years_news = {n.tanggal_rilis.year for n in news_items}
-        missing_years = sorted(list(set(requested_years) - found_years_news))
-        if missing_years:
-            # PERBAIKAN: Tambahkan penekanan yang lebih kuat
-            context += f"\n⚠️ PENTING - DATA TIDAK LENGKAP ⚠️\n"
-            context += f"User meminta data untuk tahun: {', '.join(map(str, requested_years))}\n"
-            context += f"Data yang TIDAK ditemukan untuk tahun: {', '.join(map(str, missing_years))}\n"
-            context += f"WAJIB memberitahu user secara eksplisit bahwa data untuk tahun {', '.join(map(str, missing_years))} tidak tersedia dalam database.\n\n"
+        found_years = set()
+        for news in news_items:
+            if news.tanggal_rilis:
+                found_years.add(news.tanggal_rilis.year)
+            for y in requested_years:
+                if str(y) in (news.judul_berita or "") or str(y) in (news.ringkasan or ""):
+                    found_years.add(y)
+
+        for chunk in doc_chunks:
+            if chunk.document and chunk.document.filename:
+                doc_year_match = re.search(r'\b(20\d{2})\b', chunk.document.filename)
+                if doc_year_match:
+                    found_years.add(int(doc_year_match.group(1)))
+            for y in requested_years:
+                if str(y) in (chunk.chunk_content or ""):
+                    found_years.add(y)
+
+        missing_years = sorted(list(set(requested_years) - found_years))
+        if missing_years and (news_items or doc_chunks):
+            context += f"\nCatatan Ketersediaan Data:\n"
+            context += f"Konteks di atas menyediakan data aktual untuk tahun: {', '.join(map(str, sorted(list(found_years)))) if found_years else 'terkait'}.\n"
+            context += f"Gunakan data yang tersedia dalam konteks di atas secara maksimal untuk menjawab pertanyaan pengguna secara akurat.\n\n"
 
     context += "--- AKHIR DARI KONTEKS ---\n\n"
     return context
@@ -265,10 +287,15 @@ def build_final_prompt(context: str, user_prompt: str, history_context: str = ""
 
     year_instruction = ""
     if requested_years:
+        year_str = ', '.join(map(str, requested_years))
         year_instruction = f"""
-### ⚠️ INSTRUKSI KHUSUS RENTANG TAHUN ⚠️
-User meminta data untuk tahun: **{', '.join(map(str, requested_years))}**
-WAJIB: Tampilkan data untuk SETIAP tahun tersebut secara lengkap.
+### ⚠️ INSTRUKSI KHUSUS RENTANG TAHUN & PRIORITAS DATA ⚠️
+User meminta data untuk tahun: **{year_str}**
+
+WAJIB DIIKUTI:
+1. Jika terdapat **Berita Resmi BPS** atau data rilis di dalam konteks untuk tahun **{year_str}**, KAMU WAJIB MENGGUNAKAN DAN MENYAJIKAN DATA TERSEBUT.
+2. **SANGAT PENTING (ANTI-KONFLIK):** Dokumen PDF lama (seperti 'Provinsi Gorontalo Dalam Angka 2025') mungkin memuat teks "data tahun {year_str} belum tersedia". JANGAN PERNAH terpengaruh oleh kalimat di dokumen lama tersebut jika di konteks SUDAH ADA Berita Rilis / data aktual untuk tahun {year_str}! Prioritaskan data rilis terbaru tersebut!
+3. Tampilkan data untuk SETIAP tahun yang diminta secara lengkap.
 """
 
     return f"""

@@ -151,10 +151,24 @@ class User(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(255), nullable=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     role = db.Column(db.String(80), nullable=False, default='user')
+    google_id = db.Column(db.String(255), nullable=True)
+    picture = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'username': self.username,
+            'name': self.name or self.username,
+            'email': self.email,
+            'role': self.role,
+            'google_id': self.google_id,
+            'picture': self.picture
+        }
 
     def __repr__(self):
         return f'<User {self.username}>'
@@ -217,6 +231,7 @@ class PromptLog(db.Model):
     __tablename__ = 'prompt_logs'
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     user_prompt = db.Column(db.Text, nullable=False)
     final_prompt = db.Column(db.Text, nullable=True)
     model_response = db.Column(db.Text, nullable=True)
@@ -227,6 +242,8 @@ class PromptLog(db.Model):
     retrieved_news_count = db.Column(db.Integer, default=0)
     retrieved_news_ids = db.Column(JSON, nullable=True)
     session_id = db.Column(db.String(255), nullable=True, index=True)
+    custom_title = db.Column(db.String(255), nullable=True)
+    is_pinned = db.Column(db.Boolean, default=False, nullable=True, index=True)
     processing_time_ms = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), index=True)
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))

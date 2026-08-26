@@ -1,49 +1,55 @@
-import logging
-import time
-from app import create_app, db
-from app.models import BeritaBps
-from app.vector_db import sync_berita_to_chroma, get_collections
+import sys
+import os
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Set path & load env
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+import dotenv
+dotenv.load_dotenv(os.path.join(os.path.abspath(os.path.dirname(__file__)), '.env'))
+
+from app import create_app, cache
+from app.models import db, BeritaBps
+from app.services import EmbeddingService
 
 app = create_app()
+emb = EmbeddingService()
 
-
-def reindex_all_berita():
-    """
-    Memaksa update semua data BeritaBps ke ChromaDB agar metadata 'year' masuk.
-    """
+def run_reindex():
     with app.app_context():
-        logger.info("=== MEMULAI RE-SYNC BERITA BPS ===")
+        print(f"=== API KEYS TERDETEKSI: {len(emb.api_keys)} ===")
+        news_list = BeritaBps.query.all()
+        print(f"Memproses re-embedding untuk {len(news_list)} total berita...")
 
-        # 1. Pastikan koneksi DB siap
-        try:
-            get_collections()
-        except Exception as e:
-            logger.error(f"Gagal konek ChromaDB: {e}")
-            return
+        success_count = 0
+        failed_count = 0
 
-        # 2. Ambil semua berita
-        all_news = BeritaBps.query.all()
-        total = len(all_news)
-        logger.info(f"Ditemukan {total} berita untuk disinkronisasi ulang.")
-
-        for i, news in enumerate(all_news, 1):
+        for b in news_list:
+            text_to_embed = f"{b.judul_berita}\n{b.ringkasan or ''}"
+            if b.tags:
+                text_to_embed += f"\nTags: {', '.join(b.tags)}"
+            
             try:
-                # Panggil fungsi sync yang sudah kita update tadi
-                # Fungsi ini akan menimpa data lama dengan data baru yang ada 'year'-nya
-                sync_berita_to_chroma(None, None, news)
-
-                if i % 10 == 0:
-                    logger.info(f"Progress: {i}/{total} berita diproses...")
-
+                vec = emb.generate(text_to_embed, dimensionality=3072)
+                if vec is not None:
+                    b.embedding = vec
+                    success_count += 1
+                else:
+                    failed_count += 1
             except Exception as e:
-                logger.error(f"Gagal sync berita ID {news.id}: {e}")
+                failed_count += 1
+                print(f"[FAIL] ID {b.id}: {e}")
 
-        logger.info("=== RE-SYNC BERITA SELESAI ===")
+        try:
+            db.session.commit()
+            try:
+                cache.clear()
+            except Exception:
+                pass
+            print(f"\n=== PROSES SELESAI ===")
+            print(f"Berhasil di-embed: {success_count} | Gagal: {failed_count}")
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error commit: {e}")
 
-
-if __name__ == "__main__":
-    reindex_all_berita()
+if __name__ == '__main__':
+    run_reindex()

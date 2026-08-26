@@ -20,7 +20,24 @@ def create_app():
 
     app = Flask(__name__)
 
-    CORS(app)
+    CORS(app, resources={r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+        "expose_headers": ["Content-Type", "Authorization"]
+    }}, supports_credentials=True)
+
+    @app.before_request
+    def handle_preflight():
+        from flask import request
+        if request.method == "OPTIONS":
+            response = app.make_default_options_response()
+            origin = request.headers.get('Origin', '*')
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+            response.headers['Access-Control-Allow-Headers'] = request.headers.get('Access-Control-Request-Headers', 'Authorization, Content-Type')
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            return response
     
     # Konfigurasi aplikasi
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
@@ -111,5 +128,21 @@ def create_app():
     with app.app_context():
         # Buat semua tabel database jika belum ada
         db.create_all()
+        from sqlalchemy import text
+        statements = [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(255);",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS picture TEXT;",
+            "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id);",
+            "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS custom_title VARCHAR(255);",
+            "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE;"
+        ]
+        for stmt in statements:
+            try:
+                db.session.execute(text(stmt))
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                app.logger.warning(f"Migration note for statement [{stmt}]: {e}")
 
     return app

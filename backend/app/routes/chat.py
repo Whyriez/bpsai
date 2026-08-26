@@ -114,7 +114,13 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
             .filter(BeritaBps.embedding.cosine_distance(prompt_embedding) < DISTANCE_THRESHOLD)
         
         if requested_years:
-            year_filters = [extract('year', BeritaBps.tanggal_rilis) == y for y in requested_years]
+            year_filters = []
+            for y in requested_years:
+                year_filters.extend([
+                    extract('year', BeritaBps.tanggal_rilis) == y,
+                    BeritaBps.judul_berita.ilike(f'%{y}%'),
+                    BeritaBps.ringkasan.ilike(f'%{y}%')
+                ])
             berita_stmt = berita_stmt.filter(or_(*year_filters))
             
         berita_stmt = berita_stmt.order_by('distance').limit(limit)
@@ -132,30 +138,41 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
         chunk_results = db.session.execute(chunk_stmt).all()
         for chunk_obj, distance in chunk_results:
             penalty = 0.0
-            # Fallback penalti filter tahun manual untuk PDF
-            if chunk_obj.document and chunk_obj.document.filename:
-                doc_year_match = re.search(r'20\d{2}', chunk_obj.document.filename)
-                if requested_years and doc_year_match:
-                    doc_year = int(doc_year_match.group(0))
-                    if doc_year not in requested_years:
-                        penalty = 0.5 # Menambah distance agar menjauh dari prioritas
+            doc_filename = chunk_obj.document.filename if (chunk_obj.document and chunk_obj.document.filename) else ""
+            chunk_text = chunk_obj.chunk_content or ""
             
-            # Pastikan setelah penalti tidak melebihi batasan (misal batas wajar 1.0)
+            if requested_years:
+                has_year = any(str(y) in doc_filename or str(y) in chunk_text for y in requested_years)
+                if not has_year:
+                    penalty = 0.7  # Penalti lebih tinggi agar PDF lama tidak menenggelamkan Berita BPS rilis terbaru
+
             final_distance = float(distance) + penalty
             if final_distance <= 1.0: 
                 combined_results.append((chunk_obj, final_distance))
 
-    # Jika hasil pencarian kurang dari target setelah difilter vektor, coba tarik data Fallback
-    if requested_years and len(combined_results) < 3 and not specific_document:
-        current_app.logger.warning(f"Hasil terlalu sedikit untuk tahun {requested_years}, injeksi data SQL.")
+    # Jika tidak ada BeritaBps untuk tahun yang diminta di combined_results, selalu injeksi berita SQL tahun tersebut
+    if requested_years and not specific_document:
         for year in requested_years:
-            additional_news = BeritaBps.query.filter(
-                extract('year', BeritaBps.tanggal_rilis) == year
-            ).limit(3).all()
-            for news in additional_news:
-                # Hindari duplikasi
-                if not any(isinstance(item, BeritaBps) and item.id == news.id for item, _ in combined_results):
-                    combined_results.append((news, 0.6)) # Distance moderate
+            has_news_for_year = any(
+                isinstance(item, BeritaBps) and (
+                    (item.tanggal_rilis and item.tanggal_rilis.year == year) or
+                    (str(year) in (item.judul_berita or "")) or
+                    (str(year) in (item.ringkasan or ""))
+                )
+                for item, _ in combined_results
+            )
+            if not has_news_for_year:
+                current_app.logger.warning(f"Injeksi berita SQL fallback untuk tahun {year}.")
+                additional_news = BeritaBps.query.filter(
+                    or_(
+                        extract('year', BeritaBps.tanggal_rilis) == year,
+                        BeritaBps.judul_berita.ilike(f'%{year}%'),
+                        BeritaBps.ringkasan.ilike(f'%{year}%')
+                    )
+                ).order_by(BeritaBps.id.desc()).limit(5).all()
+                for news in additional_news:
+                    if not any(isinstance(item, BeritaBps) and item.id == news.id for item, _ in combined_results):
+                        combined_results.append((news, 0.1)) # Distance super relevan untuk data tahun spesifik
 
     # 3. Optimasi Penyusunan Akhir (Lost In the Middle)
     # Urutkan dulu dari yang paling relevan (distance terkecil)
@@ -205,20 +222,55 @@ def stream():
     # ------------------------------------
 
     start_time = time.time()
-    data = request.json
+    data = request.json or {}
     user_prompt = data.get('prompt')
-    session_id = data.get('conversation_id')
+    if isinstance(user_prompt, dict):
+        user_prompt = user_prompt.get('prompt')
+    session_id = data.get('conversation_id') or data.get('session_id')
+    user_id = data.get('user_id')
+
+    # Verifikasi token JWT jika ada di header Authorization
+    try:
+        from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+        verify_jwt_in_request(optional=True)
+        jwt_user_id = get_jwt_identity()
+        if jwt_user_id:
+            user_id = int(jwt_user_id)
+    except Exception:
+        pass
 
     if not user_prompt or not session_id:
         return Response(json.dumps({'error': 'Prompt and conversation_id are required'}), status=400, mimetype='application/json')
 
+    # BATASAN PERCAKAPAN TAMU (GUEST LIMIT):
+    # Pengguna non-login (tamu) dibatasi maksimal 2x percakapan.
+    # Pengguna yang sudah login (user_id ada) menikmati chat unlimited.
+    if not user_id:
+        guest_msg_count = PromptLog.query.filter(
+            PromptLog.session_id == session_id,
+            PromptLog.user_id.is_(None)
+        ).count()
+        if guest_msg_count >= 2:
+            return Response(
+                json.dumps({
+                    'error': {
+                        'code': 'GUEST_LIMIT_REACHED',
+                        'message': 'Batas 2x percakapan untuk tamu telah tercapai. Silakan masuk dengan Google untuk menikmati chat tanpa batas (Unlimited).'
+                    }
+                }),
+                status=403,
+                mimetype='application/json'
+            )
+
     cached_response_text = cache.get(user_prompt)
 
-    if cached_response_text:
+    # Hanya gunakan cache jika respons bukan merupakan pesan "data tidak tersedia"
+    if cached_response_text and not any(neg in cached_response_text.lower() for neg in ["tidak tersedia", "belum dirilis", "tidak ditemukan data"]):
         current_app.logger.info(f"CACHE HIT: Mengambil jawaban dari cache untuk prompt: '{user_prompt}'")
 
         # Log tetap dibuat agar riwayat chat tersimpan
         log = PromptLog(
+            user_id=user_id,
             user_prompt=user_prompt,
             session_id=session_id,
             detected_intent="cache_hit",
@@ -257,6 +309,7 @@ def stream():
     requested_years = extract_years(user_prompt)
 
     log = PromptLog(
+        user_id=user_id,
         user_prompt=user_prompt,
         session_id=session_id,
         extracted_years=requested_years,
@@ -408,6 +461,12 @@ def stream():
                     db.session.commit()
                     app.logger.info(f'Log updated successfully for log_id: {log_id}')
 
+                if model_response_buffer and not model_response_buffer.startswith("Error:") and not any(neg in model_response_buffer.lower() for neg in ["tidak tersedia", "belum dirilis", "tidak ditemukan data"]):
+                    try:
+                        cache.set(user_prompt, model_response_buffer, timeout=1800)
+                    except Exception:
+                        pass
+
     return Response(generate(), mimetype='text/event-stream')
 
 # @chat_bp.route('/stream', methods=['POST'])
@@ -542,6 +601,7 @@ def update_log_after_streaming(app, log_id, model_response, start_time):
             current_app.logger.error(f'Error updating log after streaming for log_id {log_id}: {e}')
 
 @chat_bp.route('/history/<conversation_id>', methods=['GET'])
+@chat_bp.route('/chat/history/<conversation_id>', methods=['GET'])
 def get_history(conversation_id):
     """
     Mengambil riwayat percakapan untuk session_id tertentu (paginasi).
@@ -719,3 +779,142 @@ def export_to_excel():
     except Exception as e:
         current_app.logger.error(f"Gagal mengekspor ke Excel: {e}")
         return jsonify({"error": f"Terjadi kesalahan saat membuat file Excel: {str(e)}"}), 500
+
+
+@chat_bp.route('/conversations', methods=['GET'])
+def get_user_conversations():
+    """
+    Mengambil daftar percakapan milik user.
+    """
+    user_id = request.args.get('user_id', type=int)
+
+    if not user_id:
+        return jsonify({'conversations': []}), 200
+
+    try:
+        results = db.session.query(
+            PromptLog.session_id,
+            func.min(PromptLog.created_at).label('created_at'),
+            func.max(PromptLog.created_at).label('last_updated'),
+            func.count(PromptLog.id).label('message_count')
+        ).filter(
+            PromptLog.user_id == user_id,
+            PromptLog.session_id.isnot(None)
+        ).group_by(PromptLog.session_id)\
+         .order_by(func.max(PromptLog.created_at).desc()).all()
+
+        conversations = []
+        for session_id, created_at, last_updated, count in results:
+            first_log = PromptLog.query.filter_by(session_id=session_id).order_by(PromptLog.id.asc()).first()
+            if first_log and getattr(first_log, 'custom_title', None):
+                title = first_log.custom_title
+            elif first_log:
+                title = (first_log.user_prompt[:35] + "...") if len(first_log.user_prompt) > 35 else first_log.user_prompt
+            else:
+                title = "Percakapan Baru"
+
+            conversations.append({
+                'conversation_id': session_id,
+                'title': title,
+                'is_pinned': bool(getattr(first_log, 'is_pinned', False)) if first_log else False,
+                'created_at': created_at.isoformat() if created_at else None,
+                'last_updated': last_updated.isoformat() if last_updated else None,
+                'message_count': count
+            })
+
+        return jsonify({'conversations': conversations}), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching user conversations: {e}")
+        return jsonify({'error': 'Gagal mengambil daftar percakapan.'}), 500
+
+
+@chat_bp.route('/conversations/<conversation_id>', methods=['PUT', 'PATCH'])
+def rename_user_conversation(conversation_id):
+    """
+    Mengubah nama (rename) judul percakapan.
+    """
+    data = request.json or {}
+    new_title = data.get('title', '').strip()
+    user_id = data.get('user_id') or request.args.get('user_id', type=int)
+
+    if not conversation_id or not new_title:
+        return jsonify({'error': 'Conversation ID dan title baru wajib diisi'}), 400
+
+    try:
+        query = PromptLog.query.filter_by(session_id=conversation_id)
+        if user_id:
+            query = query.filter_by(user_id=user_id)
+
+        logs = query.all()
+        if not logs:
+            return jsonify({'error': 'Percakapan tidak ditemukan'}), 404
+
+        for log in logs:
+            log.custom_title = new_title
+
+        db.session.commit()
+        return jsonify({'message': 'Judul percakapan berhasil diperbarui', 'title': new_title}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error renaming conversation {conversation_id}: {e}")
+        return jsonify({'error': f'Gagal mengubah nama percakapan: {str(e)}'}), 500
+
+
+@chat_bp.route('/conversations/<conversation_id>', methods=['DELETE'])
+def delete_user_conversation(conversation_id):
+    """
+    Menghapus seluruh riwayat percakapan berdasarkan conversation_id.
+    """
+    user_id = request.args.get('user_id', type=int)
+    if not conversation_id:
+        return jsonify({'error': 'Conversation ID is required'}), 400
+
+    try:
+        query = PromptLog.query.filter_by(session_id=conversation_id)
+        if user_id:
+            query = query.filter_by(user_id=user_id)
+
+        deleted_count = query.delete(synchronize_session=False)
+        db.session.commit()
+        return jsonify({'message': 'Percakapan berhasil dihapus', 'deleted_count': deleted_count}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting conversation {conversation_id}: {e}")
+        return jsonify({'error': 'Gagal menghapus percakapan.'}), 500
+
+
+@chat_bp.route('/conversations/<conversation_id>/pin', methods=['PUT', 'PATCH'])
+def pin_user_conversation(conversation_id):
+    """
+    Menyematkan (pin) atau melepas pin (unpin) percakapan.
+    """
+    data = request.json or {}
+    user_id = data.get('user_id') or request.args.get('user_id', type=int)
+    is_pinned = data.get('is_pinned', True)
+
+    if not conversation_id:
+        return jsonify({'error': 'Conversation ID wajib diisi'}), 400
+
+    try:
+        query = PromptLog.query.filter_by(session_id=conversation_id)
+        if user_id:
+            query = query.filter_by(user_id=user_id)
+
+        logs = query.all()
+        if not logs:
+            return jsonify({'error': 'Percakapan tidak ditemukan'}), 404
+
+        for log in logs:
+            log.is_pinned = is_pinned
+
+        db.session.commit()
+        return jsonify({
+            'message': 'Status pin percakapan berhasil diperbarui',
+            'conversation_id': conversation_id,
+            'is_pinned': is_pinned
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error pinning conversation {conversation_id}: {e}")
+        return jsonify({'error': f'Gagal menyematkan percakapan: {str(e)}'}), 500
+
