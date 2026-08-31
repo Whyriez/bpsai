@@ -104,20 +104,20 @@ def create_app():
     from .routes.auth import auth_bp
     from .routes.chat import chat_bp
     from .routes.feedback import feedback_bp
-    from .routes.berita import berita_bp
     from .routes.dashboard import dashboard_bp
     from .routes.analytics import analytics_bp
     from .routes.document import document_bp
     from .routes.api_keys import api_keys_bp
+    from .routes.thematic import thematic_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(feedback_bp)
-    app.register_blueprint(berita_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(analytics_bp)
     app.register_blueprint(document_bp)
     app.register_blueprint(api_keys_bp)
+    app.register_blueprint(thematic_bp)
 
     # Daftarkan perintah CLI
     # app.cli.add_command(cli)
@@ -130,6 +130,7 @@ def create_app():
         db.create_all()
         from sqlalchemy import text
         statements = [
+            "DROP TABLE IF EXISTS berita_bps CASCADE;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS picture TEXT;",
@@ -144,5 +145,43 @@ def create_app():
             except Exception as e:
                 db.session.rollback()
                 app.logger.warning(f"Migration note for statement [{stmt}]: {e}")
+
+        # Seeding awal tabel ThematicMapping jika masih kosong
+        try:
+            from .models import ThematicMapping
+            from .helpers import BPS_THEMATIC_DOCUMENT_MAPPING
+            if ThematicMapping.query.count() == 0:
+                for kw, patterns in BPS_THEMATIC_DOCUMENT_MAPPING.items():
+                    category = "Umum"
+                    if kw in ["tpt", "tpak", "pengangguran", "angkatan kerja", "sakernas", "tenaga kerja", "bekerja", "buruh", "upah"]:
+                        category = "Ketenagakerjaan"
+                    elif kw in ["kemiskinan", "garis kemiskinan", "penduduk miskin", "gini", "susenas", "kesejahteraan rakyat", "pengeluaran", "konsumsi"]:
+                        category = "Kemiskinan & Sosial"
+                    elif kw in ["pdrb", "pertumbuhan ekonomi", "struktur ekonomi", "adhk", "adhb", "lapangan usaha"]:
+                        category = "Makroekonomi & PDRB"
+                    elif kw in ["inflasi", "ihk", "indeks harga konsumen"]:
+                        category = "Harga & Inflasi"
+                    elif kw in ["ipm", "indeks pembangunan manusia", "harapan hidup", "ahh", "hls", "rls"]:
+                        category = "Indeks Pembangunan Manusia"
+                    elif kw in ["padi", "beras", "jagung", "panen", "hortikultura", "cabai", "bawang", "ntp", "nilai tukar petani"]:
+                        category = "Pertanian & Pangan"
+                    elif kw in ["hotel", "tpk", "penghunian kamar", "wisatawan", "pariwisata"]:
+                        category = "Pariwisata"
+                    elif kw in ["migrasi", "sensus penduduk", "desa", "podes"]:
+                        category = "Kependudukan & Wilayah"
+
+                    new_m = ThematicMapping(
+                        keyword=kw,
+                        category=category,
+                        target_patterns=patterns,
+                        description=f"Pemetaan otomatis indikator {kw.upper()}",
+                        is_active=True
+                    )
+                    db.session.add(new_m)
+                db.session.commit()
+                app.logger.info("ThematicMapping initial default database seeding completed.")
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f"Note on ThematicMapping seeding: {e}")
 
     return app

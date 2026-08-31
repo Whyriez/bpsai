@@ -1,8 +1,10 @@
 import os
 from flask import Blueprint, jsonify, current_app, request, send_from_directory
+from werkzeug.utils import secure_filename
 from flask_jwt_extended import jwt_required, get_jwt
 from ..services import process_and_save_pdf, GeminiService, EmbeddingService
-from ..models import db, PdfDocument, DocumentChunk, BatchJob, JobStatus 
+from ..models import db, PdfDocument, DocumentChunk, BatchJob, JobStatus, BpsApiConfig
+from ..bps_service import BpsApiService
 from datetime import datetime, timedelta
 from sqlalchemy import cast, String, func
 from sqlalchemy.orm import aliased
@@ -294,40 +296,22 @@ def serve_document_image(filepath):
 
     
 @document_bp.route('/<uuid:document_id>', methods=['DELETE'])
-# @jwt_required() # Sangat disarankan untuk mengaktifkan ini untuk keamanan
+# @jwt_required()
 def delete_document(document_id):
     """
-    Menghapus sebuah dokumen, semua chunk, dan folder gambar terkait.
-    ---
-    tags:
-      - Documents
-    summary: Menghapus dokumen dan semua data terkait.
-    security:
-      - Bearer: []
-    parameters:
-      - name: document_id
-        in: path
-        type: string
-        format: uuid
-        required: true
-        description: ID unik dari dokumen yang akan dihapus.
-    responses:
-      200:
-        description: Dokumen berhasil dihapus.
-      404:
-        description: Dokumen tidak ditemukan.
-      500:
-        description: Gagal menghapus dokumen.
+    Menghapus sebuah dokumen dari database.
+    Parameter query:
+    - delete_file: boolean ('true' / 'false', default 'false'). Jika true, menghapus juga file fisik PDF di folder data/onlineData/pdf.
     """
     try:
         doc = db.get_or_404(PdfDocument, document_id)
-    
         filename = doc.filename
-        
-        # --- LOGIKA BARU UNTUK MENGHAPUS FOLDER GAMBAR ---
+
+        delete_physical_file = request.args.get('delete_file', 'false').lower() in ['true', '1', 'yes']
+
+        # 1. Hapus Folder Gambar Halaman jika ada
         base_filename = os.path.splitext(filename)[0]
         image_dir = current_app.config.get('PDF_IMAGES_DIRECTORY')
-
         if image_dir:
             doc_image_folder = os.path.join(image_dir, base_filename)
             if os.path.isdir(doc_image_folder):
@@ -335,14 +319,30 @@ def delete_document(document_id):
                     shutil.rmtree(doc_image_folder)
                     current_app.logger.info(f"Successfully deleted image folder: {doc_image_folder}")
                 except Exception as e:
-                    # Log error jika gagal hapus folder, tapi proses tetap lanjut
                     current_app.logger.error(f"Failed to delete image folder {doc_image_folder}: {e}")
-        # --- AKHIR LOGIKA BARU ---
 
+        # 2. Hapus File Fisik PDF jika delete_file=True
+        if delete_physical_file:
+            pdf_dir = current_app.config.get('PDF_CHUNK_DIRECTORY') or "data/onlineData/pdf"
+            pdf_path = os.path.join(pdf_dir, filename)
+            if os.path.exists(pdf_path):
+                try:
+                    os.remove(pdf_path)
+                    current_app.logger.info(f"Physical PDF file deleted: {pdf_path}")
+                except Exception as e:
+                    current_app.logger.error(f"Failed to delete physical PDF file {pdf_path}: {e}")
+
+        # 3. Hapus Record Dokumen & Chunks di Database
         db.session.delete(doc)
         db.session.commit()
-        
-        return jsonify({"message": f"Dokumen '{filename}' dan semua data terkait berhasil dihapus."}), 200
+
+        msg = (
+            f"Dokumen '{filename}' beserta file fisiknya di penyimpanan berhasil dihapus."
+            if delete_physical_file
+            else f"Data indeks dokumen '{filename}' berhasil dihapus (file PDF di penyimpanan tetap dipertahankan)."
+        )
+        return jsonify({"message": msg}), 200
+
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting document {document_id}: {e}")
@@ -1340,3 +1340,571 @@ def nuke_all_batch_jobs():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Gagal mengosongkan tabel", "details": str(e)}), 500
+
+
+# ===================================================================
+# BPS WEB API INTEGRATION & AUTOMATED SYNCHRONIZATION
+# ===================================================================
+
+def run_bps_sync_job(app, job_name, mode="incremental", selected_pub_ids=None, selected_publications=None, year=None, keyword=None, max_pages=5):
+    """
+    Background worker untuk menyinkronkan publikasi dari BPS Web API:
+    1. Mengambil daftar publikasi dari BPS Web API (per halaman) atau langsung memproses list terpilih.
+    2. Menyaring file yang sudah ada (Anti-Duplikasi jika mode incremental).
+    3. Mengunduh file PDF secara streaming ke data/onlineData/pdf/.
+    4. Menjalankan pipeline chunking dan embedding otomatis dengan live progress callback.
+    5. Melaporkan progress real-time ke BatchJob.
+    """
+    with app.app_context():
+        job = BatchJob.query.filter_by(job_name=job_name).first()
+        if not job or job.status != JobStatus.RUNNING:
+            return
+
+        job_id = job.id
+        bps_service = BpsApiService()
+        
+        try:
+            update_job_heartbeat(job_id)
+            
+            publications_to_process = []
+            
+            # Jika frontend sudah mengirimkan metadata publikasi terpilih secara langsung
+            if selected_publications and isinstance(selected_publications, list) and len(selected_publications) > 0:
+                publications_to_process = selected_publications
+            elif mode == "selected" and selected_pub_ids:
+                selected_set = set(selected_pub_ids)
+                page = 1
+                while page <= max_pages:
+                    if check_job_should_stop(job_id):
+                        break
+                    res = bps_service.fetch_publications(page=page, year=year, keyword=keyword)
+                    if not res.get("success"):
+                        break
+                    items = res.get("publications", [])
+                    if not items:
+                        break
+                    for it in items:
+                        if it.get("pub_id") in selected_set:
+                            publications_to_process.append(it)
+                    if len(publications_to_process) >= len(selected_set):
+                        break
+                    total_p = res.get("pagination", {}).get("pages", 1)
+                    if page >= total_p:
+                        break
+                    page += 1
+            else:
+                page = 1
+                while page <= max_pages:
+                    if check_job_should_stop(job_id):
+                        break
+                    res = bps_service.fetch_publications(page=page, year=year, keyword=keyword)
+                    if not res.get("success"):
+                        app.logger.error(f"Gagal mengambil publikasi BPS halaman {page}: {res.get('error')}")
+                        break
+                    items = res.get("publications", [])
+                    if not items:
+                        break
+                    
+                    for it in items:
+                        if mode == "incremental" and it.get("is_downloaded"):
+                            continue
+                        publications_to_process.append(it)
+                    
+                    total_p = res.get("pagination", {}).get("pages", 1)
+                    if page >= total_p:
+                        break
+                    page += 1
+
+            if not publications_to_process:
+                job.status = JobStatus.COMPLETED
+                job.completed_at = datetime.utcnow()
+                job.last_error = "Semua publikasi BPS sudah ter-sinkronisasi (Tidak ada file baru)."
+                db.session.commit()
+                
+                cfg = BpsApiConfig.query.first()
+                if cfg:
+                    cfg.last_sync_at = datetime.utcnow()
+                    cfg.last_sync_status = "SUCCESS"
+                    cfg.last_sync_message = "Semua dokumen BPS sudah up-to-date."
+                    db.session.commit()
+                return
+
+            job.total_items = len(publications_to_process)
+            job.processed_items = 0
+            job.last_error = f"Memulai sinkronisasi {len(publications_to_process)} publikasi dari BPS..."
+            db.session.commit()
+
+            success_count = 0
+            fail_count = 0
+            skipped_count = 0
+
+            for idx, pub in enumerate(publications_to_process, 1):
+                if check_job_should_stop(job_id):
+                    job.status = JobStatus.IDLE
+                    job.last_error = "Sinkronisasi dihentikan oleh pengguna."
+                    job.completed_at = datetime.utcnow()
+                    db.session.commit()
+                    return
+
+                update_job_heartbeat(job_id)
+                pub_id = pub.get("pub_id")
+                title = pub.get("title") or "Publikasi BPS"
+                pdf_url = pub.get("pdf_url")
+                rl_date = pub.get("rl_date")
+                abstract = pub.get("abstract")
+
+                job.last_error = f"[{idx}/{len(publications_to_process)}] Mengunduh: {title[:40]}..."
+                job.last_updated = datetime.utcnow()
+                db.session.commit()
+
+                # Unduh PDF dari tautan resmi BPS
+                dl_success, local_pdf_path, dl_msg = bps_service.download_publication_pdf(
+                    pdf_url=pdf_url,
+                    title=title,
+                    pub_id=pub_id
+                )
+
+                if not dl_success:
+                    app.logger.warning(f"Gagal mengunduh {title}: {dl_msg}")
+                    fail_count += 1
+                else:
+                    job.last_error = f"[{idx}/{len(publications_to_process)}] Memproses & Vektorisasi: {title[:35]}..."
+                    job.last_updated = datetime.utcnow()
+                    db.session.commit()
+
+                    doc_meta = {
+                        "pub_id": pub_id,
+                        "release_date": rl_date,
+                        "abstract": abstract,
+                        "source": "bps_web_api"
+                    }
+
+                    def chunk_progress_callback(message=""):
+                        try:
+                            job_rec = BatchJob.query.filter_by(job_name=job_name).first()
+                            if job_rec:
+                                job_rec.last_error = f"[{idx}/{len(publications_to_process)}] {message}"
+                                job_rec.last_updated = datetime.utcnow()
+                                db.session.commit()
+                        except:
+                            pass
+
+                    try:
+                        res_chunk = process_and_save_pdf(
+                            pdf_path=local_pdf_path,
+                            job_id=job_id,
+                            link=pdf_url,
+                            doc_metadata=doc_meta,
+                            progress_callback=chunk_progress_callback
+                        )
+                        if res_chunk.get("status") == "success":
+                            success_count += 1
+                        elif res_chunk.get("status") == "skipped":
+                            skipped_count += 1
+                        else:
+                            fail_count += 1
+                    except Exception as pe:
+                        app.logger.error(f"Error processing PDF {local_pdf_path}: {pe}")
+                        fail_count += 1
+
+                job.processed_items = idx
+                job.last_updated = datetime.utcnow()
+                db.session.commit()
+
+            # FINISH
+            job.status = JobStatus.COMPLETED
+            job.completed_at = datetime.utcnow()
+            summary_msg = f"Sinkronisasi Selesai! Berhasil: {success_count}, Dilewati: {skipped_count}, Gagal: {fail_count}"
+            job.last_error = summary_msg
+            db.session.commit()
+
+            cfg = BpsApiConfig.query.first()
+            if cfg:
+                cfg.last_sync_at = datetime.utcnow()
+                cfg.last_sync_status = "SUCCESS" if fail_count == 0 else "PARTIAL"
+                cfg.last_sync_message = summary_msg
+                db.session.commit()
+
+        except Exception as e:
+            app.logger.error(f"Fatal error in BPS sync worker: {e}")
+            job.status = JobStatus.FAILED
+            job.last_error = f"Error sinkronisasi BPS: {str(e)}"
+            job.completed_at = datetime.utcnow()
+            db.session.commit()
+            
+            cfg = BpsApiConfig.query.first()
+            if cfg:
+                cfg.last_sync_at = datetime.utcnow()
+                cfg.last_sync_status = "FAILED"
+                cfg.last_sync_message = str(e)
+                db.session.commit()
+
+
+@document_bp.route('/bps/config', methods=['GET'])
+def get_bps_api_config():
+    """Mengambil konfigurasi BPS Web API."""
+    service = BpsApiService()
+    return jsonify(service.get_config()), 200
+
+
+@document_bp.route('/bps/config', methods=['POST'])
+def save_bps_api_config():
+    """Menyimpan konfigurasi BPS Web API."""
+    data = request.get_json() or {}
+    api_key = data.get('api_key', '')
+    domain_code = data.get('domain_code', '7500')
+    domain_name = data.get('domain_name', 'BPS Provinsi Gorontalo')
+    auto_sync = data.get('auto_sync', False)
+
+    service = BpsApiService()
+    cfg = service.save_config(
+        api_key=api_key,
+        domain_code=domain_code,
+        domain_name=domain_name,
+        auto_sync=auto_sync
+    )
+    return jsonify({"message": "Konfigurasi BPS Web API berhasil disimpan.", "config": cfg}), 200
+
+
+@document_bp.route('/bps/preview', methods=['GET'])
+def preview_bps_publications():
+    """Mengambil daftar publikasi dari BPS Web API untuk dipratinjau di Dashboard."""
+    page = request.args.get('page', 1, type=int)
+    year = request.args.get('year', None, type=str)
+    keyword = request.args.get('keyword', None, type=str)
+    domain = request.args.get('domain', None, type=str)
+
+    service = BpsApiService()
+    result = service.fetch_publications(page=page, year=year, keyword=keyword, domain=domain)
+    
+    if not result.get("success"):
+        return jsonify(result), 400
+    
+    return jsonify(result), 200
+
+
+@document_bp.route('/bps/sync', methods=['POST'])
+def start_bps_sync():
+    """Memulai background job sinkronisasi & unduh publikasi dari BPS Web API."""
+    data = request.get_json() or {}
+    mode = data.get('mode', 'incremental')  # 'incremental', 'full', 'selected'
+    selected_pub_ids = data.get('selected_pub_ids', [])
+    selected_publications = data.get('selected_publications', [])
+    year = data.get('year', None)
+    keyword = data.get('keyword', None)
+    max_pages = data.get('max_pages', 5)
+
+    job_name = 'bps_api_sync_process'
+
+    try:
+        job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
+        if not job:
+            job = BatchJob(job_name=job_name)
+            db.session.add(job)
+            db.session.flush()
+
+        # Cek jika job sedang berjalan
+        if job.status in [JobStatus.RUNNING, JobStatus.STOPPING]:
+            last_active = job.last_updated or job.started_at or datetime.utcnow()
+            time_since_active = datetime.utcnow() - last_active
+            if time_since_active > timedelta(minutes=2):
+                current_app.logger.warning(f"Job {job_name} stuck. Melakukan auto-reset.")
+                job.status = JobStatus.IDLE
+                db.session.commit()
+                job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
+            else:
+                return jsonify({
+                    "error": f"Proses sinkronisasi sedang berjalan (Status: {job.status.value}).",
+                    "last_update": last_active.isoformat()
+                }), 409
+
+        # Inisialisasi status job
+        initial_total = len(selected_publications) if selected_publications else (len(selected_pub_ids) if mode == 'selected' else 0)
+        job.status = JobStatus.RUNNING
+        job.total_items = initial_total
+        job.processed_items = 0
+        job.started_at = datetime.utcnow()
+        job.last_updated = datetime.utcnow()
+        job.completed_at = None
+        job.last_error = f"Memulai sinkronisasi {initial_total} publikasi dari BPS..." if initial_total > 0 else "Mengambil daftar publikasi dari BPS Web API..."
+        db.session.commit()
+
+        # Jalankan background thread
+        thread = threading.Thread(
+            target=run_bps_sync_job,
+            args=(current_app._get_current_object(), job_name),
+            kwargs={
+                "mode": mode,
+                "selected_pub_ids": selected_pub_ids,
+                "selected_publications": selected_publications,
+                "year": year,
+                "keyword": keyword,
+                "max_pages": max_pages
+            },
+            name=f"bps-sync-worker-{job.id}"
+        )
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({
+            "message": "Proses sinkronisasi BPS Web API dimulai.",
+            "job_id": job.id,
+            "mode": mode
+        }), 202
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error starting BPS sync job: {e}")
+        return jsonify({"error": "Gagal memulai sinkronisasi BPS", "details": str(e)}), 500
+
+
+@document_bp.route('/bps/sync-status', methods=['GET'])
+def get_bps_sync_status():
+    """Mengambil status real-time dari background job sinkronisasi BPS."""
+    job_name = 'bps_api_sync_process'
+    job = BatchJob.query.filter_by(job_name=job_name).first()
+
+    if not job:
+        return jsonify({
+            "status": "IDLE",
+            "progress": 0,
+            "total_items": 0,
+            "processed_items": 0,
+            "message": None
+        }), 200
+
+    # Auto-healing zombie job
+    is_zombie = False
+    if job.status in [JobStatus.RUNNING, JobStatus.STOPPING]:
+        last_active = job.last_updated or job.started_at
+        if last_active and (datetime.utcnow() - last_active) > timedelta(minutes=2):
+            is_zombie = True
+            job.status = JobStatus.FAILED
+            job.last_error = "Proses sinkronisasi terhenti secara tidak wajar (Worker Timeout)."
+            job.completed_at = datetime.utcnow()
+            db.session.commit()
+
+    return jsonify({
+        "status": JobStatus.FAILED.value if is_zombie else job.status.value,
+        "progress": job.get_progress(),
+        "total_items": job.total_items,
+        "processed_items": job.processed_items,
+        "message": job.last_error,
+        "is_stuck": is_zombie
+    }), 200
+
+
+@document_bp.route('/bps/sync-stop', methods=['POST'])
+def stop_bps_sync():
+    """Menghentikan proses sinkronisasi BPS yang sedang berjalan."""
+    job_name = 'bps_api_sync_process'
+    try:
+        job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
+        if not job or job.status != JobStatus.RUNNING:
+            return jsonify({"message": "Tidak ada proses sinkronisasi yang berjalan."}), 200
+
+        job.status = JobStatus.STOPPING
+        job.last_error = "Sedang menghentikan sinkronisasi..."
+        db.session.commit()
+        return jsonify({"message": "Permintaan berhenti dikirim."}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@document_bp.route('/bps/sync-reset', methods=['POST'])
+def reset_bps_sync():
+    """Mereset status background job sinkronisasi BPS ke IDLE."""
+    job_name = 'bps_api_sync_process'
+    try:
+        job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
+        if not job:
+            return jsonify({"error": "Job tidak ditemukan."}), 404
+
+        old_status = job.status.value
+        job.status = JobStatus.IDLE
+        job.last_error = f"Job direset secara manual dari status {old_status} pada {datetime.utcnow()}"
+        job.completed_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({"message": f"Job berhasil direset dari status {old_status} ke IDLE."}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+# ===================================================================
+# MANUAL PDF FILE UPLOAD & PROCESSING
+# ===================================================================
+
+def run_manual_upload_chunking_job(app, job_name, saved_paths, link=None):
+    """Worker background untuk memproses & chunking PDF hasil upload manual."""
+    with app.app_context():
+        job = BatchJob.query.filter_by(job_name=job_name).first()
+        if not job or job.status != JobStatus.RUNNING:
+            return
+
+        job_id = job.id
+        try:
+            update_job_heartbeat(job_id)
+            total = len(saved_paths)
+            success_count = 0
+            fail_count = 0
+
+            for idx, item in enumerate(saved_paths, 1):
+                if check_job_should_stop(job_id):
+                    job.status = JobStatus.IDLE
+                    job.last_error = "Proses dihentikan oleh pengguna."
+                    job.completed_at = datetime.utcnow()
+                    db.session.commit()
+                    return
+
+                update_job_heartbeat(job_id)
+                pdf_path = item['path']
+                filename = item['filename']
+
+                def progress_cb(message=None, **kwargs):
+                    try:
+                        base_info = f"[{idx}/{total}] {filename}"
+                        full_msg = f"{base_info} | {message}" if message else base_info
+                        db.session.query(BatchJob).filter_by(id=job_id).update({
+                            "last_error": full_msg,
+                            "last_updated": datetime.utcnow()
+                        })
+                        db.session.commit()
+                    except Exception as err:
+                        app.logger.warning(f"Error updating manual progress: {err}")
+
+                progress_cb("Menganalisis file...")
+
+                res = process_and_save_pdf(
+                    pdf_path=pdf_path,
+                    job_id=job_id,
+                    link=link,
+                    doc_metadata={"source": "manual_upload"},
+                    progress_callback=progress_cb
+                )
+
+                if res.get('status') == 'success':
+                    success_count += 1
+                else:
+                    fail_count += 1
+
+                db.session.query(BatchJob).filter_by(id=job_id).update({
+                    "processed_items": idx,
+                    "last_updated": datetime.utcnow()
+                })
+                db.session.commit()
+
+            final_job = db.session.get(BatchJob, job_id)
+            if final_job:
+                final_job.status = JobStatus.COMPLETED
+                final_job.completed_at = datetime.utcnow()
+                final_job.last_error = f"Selesai memproses {total} dokumen upload manual (Sukses: {success_count}, Gagal: {fail_count})."
+                db.session.commit()
+
+        except Exception as e:
+            app.logger.error(f"Error in manual upload worker: {e}")
+            err_job = db.session.get(BatchJob, job_id)
+            if err_job:
+                err_job.status = JobStatus.FAILED
+                err_job.last_error = f"Error pemrosesan upload: {str(e)}"
+                err_job.completed_at = datetime.utcnow()
+                db.session.commit()
+        finally:
+            db.session.close()
+
+
+@document_bp.route('/upload', methods=['POST'])
+def upload_manual_pdf():
+    """
+    Endpoint untuk mengunggah dokumen PDF secara manual dari Dashboard:
+    - Menerima file multipart/form-data ('files' atau 'file').
+    - Menyimpan file ke PDF_CHUNK_DIRECTORY (data/onlineData/pdf).
+    - Opsional: link sumber dan flag auto_process (default True).
+    - Jika auto_process True: memicu background worker chunking/vektorisasi otomatis pada job 'pdf_chunking_process'.
+    """
+    if 'file' not in request.files and 'files' not in request.files:
+        return jsonify({"error": "Tidak ada file yang diunggah. Pastikan field bernama 'file' atau 'files'."}), 400
+
+    uploaded_files = request.files.getlist('files') or [request.files.get('file')]
+    link = request.form.get('link', '').strip() or None
+    auto_process = request.form.get('auto_process', 'true').lower() in ['true', '1', 'yes']
+
+    pdf_dir = current_app.config.get('PDF_CHUNK_DIRECTORY') or "data/onlineData/pdf"
+    os.makedirs(pdf_dir, exist_ok=True)
+
+    saved_paths = []
+    invalid_files = []
+
+    for f in uploaded_files:
+        if not f or not f.filename:
+            continue
+
+        raw_filename = f.filename
+        if not raw_filename.lower().endswith('.pdf'):
+            invalid_files.append({"filename": raw_filename, "reason": "Bukan file PDF (.pdf)"})
+            continue
+
+        safe_name = secure_filename(raw_filename)
+        if not safe_name:
+            safe_name = f"dokumen_{int(time.time())}.pdf"
+
+        target_path = os.path.join(pdf_dir, safe_name)
+        f.save(target_path)
+
+        with open(target_path, 'rb') as check_f:
+            header = check_f.read(5)
+            if not header.startswith(b'%PDF-'):
+                os.remove(target_path)
+                invalid_files.append({"filename": raw_filename, "reason": "Header file bukan format PDF valid."})
+                continue
+
+        saved_paths.append({
+            "filename": safe_name,
+            "path": target_path
+        })
+
+    if not saved_paths and invalid_files:
+        return jsonify({
+            "error": "Semua file yang diunggah tidak valid.",
+            "invalid_files": invalid_files
+        }), 400
+
+    if not saved_paths:
+        return jsonify({"error": "Tidak ada file PDF valid yang dapat disimpan."}), 400
+
+    job_id = None
+    if auto_process:
+        job_name = 'pdf_chunking_process'
+        job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
+        if not job:
+            job = BatchJob(job_name=job_name)
+            db.session.add(job)
+            db.session.flush()
+
+        job.status = JobStatus.RUNNING
+        job.total_items = len(saved_paths)
+        job.processed_items = 0
+        job.started_at = datetime.utcnow()
+        job.last_updated = datetime.utcnow()
+        job.completed_at = None
+        job.last_error = f"Memulai proses {len(saved_paths)} dokumen PDF..."
+        db.session.commit()
+        job_id = job.id
+
+        thread = threading.Thread(
+            target=run_manual_upload_chunking_job,
+            args=(current_app._get_current_object(), job_name, saved_paths, link),
+            name=f"manual-upload-worker-{job.id}"
+        )
+        thread.daemon = True
+        thread.start()
+
+    return jsonify({
+        "message": f"Berhasil mengunggah {len(saved_paths)} dokumen PDF.",
+        "uploaded_files": [s['filename'] for s in saved_paths],
+        "invalid_files": invalid_files,
+        "auto_process": auto_process,
+        "job_id": job_id
+    }), 201
+

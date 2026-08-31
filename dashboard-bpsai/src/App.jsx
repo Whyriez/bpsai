@@ -10,14 +10,13 @@ import Dashboard from "./pages/Dashboard";
 import Analytics from "./pages/Analytics";
 import Feedback from "./pages/Feedback";
 import Settings from "./pages/Settings";
-import BeritaResmiStatistik from "./pages/BeritaResmiStatistik";
-import AddBrs from "./pages/AddBrs";
 import LoginPage from "./pages/Login";
 
 import routes from "./routes";
 import ManajemenDokumen from "./pages/ManajemenDokumen";
 import DetailDokumen from "./pages/DetailDokumen";
 import ManageApiKeys from "./pages/ManageApiKeys";
+import ThematicMappings from "./pages/ThematicMappings";
 import Documentation from "./pages/Documentation";
 import Developer from "./pages/Developer";
 
@@ -45,24 +44,16 @@ export default function App() {
                         </ProtectedRoute>
                     }
                 />
-                <Route
-                    path={routes.beritaResmiStatistik}
-                    element={
-                        <ProtectedRoute>
-                            <BeritaResmiStatistik/>{" "}
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path={routes.addBeritaResmiStatistik}
-                    element={
-                        <ProtectedRoute>
-                            <AddBrs/>
-                        </ProtectedRoute>
-                    }
-                />
                 <Route path={routes.manajemenDokumen} element={<ManajemenDokumen/>}/>
                 <Route path={routes.detailDokumen()} element={<DetailDokumen/>}/>
+                <Route
+                    path={routes.thematicMappings}
+                    element={
+                        <ProtectedRoute>
+                            <ThematicMappings/>
+                        </ProtectedRoute>
+                    }
+                />
                 <Route
                     path={routes.feedback}
                     element={
@@ -87,8 +78,6 @@ export default function App() {
                         </ProtectedRoute>
                     }
                 />
-
-
                 <Route
                     path={routes.developer}
                     element={

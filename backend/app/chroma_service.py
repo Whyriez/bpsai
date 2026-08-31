@@ -11,11 +11,7 @@ class ChromaService:
             # Gunakan HttpClient untuk terhubung ke instance ChromaDB yang berjalan
             self.client = chromadb.HttpClient(host=host, port=port)
             
-            # Dapatkan atau buat dua collection terpisah
-            self.berita_collection = self.client.get_or_create_collection(
-                name="berita_bps",
-                metadata={"hnsw:space": "cosine"} # Menggunakan cosine distance
-            )
+            # Dapatkan atau buat collection dokumen
             self.chunk_collection = self.client.get_or_create_collection(
                 name="document_chunks",
                 metadata={"hnsw:space": "cosine"}
@@ -25,11 +21,9 @@ class ChromaService:
             logging.error(f"Failed to connect to ChromaDB: {e}")
             self.client = None
 
-    def _get_collection(self, entity_type: str):
+    def _get_collection(self, entity_type: str = 'document_chunk'):
         """Helper untuk mendapatkan collection yang tepat."""
-        if entity_type == 'berita_bps':
-            return self.berita_collection
-        elif entity_type == 'document_chunk':
+        if entity_type == 'document_chunk':
             return self.chunk_collection
         raise ValueError("Unknown entity_type for ChromaDB")
 
@@ -66,7 +60,6 @@ class ChromaService:
             results = collection.query(
                 query_embeddings=[query_embedding],
                 n_results=n_results,
-                # Anda bisa menambahkan filter 'where' di sini jika perlu
             )
             return results
         except Exception as e:

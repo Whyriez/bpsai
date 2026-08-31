@@ -290,12 +290,43 @@ export const streamChat = async (
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = "";
 
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      if (onChunk) onChunk(chunk);
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n");
+      // Simpan potongan baris terakhir yang belum lengkap di buffer
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+        const jsonStr = trimmed.substring(6).trim();
+        if (jsonStr === "[DONE]") continue;
+
+        try {
+          const data = JSON.parse(jsonStr);
+          if (onChunk) onChunk(data);
+        } catch (e) {
+          console.warn("Error parsing SSE line:", line, e);
+        }
+      }
+    }
+
+    // Flush sisa buffer jika ada
+    if (buffer.trim().startsWith("data: ")) {
+      const jsonStr = buffer.trim().substring(6).trim();
+      if (jsonStr && jsonStr !== "[DONE]") {
+        try {
+          const data = JSON.parse(jsonStr);
+          if (onChunk) onChunk(data);
+        } catch (e) {
+          // ignore incomplete end
+        }
+      }
     }
   } catch (error) {
     if (error.name !== "AbortError") {

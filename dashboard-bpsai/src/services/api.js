@@ -1,6 +1,10 @@
-// export const API_BASE_URL = "http://10.75.0.30:5001/api";
-export const API_BASE_URL = "https://chatbot.bps7500.my.id/api";
-// export const API_BASE_URL = "http://127.0.0.1:5000/api";
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1")
+    ? "http://127.0.0.1:5000/api"
+    : "https://chatbot.bps7500.my.id/api");
 
 // Fungsi untuk logout
 const logout = () => {
@@ -14,8 +18,9 @@ const logout = () => {
 const originalFetch = async (url, options = {}) => {
   const token = localStorage.getItem("access_token");
 
+  const isFormData = options.body instanceof FormData;
   const headers = {
-    "Content-Type": "application/json",
+    ...(!isFormData ? { "Content-Type": "application/json" } : {}),
     ...options.headers,
   };
 

@@ -250,7 +250,7 @@ const IntroSection = () => (
                     <h4 className="font-bold text-lg text-gray-800">Admin Panel</h4>
                 </div>
                 <p className="text-sm text-gray-600 leading-relaxed">
-                    Pusat kontrol data. Admin mengupload PDF, mengedit Berita, dan memantau analitik penggunaan.
+                    Pusat kontrol data. Admin mengupload PDF, mengelola chunk dokumen, dan memantau analitik penggunaan.
                 </p>
                 <div className="mt-4 pt-4 border-t border-dashed border-gray-100 flex justify-between items-center text-xs">
                     <span className="font-mono text-gray-400">repo: dashboard-bpsai</span>
@@ -598,12 +598,6 @@ const MaintenanceSection = () => (
             <div>
                 <h4 className="font-bold text-gray-800 mb-2 border-b w-max border-gray-300">Manajemen User</h4>
                 <CodeBlock label="Reset Admin Password / Buat Baru" code='flask user:create-admin "email@bps.go.id" "username_baru"' />
-            </div>
-
-            <div>
-                <h4 className="font-bold text-gray-800 mb-2 border-b w-max border-gray-300">Manajemen Data</h4>
-                <CodeBlock label="Import Berita Massal (CSV)" code='flask import:csv "data/hasil_scraping.csv"' />
-                <p className="text-xs text-gray-500 mt-1">Format CSV harus punya kolom: title, content, date, link.</p>
             </div>
 
             <div>

@@ -97,6 +97,27 @@ class GeminiApiKeyConfig(db.Model):
 
     def __repr__(self):
         return f'<GeminiApiKeyConfig {self.key_name} ({self.key_alias})>'
+
+class BpsApiConfig(db.Model):
+    """
+    Menyimpan konfigurasi BPS Web API (webapi.bps.go.id), domain, dan status sinkronisasi.
+    """
+    __tablename__ = 'bps_api_configs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    api_key = db.Column(db.String(255), nullable=True)
+    domain_code = db.Column(db.String(20), default='7500')  # 7500 = BPS Provinsi Gorontalo
+    domain_name = db.Column(db.String(100), default='BPS Provinsi Gorontalo')
+    auto_sync = db.Column(db.Boolean, default=False)
+    last_sync_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_sync_status = db.Column(db.String(50), nullable=True)
+    last_sync_message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))
+
+    def __repr__(self):
+        return f'<BpsApiConfig domain={self.domain_code}>'
+
     
 class BatchJob(db.Model):
     __tablename__ = 'batch_jobs'
@@ -118,7 +139,7 @@ class BatchJob(db.Model):
     
     def get_progress(self):
         if self.total_items == 0:
-            return 100.0
+            return 0.0
         return round((self.processed_items / self.total_items) * 100, 2)
     
     def is_stuck(self, timeout_minutes=30):
@@ -172,60 +193,6 @@ class User(db.Model):
 
     def __repr__(self):
         return f'<User {self.username}>'
-    
-class BeritaBps(db.Model):
-    __tablename__ = 'berita_bps'
-    id = db.Column(db.Integer, primary_key=True)
-    tanggal_rilis = db.Column(db.Date, nullable=False, index=True)
-    judul_berita = db.Column(db.String(255), nullable=False)
-    ringkasan = db.Column(db.Text, nullable=False)
-    link = db.Column(db.Text, nullable=False)
-    tags = db.Column(JSON, nullable=True)
-    embedding = db.Column(Vector(3072), nullable=True)
-    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
-    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))
-
-    __table_args__ = (
-        Index('ix_berita_bps_embedding_hnsw', 
-              'embedding', 
-              postgresql_using='hnsw', 
-              postgresql_with={'m': 16, 'ef_construction': 64}, 
-              postgresql_ops={'embedding': 'halfvec_cosine_ops'}),
-    )
-
-def generate_embedding_listener(mapper, connection, target):
-    """
-    Fungsi ini akan dijalankan sebelum insert atau update pada model BeritaBps.
-    'target' adalah instance dari BeritaBps yang akan disimpan.
-    """
-    from app.services import EmbeddingService
-    embedding_service = EmbeddingService()
-
-
-    # Cek apakah ada perubahan pada judul atau ringkasan (hanya untuk event 'update')
-    # Ini penting agar kita tidak membuat embedding baru jika hanya kolom lain yang diubah.
-    state = inspect(target)
-    if state.modified and not (state.attrs.judul_berita.history.has_changes() or state.attrs.ringkasan.history.has_changes()):
-        return # Tidak ada perubahan pada kolom relevan, jadi lewati
-
-    # Gabungkan teks dari judul, ringkasan, dan tags untuk membuat embedding yang kaya
-    tags_string = ', '.join(target.tags) if isinstance(target.tags, list) else ''
-    text_to_embed = f"Judul: {target.judul_berita}\nRingkasan: {target.ringkasan}\nTags: {tags_string}"
-
-    # Generate embedding baru
-    new_embedding = embedding_service.generate(text_to_embed)
-
-    # Tetapkan embedding baru ke instance model
-    if new_embedding:
-        target.embedding = new_embedding
-        print(f"Embedding generated/updated for BeritaBps ID: {target.id or '(new)'}")
-
-# --- MENEMPELKAN LISTENER KE MODEL BERITABPS ---
-# Menjalankan fungsi 'generate_embedding_listener' setiap kali ada data BARU
-event.listen(BeritaBps, 'before_insert', generate_embedding_listener)
-
-# Menjalankan fungsi 'generate_embedding_listener' setiap kali ada data LAMA yang DIUPDATE
-event.listen(BeritaBps, 'before_update', generate_embedding_listener)
 
 class PromptLog(db.Model):
     __tablename__ = 'prompt_logs'
@@ -296,7 +263,7 @@ class DocumentChunk(db.Model):
     page_number = db.Column(Integer, nullable=False)
     chunk_content = db.Column(Text, nullable=False)
     reconstructed_content = db.Column(Text, nullable=True) 
-    embedding = db.Column(Vector(3072), nullable=True)
+    embedding = db.Column(Vector(768), nullable=True)
     chunk_metadata = db.Column(JSON, nullable=True) # Metadata spesifik chunk (misal: ada tabel di halaman ini)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))
@@ -308,7 +275,7 @@ class DocumentChunk(db.Model):
               'embedding', 
               postgresql_using='hnsw', 
               postgresql_with={'m': 16, 'ef_construction': 64}, 
-              postgresql_ops={'embedding': 'halfvec_cosine_ops'}),
+              postgresql_ops={'embedding': 'vector_cosine_ops'}),
     )
     
     def __repr__(self):
@@ -348,8 +315,8 @@ class DocumentFeedbackScore(db.Model):
     __tablename__ = 'document_feedback_scores'
 
     id = db.Column(db.Integer, primary_key=True)
-    # Gunakan polymorphic identity untuk menyimpan tipe dan ID dari sumber yang berbeda
-    entity_type = db.Column(db.String(50), nullable=False) # 'berita_bps' atau 'document_chunk'
+    # Gunakan polymorphic identity untuk menyimpan tipe dan ID dari sumber (document_chunk)
+    entity_type = db.Column(db.String(50), nullable=False, default='document_chunk') # 'document_chunk'
     entity_id = db.Column(db.String, nullable=False) # Bisa Integer atau UUID
     
     positive_feedback_count = db.Column(db.Integer, default=0)
@@ -367,3 +334,36 @@ class DocumentFeedbackScore(db.Model):
         else:
             # Formula sederhana: (positif + 1) / (total + 2) -> Bayesian smoothing
             self.score = (self.positive_feedback_count + 1) / (total + 2)
+
+
+class ThematicMapping(db.Model):
+    """
+    Model Pemetaan Tematik Dinamis:
+    Menghubungkan kata kunci / indikator statistik BPS ke pola judul dokumen publikasi primer.
+    Dapat dikelola secara dinamis via API / Dashboard tanpa perlu mengubah kode sumber.
+    """
+    __tablename__ = 'thematic_mappings'
+
+    id = db.Column(Uuid, primary_key=True, default=uuid.uuid4)
+    keyword = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    category = db.Column(db.String(100), nullable=False, default='Umum')
+    target_patterns = db.Column(JSON, nullable=False, default=list)  # List[str], contoh: ["keadaan angkatan kerja", "indikator pasar tenaga kerja"]
+    description = db.Column(db.Text, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))
+
+    def to_dict(self):
+        return {
+            'id': str(self.id),
+            'keyword': self.keyword,
+            'category': self.category,
+            'target_patterns': self.target_patterns if isinstance(self.target_patterns, list) else [],
+            'description': self.description or '',
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+    def __repr__(self):
+        return f'<ThematicMapping {self.keyword} -> {self.target_patterns}>'

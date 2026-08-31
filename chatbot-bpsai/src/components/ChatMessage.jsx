@@ -6,17 +6,17 @@ import React, {
   useState,
 } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "https://esm.sh/remark-gfm";
+import remarkGfm from "remark-gfm";
 import { exportToExcel } from "../services/chatApi";
 
-// SVG Icons for Feedback
+// SVG Icons
 const ThumbsUpIcon = ({ selected }) => (
   <svg
-    className={`w-5 h-5 ${selected ? "text-green-500" : "text-gray-400"}`}
+    className={`w-4 h-4 ${selected ? "text-emerald-500" : "text-slate-400 dark:text-slate-500"}`}
     fill={selected ? "currentColor" : "none"}
     viewBox="0 0 24 24"
     stroke="currentColor"
-    strokeWidth={1.5}
+    strokeWidth={1.75}
   >
     <path
       strokeLinecap="round"
@@ -28,13 +28,13 @@ const ThumbsUpIcon = ({ selected }) => (
 
 const ThumbsDownIcon = ({ selected }) => (
   <svg
-    className={`w-5 h-5 transform -scale-y-100 ${
-      selected ? "text-red-500" : "text-gray-400"
+    className={`w-4 h-4 transform -scale-y-100 ${
+      selected ? "text-rose-500" : "text-slate-400 dark:text-slate-500"
     }`}
     fill={selected ? "currentColor" : "none"}
     viewBox="0 0 24 24"
     stroke="currentColor"
-    strokeWidth={1.5}
+    strokeWidth={1.75}
   >
     <path
       strokeLinecap="round"
@@ -44,19 +44,17 @@ const ThumbsDownIcon = ({ selected }) => (
   </svg>
 );
 
-const ThinkingIndicator = memo(() => (
-  <div className="flex items-center space-x-1.5 p-2">
-    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-pulse"></div>
-    <div
-      className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-pulse"
-      style={{ animationDelay: "0.2s" }}
-    ></div>
-    <div
-      className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-pulse"
-      style={{ animationDelay: "0.4s" }}
-    ></div>
-  </div>
-));
+const CopyIcon = () => (
+  <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+  </svg>
+);
 
 const TableContext = createContext({ isInsideTable: false });
 
@@ -70,59 +68,45 @@ const MarkdownLink = memo(({ href, children }) => {
 });
 
 const StyledLink = memo(({ href, children }) => {
-  let displayHost = href;
-  try {
-    const url = new URL(href);
-    displayHost = url.hostname.replace(/^www\./, "");
-  } catch (e) {
-    console.log(e);
-  }
-
-  // Menggunakan layanan favicon Google untuk mendapatkan ikon situs
-  const faviconUrl = `https://www.google.com/s2/favicons?sz=16&domain=${displayHost}`;
-
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
       title={href}
-      className="inline-flex break-words w-full items-center gap-1.5 no-underline bg-blue-50 dark:bg-gray-800/50 px-1.5 py-0.5 rounded-md text-sm text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-gray-700 hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors"
+      className="flex items-center justify-between gap-3.5 w-full no-underline bg-blue-50/70 dark:bg-blue-950/40 p-3 rounded-xl text-xs font-semibold text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/60 hover:bg-blue-100/80 dark:hover:bg-blue-900/60 transition-all group my-2 shadow-2xs"
     >
-      <img
-        src={faviconUrl}
-        alt="favicon"
-        className="w-3.5 h-3.5 flex-shrink-0"
-        onError={(e) => {
-          e.currentTarget.style.display = "none";
-        }}
-      />
-      <span className="font-medium">{children}</span>
+      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+        <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/80 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <span className="font-semibold text-slate-900 dark:text-slate-100 break-words leading-snug">
+          {children}
+        </span>
+      </div>
+      <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400 shrink-0 text-xs font-medium group-hover:translate-x-0.5 transition-transform">
+        <span>Buka Publikasi</span>
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+        </svg>
+      </div>
     </a>
   );
 });
-
-const ExternalLinkIcon = memo(() => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 20 20"
-    fill="currentColor"
-    className="w-3.5 h-3.5"
-  >
-    <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-    <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
-  </svg>
-));
 
 const TableLink = memo(({ href }) => (
   <a
     href={href}
     target="_blank"
     rel="noopener noreferrer"
-    className="inline-flex items-center gap-1 font-semibold text-blue-600 dark:text-blue-400 no-underline transition-all duration-150 ease-in-out hover:gap-1.5 hover:text-blue-800 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/50 hover:bg-blue-100 dark:hover:bg-blue-900 px-2 py-1 rounded-full text-xs"
+    className="inline-flex items-center gap-1 font-semibold text-blue-600 dark:text-blue-400 no-underline hover:text-blue-800 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/50 hover:bg-blue-100 dark:hover:bg-blue-900 px-2 py-0.5 rounded-md text-xs transition-colors"
   >
     <span>Sumber</span>
-    <ExternalLinkIcon />
+    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+    </svg>
   </a>
 ));
 
@@ -130,24 +114,18 @@ const ExportButton = memo(({ onClick, isLoading }) => (
   <button
     onClick={onClick}
     disabled={isLoading}
-    className="flex items-center gap-2 px-2 py-1 text-sm bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-900 transition-all disabled:opacity-50 "
-    title="Ekspor ke Excel"
+    className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all disabled:opacity-50"
+    title="Ekspor tabel ke format Excel (.xlsx)"
   >
     {isLoading ? (
       <>
-        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-        Mengekspor...
+        <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <span>Mengekspor...</span>
       </>
     ) : (
       <>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          className="w-4 h-4"
-        >
-          <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
-          <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+        <svg className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
         <span>Unduh Excel</span>
       </>
@@ -169,43 +147,20 @@ const ExportableTable = ({ children }) => {
       const tableElement = tableContainerRef.current.querySelector("table");
       if (!tableElement) throw new Error("Elemen tabel tidak ditemukan.");
 
-      // --- LOGIKA DETEKSI JUDUL YANG DIPERBAIKI ---
-      let title = "data_ekspor"; // Nama default
-
-      // Cari elemen container pesan
+      let title = "data_statistik_bps";
       const messageContainer = tableContainerRef.current.closest('[class*="rounded-2xl"]');
       
       if (messageContainer) {
-        // Cari semua elemen heading (h1-h6) atau elemen teks kuat sebelum tabel
         const possibleTitleElements = messageContainer.querySelectorAll('h1, h2, h3, h4, h5, h6, strong');
-        
         for (let element of possibleTitleElements) {
-          // Pastikan elemen ini berada sebelum tabel dalam struktur yang sama
           if (messageContainer.contains(element) && element.textContent.trim()) {
             title = element.textContent.trim();
-            
-            // Prioritaskan heading, jika menemukan heading langsung break
             if (element.tagName.match(/^H[1-6]$/i)) {
               break;
             }
           }
         }
       }
-
-      // Fallback: cari elemen teks sebelum tabel
-      if (title === "data_ekspor") {
-        let prevElement = tableContainerRef.current.previousElementSibling;
-        while (prevElement) {
-          const textContent = prevElement.textContent?.trim();
-          if (textContent && textContent.length > 0 && textContent.length < 100) {
-            title = textContent;
-            break;
-          }
-          prevElement = prevElement.previousElementSibling;
-        }
-      }
-
-      console.log("Detected title for export:", title); // Debug log
 
       const headers = Array.from(tableElement.querySelectorAll("thead th"))
         .map((th) => th.innerText.trim())
@@ -228,12 +183,11 @@ const ExportableTable = ({ children }) => {
 
       const blob = await exportToExcel(markdownString, title);
 
-      // Trigger download di browser
       const safeFilename = title
-        .replace(/[^a-z0-9\u00C0-\u024F\s]/gi, "_") // Izinkan karakter internasional
+        .replace(/[^a-z0-9\u00C0-\u024F\s]/gi, "_")
         .replace(/\s+/g, "_")
         .toLowerCase()
-        .substring(0, 100); // Batasi panjang
+        .substring(0, 100);
 
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -254,7 +208,6 @@ const ExportableTable = ({ children }) => {
 
   return (
     <div className="relative my-4" ref={tableContainerRef}>
-      {/* Tombol dipindahkan ke atas tabel */}
       <div className="flex justify-end mb-2">
         <ExportButton onClick={handleExport} isLoading={isExporting} />
       </div>
@@ -262,7 +215,7 @@ const ExportableTable = ({ children }) => {
       {children}
       
       {exportError && (
-        <div className="text-xs text-red-500 bg-red-100 dark:bg-red-900/50 p-2 rounded mt-2">
+        <div className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg mt-2">
           Error: {exportError}
         </div>
       )}
@@ -270,76 +223,104 @@ const ExportableTable = ({ children }) => {
   );
 };
 
-const ChatMessage = memo(({ message, isLoading, onFeedback }) => {
+const ChatMessage = memo(({ message, isLoading, isLatest = true, thinkingStatus, onFeedback }) => {
   const isUser = message.sender === "user";
   const isAI = message.sender === "ai";
+  const [copied, setCopied] = useState(false);
 
-  const isThinking = isAI && !message.text && isLoading;
-  const isStreaming = isAI && isLoading && !!message.text;
+  // Jangan render jika pesan AI kosong dan sudah tidak aktif loading
+  if (isAI && !message.text && (!isLoading || !isLatest)) {
+    return null;
+  }
+
+  const isStreaming = isAI && isLoading && isLatest && !!message.text;
   const hasFeedback =
     message.feedbackGiven === "positive" ||
     message.feedbackGiven === "negative";
 
+  const handleCopy = () => {
+    if (!message.text) return;
+    navigator.clipboard.writeText(message.text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div
-      className={`flex items-start gap-3 ${
-        isUser ? "flex-row-reverse" : "flex-col sm:flex-row"
+      className={`flex items-start gap-3 message-animation ${
+        isUser ? "justify-end" : "justify-start"
       }`}
     >
-      <div
-        className={`rounded-2xl p-4 shadow-sm border min-w-0 hover-lift
-          ${!isStreaming ? "message-animation" : ""}
-          ${
+      {/* AI Avatar */}
+      {isAI && (
+        <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-2xs flex-shrink-0 mt-0.5">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        </div>
+      )}
+
+      {/* Message Bubble */}
+      <div className={`min-w-0 max-w-full ${isUser ? "max-w-2xl ml-auto" : "flex-1"}`}>
+        <div
+          className={`rounded-2xl p-4 shadow-sm border min-w-0 ${
+            !isStreaming ? "hover-lift message-animation" : ""
+          } ${
             isUser
               ? "bg-bps-light-blue dark:bg-blue-900 border-blue-200 dark:border-blue-800 text-gray-800 dark:text-white rounded-tr-md max-w-2xl"
-              : "bg-white dark:bg-gray-700 border-gray-100 dark:border-gray-600 rounded-tl-md w-full"
+              : "bg-white dark:bg-slate-800/90 border border-blue-100/80 dark:border-slate-700/80 rounded-tl-md text-slate-800 dark:text-slate-100"
           }`}
-      >
-        {isThinking ? (
-          <ThinkingIndicator />
-        ) : (
-          <div
-            className={`prose prose-sm dark:prose-invert max-w-none prose-headings:mt-0 prose-headings:mb-4 ${
-              isStreaming ? "streaming-cursor" : ""
-            }`}
-          >
-            <ReactMarkdown
+        >
+          {isAI && !message.text ? (
+            <div className="flex items-center gap-2.5 py-1 text-slate-600 dark:text-slate-300">
+              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
+              <span className="text-xs font-medium animate-pulse">
+                {thinkingStatus?.detail || "Sedang memproses dan mencari data statistik..."}
+              </span>
+            </div>
+          ) : (
+            <div
+              className={`prose prose-sm dark:prose-invert max-w-none prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-slate-900 dark:prose-headings:text-white prose-p:leading-relaxed prose-li:my-0.5 ${
+                isStreaming ? "streaming-cursor" : ""
+              }`}
+            >
+              <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
                 table: ({ ...props }) => (
                   <ExportableTable>
-                    <div className="overflow-x-auto my-0 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div className="overflow-x-auto my-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
                       <table
                         {...props}
-                        className="text-sm"
-                        style={{ margin: 0, marginTop: 0, marginBottom: 0 }}
+                        className="text-xs sm:text-sm w-full border-collapse"
+                        style={{ margin: 0 }}
                       />
                     </div>
                   </ExportableTable>
                 ),
                 thead: ({ ...props }) => (
-                  <thead {...props} className="bg-gray-50 dark:bg-gray-800" />
+                  <thead {...props} className="bg-slate-100 dark:bg-slate-700/70 border-b border-slate-200 dark:border-slate-700" />
                 ),
                 th: ({ ...props }) => (
                   <th
                     {...props}
-                    className="px-4 py-3 font-semibold text-left tracking-wider text-gray-500 dark:text-gray-400"
+                    className="px-3.5 py-2.5 font-bold text-left text-slate-900 dark:text-slate-100"
                   />
                 ),
                 tbody: ({ ...props }) => (
                   <tbody
                     {...props}
-                    className="bg-white dark:bg-gray-700 divide-y divide-gray-200 dark:divide-gray-600"
+                    className="bg-white dark:bg-slate-800 divide-y divide-slate-100 dark:divide-slate-700/60"
                   />
                 ),
                 tr: ({ ...props }) => (
                   <tr
                     {...props}
-                    className="transition-colors hover:bg-gray-50 dark:hover:bg-gray-600"
+                    className="transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-700/40"
                   />
                 ),
                 td: ({ ...props }) => (
-                  <td className="px-4 py-3 align-middle">
+                  <td className="px-3.5 py-2.5 align-middle text-slate-800 dark:text-slate-200">
                     <TableContext.Provider value={{ isInsideTable: true }}>
                       {props.children}
                     </TableContext.Provider>
@@ -351,41 +332,50 @@ const ChatMessage = memo(({ message, isLoading, onFeedback }) => {
               {message.text}
             </ReactMarkdown>
           </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      {isAI && !isThinking && (
-        <div className="mt-2 sm:mt-0">
-          <div className="flex items-center gap-1.5">
+        {/* Action Buttons underneath AI Message */}
+        {isAI && !isLoading && (
+          <div className="flex items-center gap-1.5 mt-1.5 px-1 text-slate-400">
+            {/* Copy Button */}
+            <button
+              onClick={handleCopy}
+              className="inline-flex items-center gap-1 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/50 text-xs transition-colors"
+              title="Salin jawaban"
+            >
+              {copied ? <CheckIcon /> : <CopyIcon />}
+              <span className="text-[11px]">{copied ? "Tersalin!" : "Salin"}</span>
+            </button>
+
+            <span className="text-slate-300 dark:text-slate-600">•</span>
+
+            {/* Feedback Thumbs */}
             {hasFeedback ? (
-              <>
-                <div className="flex flex-col items-center text-center">
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Feedback dikirim!
-                  </div>
-                </div>
-              </>
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                Feedback tercatat
+              </span>
             ) : (
-              <>
+              <div className="flex items-center gap-0.5">
                 <button
                   onClick={() => onFeedback(message.id, "positive")}
-                  className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-green-500"
-                  title="Good response"
+                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/50 hover:text-emerald-500 transition-colors"
+                  title="Jawaban akurat & membantu"
                 >
                   <ThumbsUpIcon />
                 </button>
                 <button
                   onClick={() => onFeedback(message.id, "negative")}
-                  className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-red-500"
-                  title="Bad response"
+                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-700/50 hover:text-rose-500 transition-colors"
+                  title="Jawaban kurang tepat"
                 >
                   <ThumbsDownIcon />
                 </button>
-              </>
+              </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 });

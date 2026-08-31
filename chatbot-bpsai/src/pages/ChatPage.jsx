@@ -15,6 +15,7 @@ import {
   submitFeedback,
   getUserConversations,
   deleteUserConversation,
+  deleteConversationApi,
   renameConversationApi,
   deleteAccountApi,
   togglePinConversationApi,
@@ -268,15 +269,40 @@ function ChatPage() {
           conversation_id: conversationId,
           user_id: user?.id || null,
         },
-        (chunk) => {
+        (chunkOrData) => {
           try {
-            const lines = chunk.split("\n");
+            if (!chunkOrData) return;
+
+            // Kasus 1: chatApi mengirim parsed JSON object
+            if (typeof chunkOrData === "object") {
+              const data = chunkOrData;
+              if (data.thinking === true) {
+                setThinkingStatus({
+                  isThinking: true,
+                  status: data.status || "",
+                  detail: data.detail || "",
+                });
+              } else if (data.thinking === false) {
+                setThinkingStatus({
+                  isThinking: false,
+                  status: "",
+                  detail: "",
+                });
+              } else if (data.text) {
+                aiResponseAccumulator.current += data.text;
+                updateLastAiMessage();
+              }
+              return;
+            }
+
+            // Kasus 2: Fallback jika raw string
+            const lines = String(chunkOrData).split("\n");
             lines.forEach((line) => {
-              if (line.startsWith("data: ")) {
-                const jsonStr = line.substring(6);
+              const trimmed = line.trim();
+              if (trimmed.startsWith("data: ")) {
+                const jsonStr = trimmed.substring(6).trim();
                 if (jsonStr && jsonStr !== "[DONE]") {
                   const data = JSON.parse(jsonStr);
-
                   if (data.thinking === true) {
                     setThinkingStatus({
                       isThinking: true,
@@ -290,8 +316,7 @@ function ChatPage() {
                       detail: "",
                     });
                   } else if (data.text) {
-                    const textChunk = data.text;
-                    aiResponseAccumulator.current += textChunk;
+                    aiResponseAccumulator.current += data.text;
                     updateLastAiMessage();
                   }
                 }
@@ -537,6 +562,7 @@ function ChatPage() {
               onFeedback={openFeedbackModal}
               onLoadMore={loadMoreMessages}
               pagination={pagination}
+              onSelectPrompt={handleSendMessage}
             />
             <ChatInput
               onSendMessage={handleSendMessage}

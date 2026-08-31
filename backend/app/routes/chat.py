@@ -5,13 +5,15 @@ import re
 import pandas as pd
 import io
 from flask import Blueprint, request, Response, session, current_app, jsonify, send_file
-from app.models import db, BeritaBps, DocumentChunk, PromptLog, Feedback, PdfDocument
+from app.models import db, DocumentChunk, PromptLog, Feedback, PdfDocument
 from app.services import EmbeddingService, GeminiService
 from app.helpers import (
     extract_years, detect_intent, extract_keywords, build_context,
     build_final_prompt, expand_query_with_synonyms, BPS_ACRONYM_DICTIONARY,
-    format_conversation_history,
-    rerank_with_dss, expand_query_with_years
+    BPS_THEMATIC_DOCUMENT_MAPPING, get_thematic_document_patterns,
+    resolve_specific_document_name, format_conversation_history,
+    rerank_with_dss, expand_query_with_years, get_smart_title_from_prompt,
+    contextualize_user_query, get_available_documents_catalog
 )
 from sqlalchemy.orm import aliased
 from sqlalchemy import select, extract, or_, func
@@ -50,140 +52,243 @@ def reorder_for_llm(results):
 
 def get_combined_relevant_results(user_prompt: str, requested_years: list = [], specific_document: str = None, limit: int = 15):
     """
-    Mengambil hasil gabungan dari BeritaBps dan DocumentChunk menggunakan PostgreSQL pgvector.
-    Sudah teroptimasi dengan batas toleransi jarak dan reordering context.
+    Mengambil hasil pencarian dokumen (DocumentChunk) menggunakan Hybrid Search:
+    1. Thematic Document Routing: Memprioritaskan publikasi tematik primer BPS (misal: Keadaan Angkatan Kerja untuk TPT).
+    2. Dense Vector Search (pgvector cosine distance).
+    3. Sparse Keyword / FTS Search (PostgreSQL keyword matching berimbang per tahun).
+    4. Reciprocal Rank Fusion (RRF) dengan Multiplier Prioritas Tematik & Kesesuaian Tahun.
     """
-    # Batas toleransi jarak Cosine (Semakin kecil semakin ketat/relevan)
-    # Range cosine pgvector: 0 (Sama persis) sampai 2 (Sangat bertolak belakang)
-    DISTANCE_THRESHOLD = 0.65 
-
-    # 1. Expand Query
+    # 1. Expand Query dengan sinonim akronim BPS & tahun
     expanded_prompt = expand_query_with_synonyms(user_prompt, BPS_ACRONYM_DICTIONARY)
 
-    if not specific_document:
-        doc_pattern = re.search(r'(?:dokumen|file|pdf)\s+([\w\s\-\.]+)', user_prompt, re.IGNORECASE)
+    if specific_document:
+        specific_document = resolve_specific_document_name(specific_document)
+    else:
+        doc_pattern = re.search(r'(?:dokumen|file|pdf|publikasi)\s+([\w\s\-\.]+)', user_prompt, re.IGNORECASE)
         if doc_pattern:
-            specific_document = doc_pattern.group(1)
+            specific_document = resolve_specific_document_name(doc_pattern.group(1))
+            if specific_document:
+                current_app.logger.info(f"Resolved specific document: '{specific_document}' from prompt hint '{doc_pattern.group(1)}'")
 
     if requested_years:
         expanded_prompt = expand_query_with_years(expanded_prompt, requested_years)
+
+    # Deteksi pola nama dokumen tematik primer yang paling relevan (misal: "keadaan angkatan kerja" untuk TPT)
+    priority_doc_patterns = get_thematic_document_patterns(user_prompt)
+    if priority_doc_patterns:
+        current_app.logger.info(f"Thematic Document Priority detected: {priority_doc_patterns}")
 
     current_app.logger.info(f"Original prompt: '{user_prompt}', Expanded to: '{expanded_prompt}'")
 
     # 2. Generate Embedding dari Prompt
     prompt_embedding = embedding_service.generate(expanded_prompt)
     if not prompt_embedding:
-        # Lempar error spesifik agar proses dihentikan secara paksa, 
-        # jangan return [] yang membuat Gemini mengira data benar-benar tidak ada.
         raise Exception("API_LIMIT_EMBEDDING_EXHAUSTED")
 
-    combined_results = []
+    # Mapping kandidat per chunk id
+    chunk_map = {}            # chunk_id -> chunk_obj
+    vector_ranks = {}         # chunk_id -> rank (1, 2, ...)
+    keyword_ranks = {}        # chunk_id -> rank (1, 2, ...)
+    vector_distances = {}     # chunk_id -> distance
 
-    # --- KASUS A: PENCARIAN DOKUMEN SPESIFIK ---
+    # --- PENCARIAN 1: DENSE VECTOR SEARCH (PGVECTOR) ---
+    SOFT_VECTOR_THRESHOLD = 0.95
+
+    try:
+        base_vec_query = select(
+            DocumentChunk, 
+            DocumentChunk.embedding.cosine_distance(prompt_embedding).label('distance')
+        ).filter(DocumentChunk.embedding.isnot(None))
+
+        if specific_document:
+            vec_stmt = base_vec_query.join(PdfDocument)\
+                .filter(func.lower(PdfDocument.filename).contains(specific_document.lower()))\
+                .order_by('distance')\
+                .limit(limit * 3)
+        elif priority_doc_patterns:
+            doc_conds = [func.lower(PdfDocument.filename).contains(p.lower()) for p in priority_doc_patterns]
+            vec_stmt = base_vec_query.join(PdfDocument)\
+                .filter(or_(*doc_conds))\
+                .order_by('distance')\
+                .limit(limit * 3)
+        else:
+            vec_stmt = base_vec_query.order_by('distance').limit(limit * 3)
+
+        vec_results = db.session.execute(vec_stmt).all()
+        for rank_idx, (chunk_obj, dist) in enumerate(vec_results, 1):
+            if dist is not None and float(dist) <= SOFT_VECTOR_THRESHOLD:
+                cid = str(chunk_obj.id)
+                chunk_map[cid] = chunk_obj
+                vector_ranks[cid] = rank_idx
+                vector_distances[cid] = float(dist)
+    except Exception as vec_err:
+        db.session.rollback()  # Rollback segera agar PostgreSQL session tidak masuk InFailedSqlTransaction
+        current_app.logger.warning(f"Vector search warning: {vec_err}")
+
+    # --- PENCARIAN 2: SPARSE KEYWORD & THEMATIC TARGETED SEARCH ---
+    raw_keywords = extract_keywords(expanded_prompt)
+    generic_qualifiers = {'tingkat', 'terbuka', 'angka', 'jumlah', 'persentase', 'rata', 'total', 'data', 'provinsi', 'gorontalo', 'dokumen', 'file', 'pdf', 'apakah', 'ada', 'untuk'}
+    core_keywords = [k for k in raw_keywords if k.lower() not in generic_qualifiers] or raw_keywords
+
+    kw_candidates = []
+
+    # Kumpulkan pola nama dokumen yang ditargetkan
+    target_patterns = []
     if specific_document:
-        current_app.logger.info(f"MODE PENCARIAN SPESIFIK: Mengunci pencarian ke dokumen '{specific_document}'")
-        
-        # pgvector search + filter nama dokumen + filter threshold
-        stmt = select(DocumentChunk, DocumentChunk.embedding.cosine_distance(prompt_embedding).label('distance'))\
-            .join(PdfDocument)\
-            .filter(func.lower(PdfDocument.filename).contains(specific_document.lower()))\
-            .filter(DocumentChunk.embedding.cosine_distance(prompt_embedding) < DISTANCE_THRESHOLD)\
-            .order_by('distance')\
-            .limit(limit * 2)
+        target_patterns.append(specific_document.lower())
+    elif priority_doc_patterns:
+        target_patterns.extend([p.lower() for p in priority_doc_patterns])
 
-        chunk_results = db.session.execute(stmt).all()
-        for chunk_obj, distance in chunk_results:
-            combined_results.append((chunk_obj, float(distance)))
+    if requested_years:
+        for y in requested_years:
+            # 2A. Prioritas Utama: Dokumen yang judul filenya spesifik memuat tahun y (Annual Edition Match)
+            q_year_doc = DocumentChunk.query.join(PdfDocument)
+            if target_patterns:
+                doc_conds = [func.lower(PdfDocument.filename).contains(p) for p in target_patterns]
+                q_year_doc = q_year_doc.filter(or_(*doc_conds))
+            q_year_doc = q_year_doc.filter(PdfDocument.filename.contains(str(y)))
+            
+            if core_keywords:
+                kw_conds = [DocumentChunk.chunk_content.ilike(f"%{k}%") for k in core_keywords]
+                q_year_doc = q_year_doc.filter(or_(*kw_conds))
+            year_doc_chunks = q_year_doc.limit(4).all()
+            kw_candidates.extend(year_doc_chunks)
 
-        # Fallback murni SQL jika tidak ada vektor yang lolos threshold
-        if not combined_results:
-            current_app.logger.warning(f"Vector search kosong untuk '{specific_document}', mencoba fallback SQL.")
-            direct_chunks = DocumentChunk.query.join(PdfDocument).filter(
-                func.lower(PdfDocument.filename).contains(specific_document.lower())
-            ).limit(10).all()
-
-            for chunk in direct_chunks:
-                combined_results.append((chunk, 0.7)) # Beri nilai distance moderat (0.7)
-
-    # --- KASUS B: PENCARIAN UMUM ---
+            # 2B. Prioritas Sekunder: Dokumen lain yang memuat tahun y di dalam isi tabel/teks
+            q_year_content = DocumentChunk.query.join(PdfDocument)
+            if target_patterns:
+                doc_conds = [func.lower(PdfDocument.filename).contains(p) for p in target_patterns]
+                q_year_content = q_year_content.filter(or_(*doc_conds))
+            q_year_content = q_year_content.filter(DocumentChunk.chunk_content.ilike(f"%{y}%"))
+            if core_keywords:
+                kw_conds = [DocumentChunk.chunk_content.ilike(f"%{k}%") for k in core_keywords]
+                q_year_content = q_year_content.filter(or_(*kw_conds))
+            year_content_chunks = q_year_content.limit(2).all()
+            kw_candidates.extend(year_content_chunks)
     else:
-        current_app.logger.info("MODE PENCARIAN UMUM: Mencari di pgvector dengan threshold < 0.65")
+        # Kueri tanpa tahun spesifik / mencari data umum / data terbaru
+        q_gen = DocumentChunk.query.join(PdfDocument)
+        if target_patterns:
+            doc_conds = [func.lower(PdfDocument.filename).contains(p) for p in target_patterns]
+            q_gen = q_gen.filter(or_(*doc_conds))
+        if core_keywords:
+            kw_conds = [DocumentChunk.chunk_content.ilike(f"%{k}%") for k in core_keywords]
+            q_gen = q_gen.filter(or_(*kw_conds))
+        q_gen = q_gen.order_by(PdfDocument.filename.desc())
+        kw_candidates.extend(q_gen.limit(limit * 8).all())
 
-        # 1. Query BeritaBps via pgvector (dengan batas relevansi)
-        berita_stmt = select(BeritaBps, BeritaBps.embedding.cosine_distance(prompt_embedding).label('distance'))\
-            .filter(BeritaBps.embedding.cosine_distance(prompt_embedding) < DISTANCE_THRESHOLD)
+    # Hitung bobot kecocokan keyword kandidat
+    scored_kw_chunks = []
+    seen_ids = set()
+    for chunk_obj in kw_candidates:
+        if chunk_obj.id in seen_ids:
+            continue
+        seen_ids.add(chunk_obj.id)
+
+        doc_name = (chunk_obj.document.filename if chunk_obj.document else "").lower()
+        text_content = ((chunk_obj.chunk_content or "") + " " + doc_name).lower()
         
+        match_count = sum(1 for t in core_keywords if t.lower() in text_content)
         if requested_years:
-            year_filters = []
-            for y in requested_years:
-                year_filters.extend([
-                    extract('year', BeritaBps.tanggal_rilis) == y,
-                    BeritaBps.judul_berita.ilike(f'%{y}%'),
-                    BeritaBps.ringkasan.ilike(f'%{y}%')
-                ])
-            berita_stmt = berita_stmt.filter(or_(*year_filters))
-            
-        berita_stmt = berita_stmt.order_by('distance').limit(limit)
-        berita_results = db.session.execute(berita_stmt).all()
-        
-        for berita_obj, distance in berita_results:
-            combined_results.append((berita_obj, float(distance)))
+            if any(str(y) in doc_name for y in requested_years):
+                match_count += 8  # Huge boost for exact year edition document
+            elif any(str(y) in text_content for y in requested_years):
+                match_count += 3
+        else:
+            # Jika user meminta data umum/terbaru, prioritaskan edisi publikasi paling mutakhir
+            year_matches = re.findall(r'\b(20\d{2}|19\d{2})\b', doc_name)
+            if year_matches:
+                max_doc_year = max(int(y) for y in year_matches)
+                if max_doc_year >= 2024:
+                    match_count += 12
+                elif max_doc_year == 2023:
+                    match_count += 8
+                elif max_doc_year == 2022:
+                    match_count += 5
+                elif max_doc_year < 2015:
+                    match_count -= 6  # Arsip lawas (2007, 2004) dikurangi bobotnya
 
-        # 2. Query DocumentChunk via pgvector (dengan batas relevansi)
-        chunk_stmt = select(DocumentChunk, DocumentChunk.embedding.cosine_distance(prompt_embedding).label('distance'))\
-            .filter(DocumentChunk.embedding.cosine_distance(prompt_embedding) < DISTANCE_THRESHOLD)\
-            .order_by('distance')\
-            .limit(limit * 2)
-            
-        chunk_results = db.session.execute(chunk_stmt).all()
-        for chunk_obj, distance in chunk_results:
-            penalty = 0.0
-            doc_filename = chunk_obj.document.filename if (chunk_obj.document and chunk_obj.document.filename) else ""
-            chunk_text = chunk_obj.chunk_content or ""
-            
-            if requested_years:
-                has_year = any(str(y) in doc_filename or str(y) in chunk_text for y in requested_years)
-                if not has_year:
-                    penalty = 0.7  # Penalti lebih tinggi agar PDF lama tidak menenggelamkan Berita BPS rilis terbaru
+        # Wilayah level match (Provinsi vs Kota/Kabupaten)
+        if "provinsi" in user_prompt.lower() and "provinsi" in doc_name:
+            match_count += 6
+        elif "kota" in user_prompt.lower() and "kota" in doc_name:
+            match_count += 6
 
-            final_distance = float(distance) + penalty
-            if final_distance <= 1.0: 
-                combined_results.append((chunk_obj, final_distance))
+        # Massive priority boost untuk publikasi tematik primer
+        if target_patterns and any(p in doc_name for p in target_patterns):
+            match_count += 10
+        if chunk_obj.chunk_metadata and chunk_obj.chunk_metadata.get('type') == 'table':
+            match_count += 2
+        scored_kw_chunks.append((chunk_obj, match_count))
 
-    # Jika tidak ada BeritaBps untuk tahun yang diminta di combined_results, selalu injeksi berita SQL tahun tersebut
-    if requested_years and not specific_document:
-        for year in requested_years:
-            has_news_for_year = any(
-                isinstance(item, BeritaBps) and (
-                    (item.tanggal_rilis and item.tanggal_rilis.year == year) or
-                    (str(year) in (item.judul_berita or "")) or
-                    (str(year) in (item.ringkasan or ""))
-                )
-                for item, _ in combined_results
-            )
-            if not has_news_for_year:
-                current_app.logger.warning(f"Injeksi berita SQL fallback untuk tahun {year}.")
-                additional_news = BeritaBps.query.filter(
-                    or_(
-                        extract('year', BeritaBps.tanggal_rilis) == year,
-                        BeritaBps.judul_berita.ilike(f'%{year}%'),
-                        BeritaBps.ringkasan.ilike(f'%{year}%')
-                    )
-                ).order_by(BeritaBps.id.desc()).limit(5).all()
-                for news in additional_news:
-                    if not any(isinstance(item, BeritaBps) and item.id == news.id for item, _ in combined_results):
-                        combined_results.append((news, 0.1)) # Distance super relevan untuk data tahun spesifik
+    scored_kw_chunks.sort(key=lambda x: x[1], reverse=True)
 
-    # 3. Optimasi Penyusunan Akhir (Lost In the Middle)
-    # Urutkan dulu dari yang paling relevan (distance terkecil)
-    combined_results.sort(key=lambda x: x[1])
-    
-    # Ambil sebatas limit (misal 15)
-    final_results = combined_results[:limit]
-    
-    # Terapkan reordering (Yang paling relevan ditaruh di list teratas dan terbawah)
-    final_results = reorder_for_llm(final_results)
+    for rank_idx, (chunk_obj, _) in enumerate(scored_kw_chunks[:limit * 2], 1):
+        cid = str(chunk_obj.id)
+        chunk_map[cid] = chunk_obj
+        keyword_ranks[cid] = rank_idx
 
+    # --- PENGGABUNGAN: RECIPROCAL RANK FUSION (RRF) ---
+    # Formula standar RRF: RRF_score = sum(1 / (k + rank))
+    RRF_K = 60.0
+    combined_scores = []
+
+    for cid, chunk_obj in chunk_map.items():
+        v_rank = vector_ranks.get(cid)
+        k_rank = keyword_ranks.get(cid)
+
+        score = 0.0
+        if v_rank:
+            score += 1.0 / (RRF_K + v_rank)
+        if k_rank:
+            score += 1.0 / (RRF_K + k_rank)
+
+        doc_name = (chunk_obj.document.filename if chunk_obj.document else "").lower()
+
+        # Multiplier 1: Thematic Publication Boost (Publikasi Tematik Primer BPS)
+        is_thematic_match = target_patterns and any(p in doc_name for p in target_patterns)
+        if is_thematic_match:
+            score *= 3.5  # Prioritas tertinggi mutlak untuk publikasi tematik
+
+        # Multiplier 1B: Wilayah Level Match
+        if "provinsi" in user_prompt.lower() and "provinsi" in doc_name:
+            score *= 1.6
+        elif "kota" in user_prompt.lower() and "kota" in doc_name:
+            score *= 1.6
+
+        # Multiplier 2: Kesesuaian tahun jika diminta (Prioritaskan edisi tahun dokumen primer)
+        if requested_years:
+            if any(str(y) in doc_name for y in requested_years):
+                score *= 2.0  # Prioritas tertinggi: Dokumen edisi tahun yang diminta
+            elif any(str(y) in (chunk_obj.chunk_content or "").lower() for y in requested_years):
+                score *= 1.2  # Menyebutkan tahun dalam konten tabel/teks
+        else:
+            # Jika user mencari data umum/terbaru, beri recency boost pada publikasi yang relevan
+            if is_thematic_match or not target_patterns:
+                year_matches = re.findall(r'\b(20\d{2}|19\d{2})\b', doc_name)
+                if year_matches:
+                    max_doc_year = max(int(y) for y in year_matches)
+                    if max_doc_year >= 2024:
+                        score *= 1.8
+                    elif max_doc_year == 2023:
+                        score *= 1.4
+                    elif max_doc_year == 2022:
+                        score *= 1.1
+
+        # Konversi RRF score ke nilai synthetic distance (semakin tinggi RRF, semakin kecil distance)
+        synthetic_distance = max(0.05, 1.0 - (score * 25.0))
+        if cid in vector_distances:
+            blended_distance = (synthetic_distance * 0.6) + (vector_distances[cid] * 0.4)
+        else:
+            blended_distance = synthetic_distance
+
+        combined_scores.append((chunk_obj, float(blended_distance)))
+
+    # Urutkan dari yang paling relevan (jarak terkecil)
+    combined_scores.sort(key=lambda x: x[1])
+
+    # Ambil sebatas limit
+    final_results = combined_scores[:limit]
     return final_results
 
 @chat_bp.route('/stream', methods=['POST'])
@@ -262,49 +367,15 @@ def stream():
                 mimetype='application/json'
             )
 
-    cached_response_text = cache.get(user_prompt)
 
-    # Hanya gunakan cache jika respons bukan merupakan pesan "data tidak tersedia"
-    if cached_response_text and not any(neg in cached_response_text.lower() for neg in ["tidak tersedia", "belum dirilis", "tidak ditemukan data"]):
-        current_app.logger.info(f"CACHE HIT: Mengambil jawaban dari cache untuk prompt: '{user_prompt}'")
-
-        # Log tetap dibuat agar riwayat chat tersimpan
-        log = PromptLog(
-            user_id=user_id,
-            user_prompt=user_prompt,
-            session_id=session_id,
-            detected_intent="cache_hit",
-            model_response=cached_response_text,  # Langsung simpan jawaban
-            processing_time_ms=0,
-            found_results=True
-        )
-        db.session.add(log)
-        db.session.commit()
-
-        def generate_from_cache():
-            # Simulasi status "thinking" sejenak (agar UX konsisten)
-            yield send_thinking_status("cached", "Menemukan jawaban di memori (Cache Hit)...")
-            yield f"data: {json.dumps({'thinking': False})}\n\n"
-
-            # Simulasi streaming (pecah teks jadi chunk kecil) agar efek ketikan tetap ada
-            chunk_size = 50
-            for i in range(0, len(cached_response_text), chunk_size):
-                chunk = cached_response_text[i:i + chunk_size]
-                sse_chunk = json.dumps({"text": chunk})
-                yield f"data: {sse_chunk}\n\n"
-                # time.sleep(0.01) # Opsional: jeda dikit biar lebih smooth
-
-            yield "data: [DONE]\n\n"
-
-        return Response(generate_from_cache(), mimetype='text/event-stream')
 
     db.session.expire_all()
 
     specific_doc = None
-    doc_pattern = re.search(r'(?:dokumen|file|pdf)\s+([\w\s\-\.]+)', user_prompt, re.IGNORECASE)
+    doc_pattern = re.search(r'(?:dokumen|file|pdf|publikasi)\s+([\w\s\-\.]+)', user_prompt, re.IGNORECASE)
     if doc_pattern:
-        specific_doc = doc_pattern.group(1)
-        current_app.logger.info(f"Detected specific document request: {specific_doc}")
+        specific_doc = resolve_specific_document_name(doc_pattern.group(1))
+        current_app.logger.info(f"Detected specific document request: '{specific_doc}' (from raw hint: '{doc_pattern.group(1)}')")
 
     requested_years = extract_years(user_prompt)
 
@@ -324,13 +395,12 @@ def stream():
     
     def generate():
         model_response_buffer = ""
+        relevant_items = []
+        final_prompt = ""
         
         with app.app_context():
             try:
-                # Step 1-2: Analisis & History
-                yield send_thinking_status("searching", 
-                    f"Mencari data {'di ' + specific_doc if specific_doc else ''} "
-                    f"untuk tahun {', '.join(map(str, requested_years)) if requested_years else 'terbaru'}...")
+                # Step 1-2: Analisis Riwayat & Kontekstualisasi Query Percakapan
                 recent_history_logs = PromptLog.query.filter(
                     PromptLog.session_id == session_id,
                     PromptLog.model_response.isnot(None),
@@ -339,48 +409,54 @@ def stream():
                 ).order_by(PromptLog.id.desc()).limit(4).all()
                 recent_history_logs.reverse()
                 history_context = format_conversation_history(recent_history_logs)
+
+                # Sambungkan pertanyaan lanjutan/pendek (misal: 'coba 2022') dengan subjek sebelumnya
+                search_query = contextualize_user_query(user_prompt, recent_history_logs)
+                effective_years = extract_years(search_query) or requested_years
+
+                is_greeting = detect_intent(user_prompt) == 'sapaan' and not effective_years and not specific_doc
+                if is_greeting:
+                    yield send_thinking_status("searching", "Merespons sapaan...")
+                else:
+                    yield send_thinking_status("searching", 
+                        f"Mencari data {'di ' + specific_doc if specific_doc else ''} "
+                        f"untuk tahun {', '.join(map(str, effective_years)) if effective_years else 'terbaru'}...")
                 
-                # Step 3: Pencarian Awal
-                initial_results_with_distance = get_combined_relevant_results(
-                    user_prompt, 
-                    requested_years=requested_years, 
-                    specific_document=specific_doc,
-                    limit=80
-                )
+                # Step 3: Pencarian Awal (Hybrid Search)
+                if is_greeting:
+                    initial_results_with_distance = []
+                else:
+                    initial_results_with_distance = get_combined_relevant_results(
+                        search_query, 
+                        requested_years=effective_years, 
+                        specific_document=specific_doc,
+                        limit=15
+                    )
 
                 # ----------------- DEBUG PRE-SPK (INSERT) -----------------
                 try:
-                    # rekalkulasi expanded_prompt singkat (sama seperti di get_combined_relevant_results)
-                    expanded_prompt = expand_query_with_synonyms(user_prompt, BPS_ACRONYM_DICTIONARY)
-                    if requested_years:
-                        expanded_prompt = expand_query_with_years(expanded_prompt, requested_years)
+                    # rekalkulasi expanded_prompt singkat
+                    expanded_prompt = expand_query_with_synonyms(search_query, BPS_ACRONYM_DICTIONARY)
+                    if effective_years:
+                        expanded_prompt = expand_query_with_years(expanded_prompt, effective_years)
 
                     # ringkasan items pre-spk (batasi top 10 untuk kenyamanan)
                     debug_items = []
                     for idx, pair in enumerate(initial_results_with_distance[:10]):
                         item, dist = pair
-                        if isinstance(item, BeritaBps):
-                            debug_items.append({
-                                "rank": idx + 1,
-                                "type": "berita",
-                                "id": item.id,
-                                "title": item.judul_berita,
-                                "tanggal_rilis": item.tanggal_rilis.isoformat(),
-                                "distance": float(dist)
-                            })
-                        else:
-                            debug_items.append({
-                                "rank": idx + 1,
-                                "type": "document_chunk",
-                                "id": str(item.id),
-                                "filename": item.document.filename if getattr(item, "document", None) else None,
-                                "page": getattr(item, "page_number", None),
-                                "distance": float(dist)
-                            })
+                        debug_items.append({
+                            "rank": idx + 1,
+                            "type": "document_chunk",
+                            "id": str(item.id),
+                            "filename": item.document.filename if getattr(item, "document", None) else None,
+                            "page": getattr(item, "page_number", None),
+                            "distance": float(dist)
+                        })
 
                     debug_summary = {
                         "expanded_prompt": expanded_prompt,
-                        "requested_years": requested_years,
+                        "search_query": search_query,
+                        "requested_years": effective_years,
                         "specific_document": specific_doc,
                         "top_count": len(debug_items),
                         "items": debug_items
@@ -399,36 +475,26 @@ def stream():
                     yield send_thinking_status("debug_search_error", str(e))
                 # ----------------- END DEBUG -----------------
                 
-                relevant_items = []
-                
                 # Step 4: Ranking (dengan atau tanpa SPK berdasarkan saklar)
                 if initial_results_with_distance:
                     if DEMO_MODE_USE_SPK:
                         # KASUS 1: Menggunakan SPK (SAW)
                         yield send_thinking_status("ranking", f"Menerapkan SPK-SAW untuk mengurutkan {len(initial_results_with_distance)} hasil...")
-                        relevant_items = rerank_with_dss(initial_results_with_distance, requested_years=requested_years)
+                        ranked = rerank_with_dss(initial_results_with_distance, requested_years=effective_years)
+                        relevant_items = ranked[:8]  # Ambil top 8 chunk terbaik untuk efisiensi & keringkasan respons
                     else:
                         # KASUS 2: Tanpa SPK
                         yield send_thinking_status("ranking", "Menggunakan urutan relevansi standar (tanpa SPK)...")
                         # Mengambil item dari tuple (item, distance), urutan berdasarkan skor vektor
-                        relevant_items = [item for item, dist in initial_results_with_distance]
+                        relevant_items = [item for item, dist in initial_results_with_distance][:8]
 
-                # Step 5: Membangun Konteks & Prompt Final
+                # Step 5: Membangun Konteks, Katalog Nyata, & Prompt Final
                 yield send_thinking_status("building", "Menyusun konteks jawaban...")
-                context = build_context(relevant_items, requested_years)
-                final_prompt = build_final_prompt(context, user_prompt, history_context, requested_years)
+                context = build_context(relevant_items, effective_years)
+                catalog_context = get_available_documents_catalog()
+                final_prompt = build_final_prompt(context, user_prompt, history_context, effective_years, catalog_context=catalog_context)
 
-                # Update log dengan data pra-generasi
-                log_to_update = db.session.get(PromptLog, log_id)
-                if log_to_update:
-                    retrieved_ids = [{'type': 'berita', 'id': item.id} if isinstance(item, BeritaBps) else {'type': 'document_chunk', 'id': str(item.id)} for item in relevant_items]
-                    log_to_update.found_results = bool(relevant_items)
-                    log_to_update.retrieved_news_count = len(relevant_items)
-                    log_to_update.retrieved_news_ids = retrieved_ids
-                    log_to_update.final_prompt = final_prompt
-                    db.session.commit()
-
-                # Step 6: Generate respons
+                # Step 6: Generate respons secara instan (TTFT Ultra-Fast)
                 yield send_thinking_status("generating", "Menyusun jawaban...")
                 yield f"data: {json.dumps({'thinking': False})}\n\n"
                 
@@ -441,6 +507,7 @@ def stream():
                 yield "data: [DONE]\n\n"
                 
             except Exception as e:
+                db.session.rollback()
                 app.logger.error(f'Error in stream generation: {e}')
 
                 if "API_LIMIT_EMBEDDING_EXHAUSTED" in str(e):
@@ -453,19 +520,37 @@ def stream():
                 error_msg = json.dumps({'error': {'message': str(e)}})
                 yield f"data: {error_msg}\n\n"
             finally:
-                processing_time = int((time.time() - start_time) * 1000)
-                final_log_to_update = db.session.get(PromptLog, log_id)
-                if final_log_to_update:
-                    final_log_to_update.model_response = model_response_buffer if model_response_buffer else "[No Content]"
-                    final_log_to_update.processing_time_ms = processing_time
-                    db.session.commit()
-                    app.logger.info(f'Log updated successfully for log_id: {log_id}')
+                try:
+                    processing_time = int((time.time() - start_time) * 1000)
+                    final_log_to_update = db.session.get(PromptLog, log_id)
+                    if final_log_to_update:
+                        if relevant_items:
+                            retrieved_ids = [{'type': 'document_chunk', 'id': str(item.id)} for item in relevant_items]
+                            final_log_to_update.found_results = True
+                            final_log_to_update.retrieved_news_count = len(relevant_items)
+                            final_log_to_update.retrieved_news_ids = retrieved_ids
+                        if 'final_prompt' in locals():
+                            final_log_to_update.final_prompt = final_prompt
+                        final_log_to_update.model_response = model_response_buffer if model_response_buffer else "[No Content]"
+                        final_log_to_update.processing_time_ms = processing_time
 
-                if model_response_buffer and not model_response_buffer.startswith("Error:") and not any(neg in model_response_buffer.lower() for neg in ["tidak tersedia", "belum dirilis", "tidak ditemukan data"]):
-                    try:
-                        cache.set(user_prompt, model_response_buffer, timeout=1800)
-                    except Exception:
-                        pass
+                        # Update smart title otomatis jika session belum memiliki custom_title manual
+                        if session_id and user_prompt and detect_intent(user_prompt) != 'sapaan':
+                            existing_custom_title = PromptLog.query.filter(
+                                PromptLog.session_id == session_id,
+                                PromptLog.custom_title.isnot(None)
+                            ).first()
+                            if not existing_custom_title:
+                                smart_title = get_smart_title_from_prompt(user_prompt)
+                                final_log_to_update.custom_title = smart_title
+
+                        db.session.commit()
+                        app.logger.info(f'Log updated successfully for log_id: {log_id}')
+                except Exception as final_err:
+                    db.session.rollback()
+                    app.logger.error(f'Error updating final log in stream finally block: {final_err}')
+
+
 
     return Response(generate(), mimetype='text/event-stream')
 
@@ -535,12 +620,7 @@ def stream():
 #                     final_prompt = build_final_prompt(context, user_prompt, history_context)
 
 #                     # Simpan retrieved_ids
-#                     retrieved_ids = []
-#                     for item in relevant_items:
-#                         if isinstance(item, BeritaBps):
-#                             retrieved_ids.append({'type': 'berita', 'id': item.id})
-#                         elif isinstance(item, DocumentChunk):
-#                             retrieved_ids.append({'type': 'document_chunk', 'id': str(item.id)})
+#                     retrieved_ids = [{'type': 'document_chunk', 'id': str(item.id)} for item in relevant_items]
 
 #                     log.found_results = bool(relevant_items)
 #                     log.retrieved_news_count = len(relevant_items)
@@ -805,18 +885,30 @@ def get_user_conversations():
 
         conversations = []
         for session_id, created_at, last_updated, count in results:
-            first_log = PromptLog.query.filter_by(session_id=session_id).order_by(PromptLog.id.asc()).first()
-            if first_log and getattr(first_log, 'custom_title', None):
-                title = first_log.custom_title
-            elif first_log:
-                title = (first_log.user_prompt[:35] + "...") if len(first_log.user_prompt) > 35 else first_log.user_prompt
+            logs_in_session = PromptLog.query.filter_by(session_id=session_id).order_by(PromptLog.id.asc()).all()
+            if not logs_in_session:
+                continue
+
+            first_log = logs_in_session[0]
+            # Cek apakah ada custom_title manual yang sudah diset
+            custom_title = next((l.custom_title for l in logs_in_session if getattr(l, 'custom_title', None)), None)
+            
+            if custom_title:
+                title = custom_title
             else:
-                title = "Percakapan Baru"
+                # Cari pertanyaan bermakna pertama (bukan sekadar sapaan halo/hai/tes)
+                substantive_log = next((l for l in logs_in_session if l.user_prompt and detect_intent(l.user_prompt) != 'sapaan'), None)
+                if substantive_log:
+                    title = get_smart_title_from_prompt(substantive_log.user_prompt)
+                elif first_log and first_log.user_prompt:
+                    title = get_smart_title_from_prompt(first_log.user_prompt)
+                else:
+                    title = "Percakapan Baru"
 
             conversations.append({
                 'conversation_id': session_id,
                 'title': title,
-                'is_pinned': bool(getattr(first_log, 'is_pinned', False)) if first_log else False,
+                'is_pinned': bool(getattr(first_log, 'is_pinned', False)),
                 'created_at': created_at.isoformat() if created_at else None,
                 'last_updated': last_updated.isoformat() if last_updated else None,
                 'message_count': count
@@ -824,6 +916,7 @@ def get_user_conversations():
 
         return jsonify({'conversations': conversations}), 200
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f"Error fetching user conversations: {e}")
         return jsonify({'error': 'Gagal mengambil daftar percakapan.'}), 500
 

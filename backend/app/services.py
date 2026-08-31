@@ -84,7 +84,7 @@ class EmbeddingService:
         logging.info(f"EmbeddingService rotated to API key index: {self.current_key_index}")
         return True
 
-    def generate(self, text: str, dimensionality: int = 3072) -> list | None:
+    def generate(self, text: str, dimensionality: int = 768) -> list | None:
         if not text:
             return None
 
@@ -312,10 +312,12 @@ class GeminiService:
             
             try:
                 response = self.client.models.generate_content_stream(
-                    model='gemini-3.5-flash',
+                    model='gemini-2.5-flash',
                     contents=prompt,
                     config=types.GenerateContentConfig(
-                        thinking_config=types.ThinkingConfig(thinking_budget=0)
+                        thinking_config=types.ThinkingConfig(thinking_budget=0),
+                        max_output_tokens=4096,
+                        temperature=0.2
                     )
                 )
                 
@@ -358,15 +360,14 @@ class GeminiService:
                 # Error lain
                 else:
                     logging.error(f"Gemini API error: {e}")
-                    raise
+                    raise e
         
-        raise Exception("All API keys have exceeded their quota")
+        raise Exception("Failed to generate content after trying all API keys")
 
-    def generate_content(self, prompt: str) -> str | None:
-        """Generate content tanpa streaming (synchronous)."""
+    def generate_content(self, prompt: str):
+        """Generate content non-streaming dari Gemini API."""
         max_attempts = len(self.api_keys)
         
-        # Pastikan client siap, jika gagal putar terus sampai dapat key yang aktif
         if not self.client:
             if not self._initialize_client():
                 if not self._rotate_key():
@@ -379,8 +380,13 @@ class GeminiService:
             
             try:
                 response = self.client.models.generate_content(
-                    model='gemini-3.5-flash',
-                    contents=prompt
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        thinking_config=types.ThinkingConfig(thinking_budget=0),
+                        max_output_tokens=4096,
+                        temperature=0.2
+                    )
                 )
                 
                 # Tandai request sukses
@@ -534,16 +540,15 @@ class RobustTableDetector:
         return all_chunks
 
 
-def process_and_save_pdf(pdf_path: str, job_id: int = None, progress_callback=None) -> Dict[str, Any]:
+def process_and_save_pdf(pdf_path: str, job_id: int = None, progress_callback=None, link: str = None, doc_metadata: dict = None) -> Dict[str, Any]:
     """
     Memproses PDF dengan strategi Hybrid Chunking + Progress Reporting.
-    FIX: Menambahkan Final Flush untuk menyimpan sisa buffer teks di akhir dokumen.
+    Mendukung penyimpanan link sumber digital BPS dan metadata publikasi.
     """
     import os
     import hashlib
     import fitz # PyMuPDF
     import logging
-    # Pastikan import helper function lain (semantic_sliding_window_chunker, dll) sudah ada di file ini
 
     base_filename = os.path.splitext(os.path.basename(pdf_path))[0]
     original_filename = os.path.basename(pdf_path)
@@ -562,7 +567,18 @@ def process_and_save_pdf(pdf_path: str, job_id: int = None, progress_callback=No
         total_pages = len(doc_for_pages)
         doc_for_pages.close()
 
+        combined_meta = {'source_path': pdf_path}
+        if doc_metadata:
+            combined_meta.update(doc_metadata)
+
         if document:
+            # Update link dan metadata jika sebelumnya belum ada
+            if link and not document.link:
+                document.link = link
+            if doc_metadata:
+                document.doc_metadata = {**(document.doc_metadata or {}), **doc_metadata}
+            db.session.commit()
+
             # Cek chunk terakhir untuk resume
             last_chunk = DocumentChunk.query.filter_by(document_id=document.id) \
                 .order_by(DocumentChunk.page_number.desc()).first()
@@ -576,18 +592,18 @@ def process_and_save_pdf(pdf_path: str, job_id: int = None, progress_callback=No
                 start_page = last_chunk.page_number + 1
                 logging.info(f"Resuming '{original_filename}' from page {start_page}.")
             else:
-                # Dokumen ada di DB tapi chunk kosong (mungkin proses sebelumnya gagal total)
                 start_page = 1
         else:
             # Buat entry dokumen baru
             document = PdfDocument(
                 filename=original_filename,
+                link=link,
                 total_pages=total_pages,
                 document_hash=file_hash,
-                doc_metadata={'source_path': pdf_path}
+                doc_metadata=combined_meta
             )
             db.session.add(document)
-            db.session.commit() # Commit awal untuk dapat ID
+            db.session.commit()
 
     except Exception as e:
         logging.error(f"Gagal saat inisialisasi pra-proses untuk {pdf_path}: {e}")

@@ -2,7 +2,6 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 
 // --- Komponen Ikon ---
-// Ikon-ikon ini dibuat dari SVG yang Anda berikan.
 
 const DashboardIcon = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11,39 +10,6 @@ const DashboardIcon = () => (
       strokeLinejoin="round"
       strokeWidth={2}
       d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-    />
-  </svg>
-);
-
-const AddNewsIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-    />
-  </svg>
-);
-
-const DataBrsIcon = () => (
-  <svg
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-    className="w-6 h-6"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-    />
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M9 13h6M9 17h6"
     />
   </svg>
 );
@@ -109,6 +75,17 @@ const KeyIcon = () => (
   </svg>
 );
 
+const TagNavIcon = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+    />
+  </svg>
+);
+
 const NavItem = ({ to, children, onClick, icon }) => (
   <NavLink
     to={to}
@@ -147,19 +124,18 @@ export default function Sidebar({ isOpen, onClose }) {
             Beranda
           </NavItem>
           <NavItem
-            to="/berita-resmi-statistik"
-            onClick={onClose}
-            icon={<DataBrsIcon />}
-          >
-            {" "}
-            Data BRS
-          </NavItem>
-          <NavItem
             to="/manajemen-dokumen"
             onClick={onClose}
             icon={<DocumentIcon />}
           >
             Data Dokumen
+          </NavItem>
+          <NavItem
+            to="/thematic-mappings"
+            onClick={onClose}
+            icon={<TagNavIcon />}
+          >
+            Pemetaan Tematik
           </NavItem>
           <NavItem to="/analytics" onClick={onClose} icon={<AnalyticsIcon />}>
             Analisis

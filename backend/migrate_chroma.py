@@ -31,7 +31,7 @@ def migrate():
         return False
     
     # Migrate each collection
-    collections_to_migrate = ['berita_bps', 'document_chunks']
+    collections_to_migrate = ['document_chunks']
     
     for collection_name in collections_to_migrate:
         print(f"\n📦 Migrating collection: {collection_name}")
