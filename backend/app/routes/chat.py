@@ -507,36 +507,13 @@ def stream():
                 yield send_thinking_status("generating", "Menyusun jawaban...")
                 yield f"data: {json.dumps({'thinking': False})}\n\n"
                 
-                # Streaming dari Gemini Service dengan penanganan anti-halusinasi tautan
-                sumber_digital_detected = False
-                sumber_digital_raw = ""
-
+                # Streaming dari Gemini Service
                 for text_chunk in gemini_service.stream_generate_content(final_prompt):
-                    model_response_buffer += text_chunk
-                    
-                    if not sumber_digital_detected:
-                        # Cek apakah buffer mulai memasuki blok Sumber Digital di akhir jawaban
-                        recent_tail = model_response_buffer[-120:]
-                        if "### Sumber Digital" in recent_tail or "Sumber Digital" in recent_tail:
-                            sumber_digital_detected = True
-                            sumber_digital_raw += text_chunk
-                        else:
-                            sse_chunk = json.dumps({"text": text_chunk})
-                            yield f"data: {sse_chunk}\n\n"
-                    else:
-                        sumber_digital_raw += text_chunk
+                    clean_chunk = re.sub(r'-{6,}', '---', text_chunk)
+                    model_response_buffer += clean_chunk
+                    sse_chunk = json.dumps({"text": clean_chunk})
+                    yield f"data: {sse_chunk}\n\n"
                 
-                # Jika ada bagian Sumber Digital, sanitasi link dan kirim hanya link yang 100% valid dari konteks
-                if sumber_digital_detected and sumber_digital_raw:
-                    sanitized_full = sanitize_ai_response_links(model_response_buffer, allowed_links, doc_to_link)
-                    idx = sanitized_full.rfind("### Sumber Digital")
-                    if idx != -1:
-                        clean_sumber_block = sanitized_full[idx:]
-                        yield f"data: {json.dumps({'text': clean_sumber_block})}\n\n"
-                    model_response_buffer = sanitized_full
-                else:
-                    model_response_buffer = sanitize_ai_response_links(model_response_buffer, allowed_links, doc_to_link)
-
                 yield "data: [DONE]\n\n"
                 
             except Exception as e:

@@ -331,7 +331,8 @@ class GeminiService:
                 
                 for chunk in response:
                     if hasattr(chunk, 'text') and chunk.text:
-                        yield chunk.text
+                        clean_text = re.sub(r'-{6,}', '---', chunk.text)
+                        yield clean_text
                 
                 return  # Streaming selesai sukses
                 
