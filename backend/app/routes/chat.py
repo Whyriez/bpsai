@@ -13,7 +13,8 @@ from app.helpers import (
     BPS_THEMATIC_DOCUMENT_MAPPING, get_thematic_document_patterns,
     resolve_specific_document_name, format_conversation_history,
     rerank_with_dss, expand_query_with_years, get_smart_title_from_prompt,
-    contextualize_user_query, get_available_documents_catalog
+    contextualize_user_query, get_available_documents_catalog,
+    get_allowed_links_from_chunks, sanitize_ai_response_links
 )
 from sqlalchemy.orm import aliased
 from sqlalchemy import select, extract, or_, func
@@ -488,22 +489,54 @@ def stream():
                         # Mengambil item dari tuple (item, distance), urutan berdasarkan skor vektor
                         relevant_items = [item for item, dist in initial_results_with_distance][:8]
 
-                # Step 5: Membangun Konteks, Katalog Nyata, & Prompt Final
+                # Step 5: Membangun Konteks, Katalog Nyata, Daftar Tautan Resmi, & Prompt Final
                 yield send_thinking_status("building", "Menyusun konteks jawaban...")
                 context = build_context(relevant_items, effective_years)
                 catalog_context = get_available_documents_catalog()
-                final_prompt = build_final_prompt(context, user_prompt, history_context, effective_years, catalog_context=catalog_context)
+                allowed_links, doc_to_link = get_allowed_links_from_chunks(relevant_items)
+                final_prompt = build_final_prompt(
+                    context, 
+                    user_prompt, 
+                    history_context, 
+                    effective_years, 
+                    catalog_context=catalog_context,
+                    official_links_map=doc_to_link
+                )
 
-                # Step 6: Generate respons secara instan (TTFT Ultra-Fast)
+                # Step 6: Generate respons secara instan (TTFT Ultra-Fast) dengan Zero-Hallucination Link Guard
                 yield send_thinking_status("generating", "Menyusun jawaban...")
                 yield f"data: {json.dumps({'thinking': False})}\n\n"
                 
-                # Streaming dari Gemini Service
+                # Streaming dari Gemini Service dengan penanganan anti-halusinasi tautan
+                sumber_digital_detected = False
+                sumber_digital_raw = ""
+
                 for text_chunk in gemini_service.stream_generate_content(final_prompt):
                     model_response_buffer += text_chunk
-                    sse_chunk = json.dumps({"text": text_chunk})
-                    yield f"data: {sse_chunk}\n\n"
+                    
+                    if not sumber_digital_detected:
+                        # Cek apakah buffer mulai memasuki blok Sumber Digital di akhir jawaban
+                        recent_tail = model_response_buffer[-120:]
+                        if "### Sumber Digital" in recent_tail or "Sumber Digital" in recent_tail:
+                            sumber_digital_detected = True
+                            sumber_digital_raw += text_chunk
+                        else:
+                            sse_chunk = json.dumps({"text": text_chunk})
+                            yield f"data: {sse_chunk}\n\n"
+                    else:
+                        sumber_digital_raw += text_chunk
                 
+                # Jika ada bagian Sumber Digital, sanitasi link dan kirim hanya link yang 100% valid dari konteks
+                if sumber_digital_detected and sumber_digital_raw:
+                    sanitized_full = sanitize_ai_response_links(model_response_buffer, allowed_links, doc_to_link)
+                    idx = sanitized_full.rfind("### Sumber Digital")
+                    if idx != -1:
+                        clean_sumber_block = sanitized_full[idx:]
+                        yield f"data: {json.dumps({'text': clean_sumber_block})}\n\n"
+                    model_response_buffer = sanitized_full
+                else:
+                    model_response_buffer = sanitize_ai_response_links(model_response_buffer, allowed_links, doc_to_link)
+
                 yield "data: [DONE]\n\n"
                 
             except Exception as e:
@@ -531,7 +564,15 @@ def stream():
                             final_log_to_update.retrieved_news_ids = retrieved_ids
                         if 'final_prompt' in locals():
                             final_log_to_update.final_prompt = final_prompt
-                        final_log_to_update.model_response = model_response_buffer if model_response_buffer else "[No Content]"
+                        
+                        # Pastikan response yang tersimpan di DB log juga 100% bersih dari link halusinasi
+                        clean_db_response = sanitize_ai_response_links(
+                            model_response_buffer, 
+                            allowed_links if 'allowed_links' in locals() else set(), 
+                            doc_to_link if 'doc_to_link' in locals() else {}
+                        ) if model_response_buffer else "[No Content]"
+                        
+                        final_log_to_update.model_response = clean_db_response
                         final_log_to_update.processing_time_ms = processing_time
 
                         # Update smart title otomatis jika session belum memiliki custom_title manual

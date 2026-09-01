@@ -391,6 +391,19 @@ def normalize_series_title(filename: str) -> str:
 
 _catalog_cache = {"data": None, "timestamp": 0}
 
+def invalidate_catalog_cache():
+    """
+    Mereset in-memory catalog cache dan Flask-Cache agar perubahan data
+    (misal: update link sumber atau judul dokumen dari dashboard) langsung tersinkronisasi seketika.
+    """
+    global _catalog_cache
+    _catalog_cache = {"data": None, "timestamp": 0}
+    try:
+        from app import cache
+        cache.clear()
+    except Exception:
+        pass
+
 def get_available_documents_catalog() -> str:
     """
     Mengambil daftar seri publikasi PDF dan rentang tahun yang benar-benar tersimpan di database BPS.
@@ -628,14 +641,125 @@ def format_conversation_history(history: list[PromptLog]) -> str:
     return formatted_history
 
 
-def build_final_prompt(context: str, user_prompt: str, history_context: str = "", requested_years: list = [], catalog_context: str = "") -> str:
+def get_allowed_links_from_chunks(relevant_items: list) -> tuple[set, dict]:
+    """
+    Mengambil daftar link resmi yang valid dan pemetaan dokumen -> link dari chunks konteks.
+    Hanya link yang benar-benar tersimpan di database yang diizinkan (Zero Hallucination).
+    """
+    allowed_links = set()
+    doc_to_link = {}
+    if not relevant_items:
+        return allowed_links, doc_to_link
+
+    for item in relevant_items:
+        chunk = item[0] if isinstance(item, (tuple, list)) and len(item) > 0 else item
+        doc = getattr(chunk, 'document', None)
+        if doc:
+            fn = getattr(doc, 'filename', None)
+            lk = getattr(doc, 'link', None)
+            if lk and lk.strip():
+                clean_lk = lk.strip()
+                allowed_links.add(clean_lk)
+                if fn:
+                    clean_fn = fn.strip()
+                    doc_to_link[clean_fn] = clean_lk
+                    doc_to_link[re.sub(r'\.pdf$', '', clean_fn, flags=re.IGNORECASE).strip()] = clean_lk
+
+    return allowed_links, doc_to_link
+
+
+def sanitize_ai_response_links(response_text: str, allowed_links: set, doc_name_to_link: dict = None) -> str:
+    """
+    Memastikan 100% secara ketat (Strict Defense Layer) bahwa response AI TIDAK PERNAH memuat link halusinasi.
+    1. Hanya URL yang ada dalam `allowed_links` yang diizinkan untuk ditampilkan.
+    2. URL buatan / halusinasi (tidak ada di allowed_links) akan dibersihkan atau diubah menjadi teks biasa.
+    3. URL di dalam teks body akan diubah menjadi teks tebal (karena aturan melarang link di tengah teks).
+    4. Format link yang tidak rapi (seperti '* Doc (url)') dinormalisasi menjadi '* [Doc](url)'.
+    5. Bagian '### Sumber Digital' yang tidak memiliki link valid akan dihapus total.
+    6. Link duplikat di '### Sumber Digital' otomatis dideduplikasi.
+    """
+    if not response_text:
+        return response_text
+
+    if doc_name_to_link is None:
+        doc_name_to_link = {}
+
+    normalized_allowed = {lk.strip().rstrip('/') for lk in allowed_links if lk}
+
+    def is_link_allowed(url: str) -> bool:
+        if not url:
+            return False
+        clean = url.strip().rstrip('/')
+        return clean in normalized_allowed
+
+    # Pisahkan teks utama (body) dan bagian Sumber Digital
+    sumber_pattern = re.compile(r'(###\s*Sumber Digital\s*)(.*)', re.DOTALL | re.IGNORECASE)
+    match_sumber = sumber_pattern.search(response_text)
+
+    if match_sumber:
+        main_text = response_text[:match_sumber.start()].rstrip()
+        sumber_text = match_sumber.group(2)
+    else:
+        main_text = response_text
+        sumber_text = ""
+
+    # --- 1. Sanitasi Body / Teks Utama ---
+    def sanitize_body_markdown_link(match):
+        title = match.group(1).strip()
+        return f"**{title}**"
+
+    main_text = re.sub(r'\[([^\]]+)\]\((https?://[^\s\)]+)\)', sanitize_body_markdown_link, main_text)
+
+    def sanitize_body_raw_url(match):
+        url = match.group(0).strip().rstrip('.,;:)')
+        if is_link_allowed(url):
+            return url
+        return ""
+
+    main_text = re.sub(r'https?://[^\s\)\"\'\<\>]+', sanitize_body_raw_url, main_text)
+
+    # --- 2. Sanitasi Bagian Sumber Digital ---
+    valid_sumber_items = []
+    seen_urls = set()
+
+    if sumber_text:
+        # A. Cek format Markdown: [Title](URL)
+        md_links = re.findall(r'\[([^\]]+)\]\((https?://[^\s\)]+)\)', sumber_text)
+        for title, url in md_links:
+            clean_url = url.strip().rstrip('/')
+            if is_link_allowed(clean_url) and clean_url not in seen_urls:
+                seen_urls.add(clean_url)
+                clean_title = re.sub(r'\.pdf$', '', title, flags=re.IGNORECASE).strip()
+                valid_sumber_items.append(f"* [{clean_title}]({clean_url})")
+
+        # B. Cek format Non-Markdown: * Title.pdf (https://...) atau * Title https://...
+        parenthesis_links = re.findall(r'\*\s*([^\n\(\]]+?)(?:\s*\(|\s+)(https?://[^\s\)\n]+)\)?', sumber_text)
+        for title, url in parenthesis_links:
+            clean_url = url.strip().rstrip('/')
+            if is_link_allowed(clean_url) and clean_url not in seen_urls:
+                seen_urls.add(clean_url)
+                clean_title = re.sub(r'\.pdf$', '', title, flags=re.IGNORECASE).strip()
+                clean_title = clean_title.lstrip('* -').strip()
+                valid_sumber_items.append(f"* [{clean_title}]({clean_url})")
+
+    # --- 3. Rekonstruksi Hasil Akhir ---
+    result = main_text
+    if valid_sumber_items:
+        result += "\n\n### Sumber Digital\n" + "\n".join(valid_sumber_items)
+
+    result = re.sub(r'\n{3,}', '\n\n', result).strip()
+    return result
+
+
+def build_final_prompt(context: str, user_prompt: str, history_context: str = "", requested_years: list = [], catalog_context: str = "", official_links_map: dict = None) -> str:
     """
     Prompt Engineering:
     1. Anti-Halusinasi & Konsistensi Fakta Berdasarkan Katalog Nyata.
-    2. Jawaban SINGKAT, PADAT, dan ON-POINT (tanpa bertele-tele).
-    3. Percakapan natural tanpa sapaan berulang di setiap turn.
-    4. Sumber Digital HANYA muncul jika mengutip dokumen PDF dengan link valid.
-    5. Tabel DISPLIT per halaman tapi WAJIB TAMPIL (Anti-Skip).
+    2. Zero-Hallucination Link: HANYA salin persis link dari daftar tautan resmi di konteks.
+    3. Jawaban SINGKAT, PADAT, dan ON-POINT (tanpa bertele-tele / Zero AI Slop).
+    4. Percakapan natural tanpa sapaan berulang di setiap turn.
+    5. Sumber Digital HANYA muncul jika mengutip dokumen PDF dengan link valid.
+    6. Tabel DISPLIT per halaman tapi WAJIB TAMPIL (Anti-Skip).
     """
     year_instruction = ""
     if requested_years:
@@ -656,6 +780,27 @@ WAJIB DIIKUTI (STRICT):
 --- Katalog Publikasi & Tahun yang Tersedia di Database BPS ---
 {catalog_context}
 --- Akhir Katalog Publikasi ---
+"""
+
+    official_links_section = ""
+    if official_links_map:
+        unique_links = {}
+        for fn, lk in official_links_map.items():
+            if lk and lk not in unique_links:
+                unique_links[lk] = fn
+        items_str = "\n".join([f"- Dokumen \"{fn}\" -> Link: {lk}" for lk, fn in unique_links.items()])
+        official_links_section = f"""
+--- DAFTAR TAUTAN DOKUMEN RESMI YANG DIIZINKAN (ALLOWED OFFICIAL LINKS) ---
+HANYA tautan di bawah ini yang sah dan BOLEH digunakan jika dokumennya dikutip dalam jawaban:
+{items_str}
+(PERINGATAN KERAS: Dokumen di luar daftar ini TIDAK memiliki link resmi. DILARANG KERAS MENGARANG ATAU MEMBUAT LINK UNTUK DOKUMEN LAIN).
+--- AKHIR DAFTAR TAUTAN DOKUMEN RESMI ---
+"""
+    else:
+        official_links_section = """
+--- DAFTAR TAUTAN DOKUMEN RESMI ---
+(TIDAK ADA TAUTAN DOKUMEN RESMI YANG DIIZINKAN UNTUK PERTANYAAN INI. DILARANG KERAS MEMBUAT BAGIAN '### Sumber Digital' ATAU MEMBUAT LINK APAPUN).
+--- AKHIR DAFTAR TAUTAN DOKUMEN RESMI ---
 """
 
     bps_subject_categories = """
@@ -711,6 +856,8 @@ Kamu adalah Portal Data Statistik BPS Provinsi Gorontalo. Tugasmu menyajikan dat
 {bps_subject_categories}
 
 {catalog_section}
+
+{official_links_section}
 
 {year_instruction}
 
@@ -788,17 +935,19 @@ Kamu adalah Portal Data Statistik BPS Provinsi Gorontalo. Tugasmu menyajikan dat
 #### B4. SITASI & SUMBER (DI DALAM TEKS):
 * Jika menyajikan data dari dokumen PDF, sebutkan secara singkat di awal: "Menurut **[Nama File]**, halaman [X]..."
 * **DILARANG MENULISKAN LINK/URL DI DALAM PARAGRAF MAUPUN DI TENGAH TEKS:** Tautan dokumen HANYA boleh ditaruh pada bagian `### Sumber Digital` di baris paling akhir jawaban.
+* Jangan gunakan tautan Markdown `[judul](url)` di dalam teks/tabel. Cukup sebutkan nama dokumen bertanda tebal: `**Judul Dokumen**`.
 
-#### B5. ATURAN KETAT SUMBER DIGITAL (STRICT COPY-PASTE URL):
-* **WAJIB SALIN PERSIS URL DARI KONTEKS (100% EXACT COPY-PASTE):** URL yang dimasukkan ke bagian `### Sumber Digital` WAJIB disalin persis karakter demi karakter dari baris `**Link:**` dokumen terkait pada konteks di atas.
-* **DILARANG KERAS MENGARANG, MENEBAK, ATAU MENGUBAH URL:** Dilarang mengubah tanggal rilis, tahun di dalam link, atau kode hash ID publikasi BPS.
-* **SYARAT TAMPIL:** Bagian `### Sumber Digital` **HANYA BOLEH DITAMPILKAN** jika kamu **BENAR-BENAR MENGUTIP DATA SPESIFIK DARI DOKUMEN PDF TERSEBUT** DAN dokumen tersebut memiliki tautan `**Link:**` yang valid di konteks.
-* **LARANGAN KERAS:**
-    * **JANGAN PERNAH** memunculkan judul `### Sumber Digital` untuk sapaan, percakapan umum, atau jawaban yang tidak mengutip data PDF.
-    * Jika data dikutip tapi link kosong/tidak ada, cukup sebutkan nama dokumen di teks (Bagian B4) dan **JANGAN** membuat bagian `### Sumber Digital`.
-* **FORMAT (Hanya jika ada data PDF yang dikutip dengan link valid):**
+#### B5. ATURAN MUTLAK TAUTAN RESMI & SUMBER DIGITAL (ZERO-HALLUCINATION LINK - STRICT):
+* **HANYA SALIN DARI 'DAFTAR TAUTAN DOKUMEN RESMI':** URL yang dimasukkan ke bagian `### Sumber Digital` WAJIB disalin 100% persis karakter demi karakter dari baris 'Link' di daftar resmi atas.
+* **DILARANG KERAS MENGARANG ATAU MEMBUAT URL (STRICT NEGATIVE CONSTRAINT):**
+  - JANGAN PERNAH membuat, menebak, atau mengarang URL press release, publikasi BPS (seperti `https://gorontalo.bps.go.id/id/pressrelease/...` atau `https://www.bps.go.id/...`), ataupun tautan website lainnya yang tidak diberikan secara eksplisit di daftar resmi!
+  - JANGAN mengubah tanggal rilis, tahun di dalam link, atau kode hash ID publikasi BPS.
+* **SYARAT TAMPIL `### Sumber Digital`:**
+  - Bagian `### Sumber Digital` **HANYA BOLEH DITAMPILKAN** jika kamu **BENAR-BENAR MENGUTIP DATA SPESIFIK DARI DOKUMEN PDF TERSEBUT** DAN dokumen tersebut memiliki tautan resmi yang valid di 'DAFTAR TAUTAN DOKUMEN RESMI'.
+  - Jika data dikutip tapi dokumen tidak memiliki link resmi (atau link kosong), atau untuk pertanyaan umum/sapaan/katalog: sebutkan nama dokumen di teks (B4) dan **DILARANG KERAS MEMBUAT BAGIAN `### Sumber Digital`** serta **DILARANG MEMBUAT LINK APAPUN**.
+* **FORMAT WAJIB (Hanya jika ada data PDF yang dikutip dengan link resmi):**
     ### Sumber Digital
-    * [Nama Dokumen](URL Persis Dari Konteks)
+    * [Nama Dokumen Lengkap](URL Persis Dari Daftar Tautan Resmi)
 
 ### Bagian C: ATURAN KETAT ANTI-HALUSINASI & KONSISTENSI FAKTA (STRICT GROUNDEDNESS)
 1. **DILARANG MENGARANG DATA ATAU TAHUN (STRICT NEGATIVE CONSTRAINT):**

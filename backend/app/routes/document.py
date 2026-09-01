@@ -5,6 +5,7 @@ from flask_jwt_extended import jwt_required, get_jwt
 from ..services import process_and_save_pdf, GeminiService, EmbeddingService
 from ..models import db, PdfDocument, DocumentChunk, BatchJob, JobStatus, BpsApiConfig
 from ..bps_service import BpsApiService
+from ..helpers import invalidate_catalog_cache
 from datetime import datetime, timedelta
 from sqlalchemy import cast, String, func
 from sqlalchemy.orm import aliased
@@ -172,6 +173,9 @@ def update_document_details(document_id):
             doc.link = data['link']
         
         db.session.commit()
+
+        # Invalidate cache agar update link/nama dokumen langsung tersinkron seketika
+        invalidate_catalog_cache()
         
         return jsonify({
             "message": f"Detail untuk dokumen '{doc.filename}' berhasil diperbarui.",
@@ -335,6 +339,9 @@ def delete_document(document_id):
         # 3. Hapus Record Dokumen & Chunks di Database
         db.session.delete(doc)
         db.session.commit()
+
+        # Invalidate cache agar katalog dokumen segera tersinkronisasi
+        invalidate_catalog_cache()
 
         msg = (
             f"Dokumen '{filename}' beserta file fisiknya di penyimpanan berhasil dihapus."
