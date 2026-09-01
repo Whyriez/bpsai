@@ -510,17 +510,62 @@ def stream():
                     official_links_map=doc_to_link
                 )
 
-                # Step 6: Generate respons secara instan (TTFT Ultra-Fast) dengan Zero-Hallucination Link Guard
+                # Step 6: Generate respons secara instan dengan Deterministic Official Link Attachment
                 yield send_thinking_status("generating", "Menyusun jawaban...")
                 yield f"data: {json.dumps({'thinking': False})}\n\n"
                 
-                # Streaming dari Gemini Service
+                # Streaming dari Gemini Service (hanya konten inti & tabel, menyaring link halusinasi)
+                in_sumber_digital_block = False
                 for text_chunk in gemini_service.stream_generate_content(final_prompt):
                     clean_chunk = re.sub(r'-{6,}', '---', text_chunk)
-                    model_response_buffer += clean_chunk
-                    sse_chunk = json.dumps({"text": clean_chunk})
-                    yield f"data: {sse_chunk}\n\n"
-                
+                    
+                    # Deteksi jika LLM mencoba membuat header Sumber Digital
+                    if not in_sumber_digital_block:
+                        match = re.search(r'(#{1,4}\s*Sumber Digital|\bSumber Digital\s*:|\*\*Sumber Digital\*\*)', clean_chunk, re.IGNORECASE)
+                        if match:
+                            in_sumber_digital_block = True
+                            clean_chunk = clean_chunk[:match.start()]
+                    
+                    if in_sumber_digital_block:
+                        continue  # Abaikan token buatan LLM di blok Sumber Digital
+
+                    # Sanitasi URL di body teks jika LLM mencoba menyisipkan link
+                    clean_chunk = re.sub(r'\[([^\]]+)\]\(https?://[^\s\)]+\)', r'**\1**', clean_chunk)
+                    clean_chunk = re.sub(r'https?://[^\s\)\"\'\<\>]+', '', clean_chunk)
+
+                    if clean_chunk:
+                        model_response_buffer += clean_chunk
+                        sse_chunk = json.dumps({"text": clean_chunk})
+                        yield f"data: {sse_chunk}\n\n"
+
+                # Step 7: Lampirkan Sumber Digital 100% Presisi Langsung dari Database
+                if doc_to_link:
+                    used_links = []
+                    # 1. Cari dokumen yang namanya dikutip/disebutkan dalam jawaban
+                    for doc_fn, doc_url in doc_to_link.items():
+                        clean_fn = re.sub(r'\.pdf$', '', doc_fn, flags=re.IGNORECASE).strip()
+                        if clean_fn.lower() in model_response_buffer.lower() or doc_fn.lower() in model_response_buffer.lower():
+                            used_links.append((doc_fn, doc_url))
+
+                    # 2. Jika tidak ada kecocokan nama string, ambil sumber utama dari relevant_items
+                    if not used_links and allowed_links:
+                        for doc_fn, doc_url in doc_to_link.items():
+                            used_links.append((doc_fn, doc_url))
+                            break
+
+                    if used_links:
+                        sumber_lines = ["\n\n### Sumber Digital"]
+                        seen_u = set()
+                        for fn_title, url_target in used_links:
+                            if url_target not in seen_u:
+                                seen_u.add(url_target)
+                                display_title = fn_title if fn_title.lower().endswith(".pdf") else f"{fn_title}.pdf"
+                                sumber_lines.append(f"* [{display_title}]({url_target})")
+                        
+                        sumber_chunk = "\n".join(sumber_lines) + "\n"
+                        model_response_buffer += sumber_chunk
+                        yield f"data: {json.dumps({'text': sumber_chunk})}\n\n"
+
                 yield "data: [DONE]\n\n"
                 
             except Exception as e:
