@@ -17,7 +17,8 @@ from app.helpers import (
     get_allowed_links_from_chunks, sanitize_ai_response_links
 )
 from sqlalchemy.orm import aliased
-from sqlalchemy import select, extract, or_, func
+from sqlalchemy import select, extract, or_, func, type_coerce
+from pgvector.sqlalchemy import Vector
 from app import cache
 
 chat_bp = Blueprint('chat', __name__)
@@ -96,24 +97,26 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
     SOFT_VECTOR_THRESHOLD = 0.95
 
     try:
+        prompt_vec = type_coerce(prompt_embedding, Vector(768))
+        dist_expr = DocumentChunk.embedding.cosine_distance(prompt_vec)
         base_vec_query = select(
             DocumentChunk, 
-            DocumentChunk.embedding.cosine_distance(prompt_embedding).label('distance')
+            dist_expr.label('distance')
         ).filter(DocumentChunk.embedding.isnot(None))
 
         if specific_document:
             vec_stmt = base_vec_query.join(PdfDocument)\
                 .filter(func.lower(PdfDocument.filename).contains(specific_document.lower()))\
-                .order_by('distance')\
+                .order_by(dist_expr.asc())\
                 .limit(limit * 3)
         elif priority_doc_patterns:
             doc_conds = [func.lower(PdfDocument.filename).contains(p.lower()) for p in priority_doc_patterns]
             vec_stmt = base_vec_query.join(PdfDocument)\
                 .filter(or_(*doc_conds))\
-                .order_by('distance')\
+                .order_by(dist_expr.asc())\
                 .limit(limit * 3)
         else:
-            vec_stmt = base_vec_query.order_by('distance').limit(limit * 3)
+            vec_stmt = base_vec_query.order_by(dist_expr.asc()).limit(limit * 3)
 
         vec_results = db.session.execute(vec_stmt).all()
         for rank_idx, (chunk_obj, dist) in enumerate(vec_results, 1):
@@ -273,8 +276,12 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
                         score *= 1.8
                     elif max_doc_year == 2023:
                         score *= 1.4
-                    elif max_doc_year == 2022:
-                        score *= 1.1
+        # Multiplier 3: Content Quality & Numeric Figure Boost
+        content_lower = (chunk_obj.chunk_content or "").lower()
+        if any(w in content_lower for w in ["persen", "%", "mencapai", "sebesar", "tabel ", "tabel:"]):
+            score *= 1.35  # Boost untuk chunk yang memuat angka data / tabel / persen
+        if any(w in content_lower for w in ["daftar isi", "daftar tabel", "kesalahan baku relatif", "relative standard error"]):
+            score *= 0.6   # Penalty untuk halaman indeks/lampiran metodologi tanpa angka inti
 
         # Konversi RRF score ke nilai synthetic distance (semakin tinggi RRF, semakin kecil distance)
         synthetic_distance = max(0.05, 1.0 - (score * 25.0))

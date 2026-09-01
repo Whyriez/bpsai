@@ -389,15 +389,10 @@ def normalize_series_title(filename: str) -> str:
         
     return name.title()
 
-_catalog_cache = {"data": None, "timestamp": 0}
-
 def invalidate_catalog_cache():
     """
-    Mereset in-memory catalog cache dan Flask-Cache agar perubahan data
-    (misal: update link sumber atau judul dokumen dari dashboard) langsung tersinkronisasi seketika.
+    Membersihkan cache aplikasi Flask dan menyinkronkan memori sistem.
     """
-    global _catalog_cache
-    _catalog_cache = {"data": None, "timestamp": 0}
     try:
         from app import cache
         cache.clear()
@@ -406,16 +401,10 @@ def invalidate_catalog_cache():
 
 def get_available_documents_catalog() -> str:
     """
-    Mengambil daftar seri publikasi PDF dan rentang tahun yang benar-benar tersimpan di database BPS.
+    Mengambil daftar seri publikasi PDF dan rentang tahun secara real-time dari database BPS.
     Dikelompokkan per seri publikasi utama (misal: 'Provinsi Gorontalo Dalam Angka (Tersedia tahun 2002 - 2025)')
-    agar hemat token dan tidak membuat daftar panjang per tahun.
-    Dilengkapi in-memory cache berdurasi 10 menit untuk respon instan.
+    agar hemat token dan selalu 100% mutakhir tanpa jeda cache.
     """
-    global _catalog_cache
-    now = time.time()
-    if _catalog_cache["data"] and (now - _catalog_cache["timestamp"] < 600):
-        return _catalog_cache["data"]
-
     try:
         from app.models import PdfDocument
         from collections import defaultdict
@@ -443,7 +432,6 @@ def get_available_documents_catalog() -> str:
             catalog_lines.append(f"- {series}{year_str}")
         
         res = "\n".join(catalog_lines)
-        _catalog_cache = {"data": res, "timestamp": now}
         return res
     except Exception as e:
         return "Katalog dokumen tidak dapat dimuat."
@@ -876,7 +864,7 @@ Kamu adalah Portal Data Statistik BPS Provinsi Gorontalo. Tugasmu menyajikan dat
   - JANGAN gunakan pembuka klise seperti *"Tentu saja!"*, *"Tentu, saya sangat senang membantu Anda!"*, *"Berikut adalah data yang Anda cari:"*, *"Sebagai asisten kecerdasan buatan..."*.
   - JANGAN gunakan penutup klise seperti *"Semoga informasi ini bermanfaat bagi Anda!"*, *"Jika ada pertanyaan lain jangan ragu bertanya kembali ya!"*, *"Semoga hari Anda menyenangkan!"*.
   - JANGAN gunakan emoji berlebihan (seperti 🚀🔥📈✨). Cukup gunakan Markdown murni yang bersih dan elegan.
-* **LANGSUNG PADA FAKTA & DATA:** Mulai jawaban langsung dengan sumber dan angka/tabel inti yang ditanyakan pengguna.
+* **LANGSUNG PADA FAKTA & DATA (PRIORITASKAN ANGKA RIIL):** Mulai jawaban langsung dengan sumber dan angka/tabel inti yang ditanyakan pengguna. Jika terdapat beberapa dokumen/halaman dalam konteks di mana salah satunya berisi angka/persentase riil (misal: "3,13 persen") sedangkan yang lain berisi konsep umum, **WAJIB UTAMAKAN menyajikan angka data riil tersebut**.
 * **HEMAT TOKEN & CEPAT:** Prioritaskan keringkasan dan kejelasan informasi agar pengguna dapat memahami data dalam sekejap tanpa harus membaca teks panjang yang tidak perlu.
 
 #### A2. ATURAN SAPAAN ALAMI (ANTI-PENGULANGAN):

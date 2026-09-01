@@ -16,6 +16,7 @@ import routes from "./routes";
 import ManajemenDokumen from "./pages/ManajemenDokumen";
 import DetailDokumen from "./pages/DetailDokumen";
 import ManageApiKeys from "./pages/ManageApiKeys";
+import ManajemenAkun from "./pages/ManajemenAkun";
 import ThematicMappings from "./pages/ThematicMappings";
 import Documentation from "./pages/Documentation";
 import Developer from "./pages/Developer";
@@ -67,6 +68,14 @@ export default function App() {
                     element={
                         <ProtectedRoute>
                             <ManageApiKeys/>
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path={routes.manajemenAkun}
+                    element={
+                        <ProtectedRoute>
+                            <ManajemenAkun/>
                         </ProtectedRoute>
                     }
                 />

@@ -277,3 +277,22 @@ def get_recent_activity():
         })
         
     return jsonify(activities)
+
+
+@dashboard_bp.route('/cache/clear', methods=['POST'])
+def clear_cache():
+    """
+    Endpoint untuk membersihkan seluruh cache aplikasi dan menyinkronkan data katalog.
+    """
+    try:
+        from app.helpers import invalidate_catalog_cache
+        invalidate_catalog_cache()
+        return jsonify({
+            'status': 'success',
+            'message': 'Seluruh cache sistem dan memori katalog berhasil dibersihkan dan disinkronkan ulang.'
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Gagal membersihkan cache: {str(e)}'
+        }), 500

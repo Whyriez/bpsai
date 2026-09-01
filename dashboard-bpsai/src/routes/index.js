@@ -7,6 +7,7 @@ const routes = {
     feedback: "/feedback",
     thematicMappings: "/thematic-mappings",
     manageApiKeys: "/manage-api-keys",
+    manajemenAkun: "/manajemen-akun",
     settings: "/settings",
     documentation: "/documentation",
     developer: "/developer",

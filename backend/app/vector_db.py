@@ -14,7 +14,19 @@ def generate_chunk_embedding(mapper, connection, target):
         print(f"Error generating embedding for DocumentChunk ID {target.id}: {e}")
 
 def register_db_listeners():
-    """Mendaftarkan trigger saat aplikasi Flask dimulai"""
+    """Mendaftarkan trigger dan type handler saat aplikasi Flask dimulai"""
     # Listener untuk Document PDF
     event.listen(DocumentChunk, 'before_insert', generate_chunk_embedding)
-    event.listen(DocumentChunk, 'before_update', generate_chunk_embedding)
+    event.listen(DocumentChunk, 'before_update', generate_chunk_embedding)
+
+    try:
+        from pgvector.psycopg2 import register_vector
+        from app.models import db
+        @event.listens_for(db.engine, "connect")
+        def register_pgvector_connect(dbapi_connection, connection_record):
+            try:
+                register_vector(dbapi_connection)
+            except Exception:
+                pass
+    except Exception:
+        pass

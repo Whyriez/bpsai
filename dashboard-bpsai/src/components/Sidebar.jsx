@@ -86,6 +86,17 @@ const TagNavIcon = () => (
   </svg>
 );
 
+const UsersIcon = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+    />
+  </svg>
+);
+
 const NavItem = ({ to, children, onClick, icon }) => (
   <NavLink
     to={to}
@@ -145,6 +156,13 @@ export default function Sidebar({ isOpen, onClose }) {
           </NavItem>
           <NavItem to="/manage-api-keys" onClick={onClose} icon={<KeyIcon />}>
             Data API Key
+          </NavItem>
+          <NavItem
+            to="/manajemen-akun"
+            onClick={onClose}
+            icon={<UsersIcon />}
+          >
+            Manajemen Admin
           </NavItem>
           <NavItem to="/settings" onClick={onClose} icon={<SettingsIcon />}>
             Pengaturan

@@ -109,6 +109,7 @@ def create_app():
     from .routes.document import document_bp
     from .routes.api_keys import api_keys_bp
     from .routes.thematic import thematic_bp
+    from .routes.users import users_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(chat_bp)
@@ -118,6 +119,7 @@ def create_app():
     app.register_blueprint(document_bp)
     app.register_blueprint(api_keys_bp)
     app.register_blueprint(thematic_bp)
+    app.register_blueprint(users_bp)
 
     # Daftarkan perintah CLI
     # app.cli.add_command(cli)
