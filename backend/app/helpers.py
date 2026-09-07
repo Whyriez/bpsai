@@ -17,6 +17,11 @@ BPS_ACRONYM_DICTIONARY = {
     'ikg': 'indeks ketimpangan gender',
     'sakernas': 'survei angkatan kerja nasional keadaan angkatan kerja',
     'susenas': 'survei sosial ekonomi nasional kemiskinan konsumsi',
+    'skd': 'survei kebutuhan data pelayanan statistik terpadu pst konsumen',
+    'pst': 'pelayanan statistik terpadu survei kebutuhan data skd konsumen',
+    'ikk': 'indeks kepuasan konsumen pelayanan statistik terpadu pst',
+    'ikp': 'indeks kepuasan pelayanan',
+    'ipak': 'indeks persepsi anti korupsi',
     'gini': 'gini ratio rasio gini ketimpangan',
     'podes': 'potensi desa',
 }
@@ -87,7 +92,22 @@ BPS_THEMATIC_DOCUMENT_MAPPING = {
     "migrasi": ["statistik migrasi", "sensus penduduk"],
     "sensus penduduk": ["sensus penduduk", "profil penduduk"],
     "desa": ["master file desa"],
-    "podes": ["potensi desa", "podes"]
+    "podes": ["potensi desa", "podes"],
+
+    # 9. Pelayanan Publik, Pelayanan Statistik Terpadu (PST) & Survei Kebutuhan Data (SKD)
+    "pst": ["survei kebutuhan data", "kebutuhan data"],
+    "pelayanan statistik terpadu": ["survei kebutuhan data", "kebutuhan data"],
+    "skd": ["survei kebutuhan data", "kebutuhan data"],
+    "survei kebutuhan data": ["survei kebutuhan data", "kebutuhan data"],
+    "kebutuhan data": ["survei kebutuhan data", "kebutuhan data"],
+    "konsumen": ["survei kebutuhan data", "kebutuhan data"],
+    "kepuasan konsumen": ["survei kebutuhan data", "kebutuhan data"],
+    "jenis layanan": ["survei kebutuhan data", "kebutuhan data"],
+    "wilayah pst": ["survei kebutuhan data", "kebutuhan data"],
+    "sarana layanan": ["survei kebutuhan data", "kebutuhan data"],
+    "anti korupsi": ["survei kebutuhan data", "kebutuhan data"],
+    "perilaku anti korupsi": ["survei kebutuhan data", "kebutuhan data"],
+    "kualitas data": ["survei kebutuhan data", "kebutuhan data"],
 }
 
 def get_thematic_document_patterns(prompt: str) -> list:

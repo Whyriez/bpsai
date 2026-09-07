@@ -17,7 +17,7 @@ from app.helpers import (
     get_allowed_links_from_chunks, sanitize_ai_response_links
 )
 from sqlalchemy.orm import aliased
-from sqlalchemy import select, extract, or_, func, type_coerce
+from sqlalchemy import select, extract, or_, func, cast, text
 from pgvector.sqlalchemy import Vector
 from app import cache
 
@@ -29,6 +29,27 @@ gemini_service = GeminiService()
 def send_thinking_status(status, detail=""):
     """Helper untuk mengirim status thinking ke client"""
     return f"data: {json.dumps({'thinking': True, 'status': status, 'detail': detail})}\n\n"
+
+_cached_vector_dim = None
+
+def get_database_vector_dim() -> int:
+    """
+    Mendeteksi dimensi embedding vektor yang tersimpan di PostgreSQL secara dinamis.
+    Mendukung database 768 (local standard) dan 3072 (server native halfvec/vector).
+    """
+    global _cached_vector_dim
+    if _cached_vector_dim is not None:
+        return _cached_vector_dim
+    try:
+        row = db.session.execute(text("SELECT vector_dims(embedding) FROM document_chunks WHERE embedding IS NOT NULL LIMIT 1")).fetchone()
+        if row and row[0]:
+            _cached_vector_dim = int(row[0])
+            current_app.logger.info(f"Detected database vector dimension: {_cached_vector_dim}")
+            return _cached_vector_dim
+    except Exception as e:
+        current_app.logger.warning(f"Could not auto-detect vector dimension: {e}")
+    _cached_vector_dim = 768
+    return _cached_vector_dim
 
 def reorder_for_llm(results):
     """
@@ -65,13 +86,6 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
 
     if specific_document:
         specific_document = resolve_specific_document_name(specific_document)
-    else:
-        doc_pattern = re.search(r'(?:dokumen|file|pdf|publikasi)\s+([\w\s\-\.]+)', user_prompt, re.IGNORECASE)
-        if doc_pattern:
-            specific_document = resolve_specific_document_name(doc_pattern.group(1))
-            if specific_document:
-                current_app.logger.info(f"Resolved specific document: '{specific_document}' from prompt hint '{doc_pattern.group(1)}'")
-
     if requested_years:
         expanded_prompt = expand_query_with_years(expanded_prompt, requested_years)
 
@@ -82,8 +96,9 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
 
     current_app.logger.info(f"Original prompt: '{user_prompt}', Expanded to: '{expanded_prompt}'")
 
-    # 2. Generate Embedding dari Prompt
-    prompt_embedding = embedding_service.generate(expanded_prompt)
+    # 2. Generate Embedding dari Prompt (menggunakan dimensi dinamis sesuai tabel PostgreSQL)
+    target_dim = get_database_vector_dim()
+    prompt_embedding = embedding_service.generate(expanded_prompt, dimensionality=target_dim)
     if not prompt_embedding:
         raise Exception("API_LIMIT_EMBEDDING_EXHAUSTED")
 
@@ -93,41 +108,60 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
     keyword_ranks = {}        # chunk_id -> rank (1, 2, ...)
     vector_distances = {}     # chunk_id -> distance
 
-    # --- PENCARIAN 1: DENSE VECTOR SEARCH (PGVECTOR) ---
+    # --- PENCARIAN 1: DENSE VECTOR SEARCH (PGVECTOR NATIVE) ---
     SOFT_VECTOR_THRESHOLD = 0.95
 
     try:
-        prompt_vec = type_coerce(prompt_embedding, Vector(768))
-        dist_expr = DocumentChunk.embedding.cosine_distance(prompt_vec)
-        base_vec_query = select(
-            DocumentChunk, 
-            dist_expr.label('distance')
-        ).filter(DocumentChunk.embedding.isnot(None))
-
+        emb_str = '[' + ','.join(map(str, prompt_embedding)) + ']'
+        
+        target_doc_ids = []
         if specific_document:
-            vec_stmt = base_vec_query.join(PdfDocument)\
-                .filter(func.lower(PdfDocument.filename).contains(specific_document.lower()))\
-                .order_by(dist_expr.asc())\
-                .limit(limit * 3)
+            matched = db.session.query(PdfDocument.id).filter(func.lower(PdfDocument.filename).contains(specific_document.lower())).all()
+            target_doc_ids = [str(m[0]) for m in matched]
         elif priority_doc_patterns:
             doc_conds = [func.lower(PdfDocument.filename).contains(p.lower()) for p in priority_doc_patterns]
-            vec_stmt = base_vec_query.join(PdfDocument)\
-                .filter(or_(*doc_conds))\
-                .order_by(dist_expr.asc())\
-                .limit(limit * 3)
-        else:
-            vec_stmt = base_vec_query.order_by(dist_expr.asc()).limit(limit * 3)
+            matched = db.session.query(PdfDocument.id).filter(or_(*doc_conds)).all()
+            target_doc_ids = [str(m[0]) for m in matched]
 
-        vec_results = db.session.execute(vec_stmt).all()
-        for rank_idx, (chunk_obj, dist) in enumerate(vec_results, 1):
-            if dist is not None and float(dist) <= SOFT_VECTOR_THRESHOLD:
-                cid = str(chunk_obj.id)
-                chunk_map[cid] = chunk_obj
-                vector_ranks[cid] = rank_idx
-                vector_distances[cid] = float(dist)
+        if target_doc_ids:
+            sql = text("""
+                SELECT c.id, (c.embedding <=> (:emb)\\:\\:vector) AS distance
+                FROM document_chunks c
+                WHERE c.embedding IS NOT NULL AND c.document_id = ANY((:doc_ids)\\:\\:uuid[])
+                ORDER BY (c.embedding <=> (:emb)\\:\\:vector) ASC
+                LIMIT :limit
+            """)
+            params = {'emb': emb_str, 'doc_ids': target_doc_ids, 'limit': limit * 3}
+        else:
+            sql = text("""
+                SELECT c.id, (c.embedding <=> (:emb)\\:\\:vector) AS distance
+                FROM document_chunks c
+                WHERE c.embedding IS NOT NULL
+                ORDER BY (c.embedding <=> (:emb)\\:\\:vector) ASC
+                LIMIT :limit
+            """)
+            params = {'emb': emb_str, 'limit': limit * 3}
+
+        vec_rows = db.session.execute(sql, params).fetchall()
+        
+        # Ambil objek DocumentChunk berdasarkan ID yang terambil
+        chunk_ids = [r.id for r in vec_rows]
+        if chunk_ids:
+            chunks_found = DocumentChunk.query.filter(DocumentChunk.id.in_(chunk_ids)).all()
+            chunk_lookup = {c.id: c for c in chunks_found}
+            
+            for rank_idx, r in enumerate(vec_rows, 1):
+                chunk_obj = chunk_lookup.get(r.id)
+                dist = r.distance
+                if chunk_obj and dist is not None and float(dist) <= SOFT_VECTOR_THRESHOLD:
+                    cid = str(chunk_obj.id)
+                    chunk_map[cid] = chunk_obj
+                    vector_ranks[cid] = rank_idx
+                    vector_distances[cid] = float(dist)
     except Exception as vec_err:
-        db.session.rollback()  # Rollback segera agar PostgreSQL session tidak masuk InFailedSqlTransaction
-        current_app.logger.warning(f"Vector search warning: {vec_err}")
+        db.session.rollback()
+        import traceback
+        current_app.logger.error(f"Vector search failed: {vec_err}\n{traceback.format_exc()}")
 
     # --- PENCARIAN 2: SPARSE KEYWORD & THEMATIC TARGETED SEARCH ---
     raw_keywords = extract_keywords(expanded_prompt)
@@ -171,6 +205,25 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
             kw_candidates.extend(year_content_chunks)
     else:
         # Kueri tanpa tahun spesifik / mencari data umum / data terbaru
+        if target_patterns:
+            doc_conds = [func.lower(PdfDocument.filename).contains(p) for p in target_patterns]
+            matched_docs = PdfDocument.query.filter(or_(*doc_conds)).all()
+            
+            def get_doc_year(d):
+                ym = re.findall(r'\b(20\d{2}|19\d{2})\b', d.filename)
+                return max(int(y) for y in ym) if ym else 0
+                
+            matched_docs.sort(key=get_doc_year, reverse=True)
+            
+            # Ambil kandidat chunks dari setiap edisi teratas (prioritas tahun mutakhir)
+            for md in matched_docs[:3]:
+                q_doc = DocumentChunk.query.filter_by(document_id=md.id)
+                if core_keywords:
+                    kw_conds = [DocumentChunk.chunk_content.ilike(f"%{k}%") for k in core_keywords]
+                    q_doc = q_doc.filter(or_(*kw_conds))
+                kw_candidates.extend(q_doc.limit(20).all())
+
+        # Ambil kandidat umum tambahan
         q_gen = DocumentChunk.query.join(PdfDocument)
         if target_patterns:
             doc_conds = [func.lower(PdfDocument.filename).contains(p) for p in target_patterns]
@@ -178,8 +231,19 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
         if core_keywords:
             kw_conds = [DocumentChunk.chunk_content.ilike(f"%{k}%") for k in core_keywords]
             q_gen = q_gen.filter(or_(*kw_conds))
-        q_gen = q_gen.order_by(PdfDocument.filename.desc())
-        kw_candidates.extend(q_gen.limit(limit * 8).all())
+        kw_candidates.extend(q_gen.limit(limit * 4).all())
+
+    # Ekstraksi frasa 2-kata / 3-kata dari user_prompt untuk precision boost pada tabel & lampiran
+    prompt_clean = re.sub(r'[^\w\s]', ' ', user_prompt.lower())
+    p_words = prompt_clean.split()
+    query_phrases = []
+    stop_phrase_words = {'saya', 'butuh', 'minta', 'data', 'dan', 'yang', 'untuk', 'pada', 'di', 'dari', 'apakah', 'ada', 'tolong', 'berapa'}
+    for i in range(len(p_words) - 1):
+        if p_words[i] not in stop_phrase_words and p_words[i+1] not in stop_phrase_words:
+            query_phrases.append(f"{p_words[i]} {p_words[i+1]}")
+    for i in range(len(p_words) - 2):
+        if p_words[i] not in stop_phrase_words and p_words[i+2] not in stop_phrase_words:
+            query_phrases.append(f"{p_words[i]} {p_words[i+1]} {p_words[i+2]}")
 
     # Hitung bobot kecocokan keyword kandidat
     scored_kw_chunks = []
@@ -193,6 +257,12 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
         text_content = ((chunk_obj.chunk_content or "") + " " + doc_name).lower()
         
         match_count = sum(1 for t in core_keywords if t.lower() in text_content)
+        
+        # Boost kecocokan frasa spesifik (misal "jenis layanan", "wilayah pst", "persentase konsumen")
+        for ph in query_phrases:
+            if ph in text_content:
+                match_count += 18
+
         if requested_years:
             if any(str(y) in doc_name for y in requested_years):
                 match_count += 8  # Huge boost for exact year edition document
@@ -203,12 +273,14 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
             year_matches = re.findall(r'\b(20\d{2}|19\d{2})\b', doc_name)
             if year_matches:
                 max_doc_year = max(int(y) for y in year_matches)
-                if max_doc_year >= 2024:
+                if max_doc_year >= 2025:
+                    match_count += 20  # Massive boost untuk publikasi 2025 paling mutakhir
+                elif max_doc_year == 2024:
                     match_count += 12
                 elif max_doc_year == 2023:
-                    match_count += 8
+                    match_count += 6
                 elif max_doc_year == 2022:
-                    match_count += 5
+                    match_count += 3
                 elif max_doc_year < 2015:
                     match_count -= 6  # Arsip lawas (2007, 2004) dikurangi bobotnya
 
@@ -220,9 +292,14 @@ def get_combined_relevant_results(user_prompt: str, requested_years: list = [], 
 
         # Massive priority boost untuk publikasi tematik primer
         if target_patterns and any(p in doc_name for p in target_patterns):
-            match_count += 10
-        if chunk_obj.chunk_metadata and chunk_obj.chunk_metadata.get('type') == 'table':
-            match_count += 2
+            match_count += 25
+            
+        # Boost halaman tabel dan lampiran
+        if "lampiran" in text_content:
+            match_count += 8
+        if "tabel" in text_content or (chunk_obj.chunk_metadata and chunk_obj.chunk_metadata.get('type') == 'table'):
+            match_count += 8
+            
         scored_kw_chunks.append((chunk_obj, match_count))
 
     scored_kw_chunks.sort(key=lambda x: x[1], reverse=True)
@@ -538,33 +615,67 @@ def stream():
                         sse_chunk = json.dumps({"text": clean_chunk})
                         yield f"data: {sse_chunk}\n\n"
 
-                # Step 7: Lampirkan Sumber Digital 100% Presisi Langsung dari Database
-                if doc_to_link:
-                    used_links = []
-                    # 1. Cari dokumen yang namanya dikutip/disebutkan dalam jawaban
-                    for doc_fn, doc_url in doc_to_link.items():
-                        clean_fn = re.sub(r'\.pdf$', '', doc_fn, flags=re.IGNORECASE).strip()
-                        if clean_fn.lower() in model_response_buffer.lower() or doc_fn.lower() in model_response_buffer.lower():
-                            used_links.append((doc_fn, doc_url))
+                # Step 7: Lampirkan Sumber Digital 100% Lengkap & Transparan dari Database
+                sumber_lines = []
+                seen_doc_names = set()
 
-                    # 2. Jika tidak ada kecocokan nama string, ambil sumber utama dari relevant_items
-                    if not used_links and allowed_links:
-                        for doc_fn, doc_url in doc_to_link.items():
-                            used_links.append((doc_fn, doc_url))
-                            break
+                mentioned_years = set(re.findall(r'\b(20\d{2}|19\d{2})\b', model_response_buffer))
+                if requested_years:
+                    mentioned_years.update([str(y) for y in requested_years])
 
-                    if used_links:
-                        sumber_lines = ["\n\n### Sumber Digital"]
-                        seen_u = set()
-                        for fn_title, url_target in used_links:
-                            if url_target not in seen_u:
-                                seen_u.add(url_target)
-                                display_title = fn_title if fn_title.lower().endswith(".pdf") else f"{fn_title}.pdf"
-                                sumber_lines.append(f"* [{display_title}]({url_target})")
+                try:
+                    all_docs = PdfDocument.query.all()
+                    
+                    # 1. Dokumen yang namanya dikutip/disebutkan dalam teks respons AI
+                    for d in all_docs:
+                        clean_fn = re.sub(r'\.pdf$', '', d.filename, flags=re.IGNORECASE).strip()
+                        doc_years = re.findall(r'\b(20\d{2}|19\d{2})\b', d.filename)
+                        doc_title_base = re.sub(r'\b(20\d{2}|19\d{2})\b', '', clean_fn).strip()
+                        doc_title_base = re.sub(r'\s+', ' ', doc_title_base)
                         
-                        sumber_chunk = "\n".join(sumber_lines) + "\n"
-                        model_response_buffer += sumber_chunk
-                        yield f"data: {json.dumps({'text': sumber_chunk})}\n\n"
+                        is_match = False
+                        if clean_fn.lower() in model_response_buffer.lower() or d.filename.lower() in model_response_buffer.lower():
+                            is_match = True
+                        elif len(doc_title_base) > 8 and doc_title_base.lower() in model_response_buffer.lower():
+                            if not doc_years or any(y in mentioned_years for y in doc_years):
+                                is_match = True
+                                
+                        if is_match:
+                            if doc_years and mentioned_years and not any(y in mentioned_years for y in doc_years):
+                                continue
+                            if d.filename not in seen_doc_names:
+                                seen_doc_names.add(d.filename)
+                                display_title = d.filename if d.filename.lower().endswith(".pdf") else f"{d.filename}.pdf"
+                                if d.link and d.link.strip():
+                                    sumber_lines.append(f"* [{display_title}]({d.link.strip()})")
+                                else:
+                                    sumber_lines.append(f"* {display_title} *(Tautan digital belum dicantumkan di katalog BPS)*")
+                                
+                    # 2. Dokumen dari chunks relevan (relevant_items) yang belum tercantum
+                    if relevant_items:
+                        for item in relevant_items:
+                            chunk = item[0] if isinstance(item, (tuple, list)) and len(item) > 0 else item
+                            doc = getattr(chunk, 'document', None)
+                            if doc and doc.filename and doc.filename not in seen_doc_names:
+                                doc_years = re.findall(r'\b(20\d{2}|19\d{2})\b', doc.filename or '')
+                                if mentioned_years and doc_years:
+                                    if not any(y in mentioned_years for y in doc_years):
+                                        continue
+                                seen_doc_names.add(doc.filename)
+                                display_title = doc.filename if doc.filename.lower().endswith(".pdf") else f"{doc.filename}.pdf"
+                                if doc.link and doc.link.strip():
+                                    sumber_lines.append(f"* [{display_title}]({doc.link.strip()})")
+                                else:
+                                    sumber_lines.append(f"* {display_title} *(Tautan digital belum dicantumkan di katalog BPS)*")
+                                    
+                except Exception as link_match_err:
+                    current_app.logger.warning(f"Error compiling digital sources: {link_match_err}")
+
+                # Tampilkan blok Sumber Digital jika dokumen rujukan ditemukan
+                if sumber_lines:
+                    sumber_chunk = "\n\n### Sumber Digital\n" + "\n".join(sumber_lines) + "\n"
+                    model_response_buffer += sumber_chunk
+                    yield f"data: {json.dumps({'text': sumber_chunk})}\n\n"
 
                 yield "data: [DONE]\n\n"
                 

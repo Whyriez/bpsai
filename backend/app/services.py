@@ -91,8 +91,12 @@ class EmbeddingService:
         # Check cache
         cache_key = f"{text}_{dimensionality}"
         if cache_key in self.cache:
-            logging.info(f"Embedding cache hit for text: '{text[:50]}...'")
-            return self.cache[cache_key]
+            cached_val = self.cache[cache_key]
+            if not dimensionality or (isinstance(cached_val, list) and len(cached_val) == dimensionality):
+                logging.info(f"Embedding cache hit for text: '{text[:50]}...'")
+                return cached_val
+            else:
+                del self.cache[cache_key]
 
         if not self.api_keys or not self.url:
             logging.error("Embedding generation failed: No API keys available")
