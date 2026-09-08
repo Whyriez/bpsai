@@ -3,8 +3,10 @@ from flask import Blueprint, jsonify, current_app, request, send_from_directory
 from werkzeug.utils import secure_filename
 from flask_jwt_extended import jwt_required, get_jwt
 from ..services import process_and_save_pdf, GeminiService, EmbeddingService
-from ..models import db, PdfDocument, DocumentChunk, BatchJob, JobStatus, BpsApiConfig
+from ..models import db, PdfDocument, DocumentChunk, BatchJob, JobStatus, BpsApiConfig, BpsPublicationAlert
 from ..bps_service import BpsApiService
+from ..bps_monitor import check_and_process_latest_publications, get_monitor_status
+from ..whatsapp_service import send_whatsapp_message
 from ..helpers import invalidate_catalog_cache
 from datetime import datetime, timedelta
 from sqlalchemy import cast, String, func
@@ -15,7 +17,7 @@ from pathlib import Path
 import shutil
 from urllib.parse import unquote
 import traceback
-from ..job_utils import check_job_should_stop, cleanup_job_state, update_job_heartbeat
+from ..job_utils import check_job_should_stop, cleanup_job_state, update_job_heartbeat, is_job_thread_alive
 
 document_bp = Blueprint('document', __name__, url_prefix='/api/documents')
 
@@ -765,21 +767,19 @@ def start_chunking_job():
         
         # --- LOGIKA AUTO-RESET ---
         if job.status in [JobStatus.RUNNING, JobStatus.STOPPING]:
-            # Cek kapan terakhir update
+            thread_alive = is_job_thread_alive(job_id=job.id, job_name=job_name)
             last_active = job.last_updated or job.started_at or datetime.utcnow()
             time_since_active = datetime.utcnow() - last_active
-            
-            # Jika sudah > 2 menit tidak ada kabar dari worker (heartbeat mati)
-            # Atau status STOPPING tapi tidak kunjung IDLE
-            is_stuck = time_since_active > timedelta(minutes=2)
-            
+
+            # Hanya anggap stuck jika thread TIDAK aktif di memori DAN sudah > 10 menit tanpa kabar
+            is_stuck = (not thread_alive) and (time_since_active > timedelta(minutes=10))
+
             if is_stuck:
                 current_app.logger.warning(f"Job {job_name} terdeteksi STUCK di {job.status.value}. Melakukan Auto-Reset.")
                 job.status = JobStatus.IDLE
                 job.last_error = "Auto-reset karena stuck (worker mati)."
                 db.session.commit()
                 # Lanjut ke logika start di bawah...
-                # Refresh object
                 job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
             else:
                 return jsonify({
@@ -876,25 +876,30 @@ def get_chunking_job_status():
         return jsonify({"status": "IDLE", "progress": 0}), 200
 
     # --- LOGIKA AUTO-HEALING / LAZY RECOVERY ---
-    # Jika status RUNNING/STOPPING tapi tidak ada update dalam 1 menit terakhir
-    # Kita asumsikan worker-nya sudah mati (Zombie Job).
-    
     is_zombie = False
     if job.status in [JobStatus.RUNNING, JobStatus.STOPPING]:
-        last_active = job.last_updated or job.started_at
-        if last_active:
-            time_since_active = datetime.utcnow() - last_active
-            # Jika lebih dari 1 menit tidak ada kabar (heartbeat)
-            if time_since_active > timedelta(minutes=1):
-                is_zombie = True
-                
-                # AUTO FIX DI DATABASE
-                job.status = JobStatus.FAILED
-                job.last_error = "Proses terhenti secara tidak wajar (Worker Timeout/Killed)."
-                job.completed_at = datetime.utcnow()
+        thread_alive = is_job_thread_alive(job_id=job.id, job_name=job_name)
+        if thread_alive:
+            # Worker masih benar-benar aktif berjalan di latar belakang!
+            # Segarkan heartbeat timestamp agar tidak pernah dianggap zombie
+            try:
+                job.last_updated = datetime.utcnow()
                 db.session.commit()
-                
-                current_app.logger.warning(f"Zombie job detected and reset: {job.id}")
+            except Exception:
+                db.session.rollback()
+        else:
+            # Thread tidak ditemukan di memori proses Python
+            last_active = job.last_updated or job.started_at
+            if last_active:
+                time_since_active = datetime.utcnow() - last_active
+                # Hanya anggap zombie jika thread memang tidak aktif DAN sudah > 10 menit
+                if time_since_active > timedelta(minutes=10):
+                    is_zombie = True
+                    job.status = JobStatus.FAILED
+                    job.last_error = "Proses terhenti secara tidak wajar (Worker Timeout/Killed)."
+                    job.completed_at = datetime.utcnow()
+                    db.session.commit()
+                    current_app.logger.warning(f"Zombie job detected and reset: {job.id}")
 
     return jsonify({
         # Jika baru saja di-reset, return FAILED, jika tidak return status asli
@@ -1380,52 +1385,74 @@ def run_bps_sync_job(app, job_name, mode="incremental", selected_pub_ids=None, s
                 publications_to_process = selected_publications
             elif mode == "selected" and selected_pub_ids:
                 selected_set = set(selected_pub_ids)
-                page = 1
-                while page <= max_pages:
-                    if check_job_should_stop(job_id):
-                        break
-                    res = bps_service.fetch_publications(page=page, year=year, keyword=keyword)
-                    if not res.get("success"):
-                        break
-                    items = res.get("publications", [])
-                    if not items:
-                        break
-                    for it in items:
-                        if it.get("pub_id") in selected_set:
-                            publications_to_process.append(it)
-                    if len(publications_to_process) >= len(selected_set):
-                        break
-                    total_p = res.get("pagination", {}).get("pages", 1)
-                    if page >= total_p:
-                        break
-                    page += 1
+                has_brs = any(str(i).startswith("brs_") for i in selected_set)
+                has_pub = any(not str(i).startswith("brs_") for i in selected_set)
+
+                if has_pub:
+                    page = 1
+                    while page <= max_pages:
+                        if check_job_should_stop(job_id): break
+                        res = bps_service.fetch_publications(page=page, year=year, keyword=keyword)
+                        if not res.get("success"): break
+                        items = res.get("publications", [])
+                        for it in items:
+                            if it.get("pub_id") in selected_set:
+                                publications_to_process.append(it)
+                        total_p = res.get("pagination", {}).get("pages", 1)
+                        if page >= total_p: break
+                        page += 1
+
+                if has_brs:
+                    page = 1
+                    while page <= max_pages:
+                        if check_job_should_stop(job_id): break
+                        res = bps_service.fetch_press_releases(page=page, year=year, keyword=keyword)
+                        if not res.get("success"): break
+                        items = res.get("publications", [])
+                        for it in items:
+                            if it.get("pub_id") in selected_set:
+                                publications_to_process.append(it)
+                        total_p = res.get("pagination", {}).get("pages", 1)
+                        if page >= total_p: break
+                        page += 1
             else:
+                # Mode incremental / all: sinkronisasi publikasi dan BRS
                 page = 1
                 while page <= max_pages:
-                    if check_job_should_stop(job_id):
-                        break
+                    if check_job_should_stop(job_id): break
                     res = bps_service.fetch_publications(page=page, year=year, keyword=keyword)
                     if not res.get("success"):
-                        app.logger.error(f"Gagal mengambil publikasi BPS halaman {page}: {res.get('error')}")
+                        app.logger.warning(f"Gagal mengambil publikasi BPS halaman {page}: {res.get('error')}")
                         break
                     items = res.get("publications", [])
-                    if not items:
-                        break
-                    
                     for it in items:
-                        if mode == "incremental" and it.get("is_downloaded"):
+                        if mode == "incremental" and it.get("is_downloaded") and not it.get("is_updated"):
                             continue
                         publications_to_process.append(it)
-                    
                     total_p = res.get("pagination", {}).get("pages", 1)
-                    if page >= total_p:
+                    if page >= total_p: break
+                    page += 1
+
+                page = 1
+                while page <= max_pages:
+                    if check_job_should_stop(job_id): break
+                    res = bps_service.fetch_press_releases(page=page, year=year, keyword=keyword)
+                    if not res.get("success"):
+                        app.logger.warning(f"Gagal mengambil BRS BPS halaman {page}: {res.get('error')}")
                         break
+                    items = res.get("publications", [])
+                    for it in items:
+                        if mode == "incremental" and it.get("is_downloaded") and not it.get("is_updated"):
+                            continue
+                        publications_to_process.append(it)
+                    total_p = res.get("pagination", {}).get("pages", 1)
+                    if page >= total_p: break
                     page += 1
 
             if not publications_to_process:
                 job.status = JobStatus.COMPLETED
                 job.completed_at = datetime.utcnow()
-                job.last_error = "Semua publikasi BPS sudah ter-sinkronisasi (Tidak ada file baru)."
+                job.last_error = "Semua publikasi & BRS BPS sudah ter-sinkronisasi (Tidak ada file baru atau revisi)."
                 db.session.commit()
                 
                 cfg = BpsApiConfig.query.first()
@@ -1458,6 +1485,7 @@ def run_bps_sync_job(app, job_name, mode="incremental", selected_pub_ids=None, s
                 title = pub.get("title") or "Publikasi BPS"
                 pdf_url = pub.get("pdf_url")
                 rl_date = pub.get("rl_date")
+                updt_date = pub.get("updt_date") or ""
                 abstract = pub.get("abstract")
 
                 job.last_error = f"[{idx}/{len(publications_to_process)}] Mengunduh: {title[:40]}..."
@@ -1479,10 +1507,13 @@ def run_bps_sync_job(app, job_name, mode="incremental", selected_pub_ids=None, s
                     job.last_updated = datetime.utcnow()
                     db.session.commit()
 
+                    doc_type = pub.get("doc_type") or ("BRS" if str(pub_id).startswith("brs_") else "PUBLIKASI")
                     doc_meta = {
                         "pub_id": pub_id,
                         "release_date": rl_date,
+                        "updt_date": updt_date,
                         "abstract": abstract,
+                        "doc_type": doc_type,
                         "source": "bps_web_api"
                     }
 
@@ -1556,33 +1587,49 @@ def get_bps_api_config():
 
 @document_bp.route('/bps/config', methods=['POST'])
 def save_bps_api_config():
-    """Menyimpan konfigurasi BPS Web API."""
+    """Menyimpan konfigurasi BPS Web API dan integrasi WhatsApp."""
     data = request.get_json() or {}
     api_key = data.get('api_key', '')
     domain_code = data.get('domain_code', '7500')
     domain_name = data.get('domain_name', 'BPS Provinsi Gorontalo')
     auto_sync = data.get('auto_sync', False)
+    sync_interval_hours = data.get('sync_interval_hours', 6)
+    wa_channel_enabled = data.get('wa_channel_enabled', True)
+    wa_target = data.get('wa_target', '')
+    wa_gateway_type = data.get('wa_gateway_type', 'webhook')
+    wa_webhook_url = data.get('wa_webhook_url', '')
+    wa_api_token = data.get('wa_api_token', '')
 
     service = BpsApiService()
     cfg = service.save_config(
         api_key=api_key,
         domain_code=domain_code,
         domain_name=domain_name,
-        auto_sync=auto_sync
+        auto_sync=auto_sync,
+        sync_interval_hours=sync_interval_hours,
+        wa_channel_enabled=wa_channel_enabled,
+        wa_target=wa_target,
+        wa_gateway_type=wa_gateway_type,
+        wa_webhook_url=wa_webhook_url,
+        wa_api_token=wa_api_token
     )
-    return jsonify({"message": "Konfigurasi BPS Web API berhasil disimpan.", "config": cfg}), 200
+    return jsonify({"message": "Konfigurasi BPS Web API dan WhatsApp berhasil disimpan.", "config": cfg}), 200
 
 
 @document_bp.route('/bps/preview', methods=['GET'])
 def preview_bps_publications():
-    """Mengambil daftar publikasi dari BPS Web API untuk dipratinjau di Dashboard."""
+    """Mengambil daftar publikasi atau Berita Resmi Statistik (BRS) dari BPS Web API untuk dipratinjau di Dashboard."""
     page = request.args.get('page', 1, type=int)
     year = request.args.get('year', None, type=str)
     keyword = request.args.get('keyword', None, type=str)
     domain = request.args.get('domain', None, type=str)
+    doc_type = request.args.get('type', 'publication', type=str).lower()
 
     service = BpsApiService()
-    result = service.fetch_publications(page=page, year=year, keyword=keyword, domain=domain)
+    if doc_type in ['brs', 'pressrelease', 'press_release']:
+        result = service.fetch_press_releases(page=page, year=year, keyword=keyword, domain=domain)
+    else:
+        result = service.fetch_publications(page=page, year=year, keyword=keyword, domain=domain)
     
     if not result.get("success"):
         return jsonify(result), 400
@@ -1612,9 +1659,12 @@ def start_bps_sync():
 
         # Cek jika job sedang berjalan
         if job.status in [JobStatus.RUNNING, JobStatus.STOPPING]:
+            thread_alive = is_job_thread_alive(job_id=job.id, job_name=job_name)
             last_active = job.last_updated or job.started_at or datetime.utcnow()
             time_since_active = datetime.utcnow() - last_active
-            if time_since_active > timedelta(minutes=2):
+
+            is_stuck = (not thread_alive) and (time_since_active > timedelta(minutes=10))
+            if is_stuck:
                 current_app.logger.warning(f"Job {job_name} stuck. Melakukan auto-reset.")
                 job.status = JobStatus.IDLE
                 db.session.commit()
@@ -1683,13 +1733,21 @@ def get_bps_sync_status():
     # Auto-healing zombie job
     is_zombie = False
     if job.status in [JobStatus.RUNNING, JobStatus.STOPPING]:
-        last_active = job.last_updated or job.started_at
-        if last_active and (datetime.utcnow() - last_active) > timedelta(minutes=2):
-            is_zombie = True
-            job.status = JobStatus.FAILED
-            job.last_error = "Proses sinkronisasi terhenti secara tidak wajar (Worker Timeout)."
-            job.completed_at = datetime.utcnow()
-            db.session.commit()
+        thread_alive = is_job_thread_alive(job_id=job.id, job_name=job_name)
+        if thread_alive:
+            try:
+                job.last_updated = datetime.utcnow()
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+        else:
+            last_active = job.last_updated or job.started_at
+            if last_active and (datetime.utcnow() - last_active) > timedelta(minutes=10):
+                is_zombie = True
+                job.status = JobStatus.FAILED
+                job.last_error = "Proses sinkronisasi terhenti secara tidak wajar (Worker Timeout)."
+                job.completed_at = datetime.utcnow()
+                db.session.commit()
 
     return jsonify({
         "status": JobStatus.FAILED.value if is_zombie else job.status.value,
@@ -1737,6 +1795,322 @@ def reset_bps_sync():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+# ===================================================================
+# OTOMATISASI BPS MONITOR & WHATSAPP BROADCAST ALERTS
+# ===================================================================
+
+@document_bp.route('/bps/alerts', methods=['GET'])
+def get_bps_alerts():
+    """Mengambil riwayat publikasi BPS terbaru yang telah dirangkum AI & status WhatsApp dengan pagination dan pencarian."""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 8, type=int)
+    q = (request.args.get('q') or request.args.get('keyword') or request.args.get('search') or '').strip()
+    doc_type = (request.args.get('type') or '').strip().upper()
+    wa_status = (request.args.get('status') or '').strip().upper()
+
+    query = BpsPublicationAlert.query
+
+    if q:
+        search_pattern = f"%{q}%"
+        query = query.filter(
+            (BpsPublicationAlert.title.ilike(search_pattern)) |
+            (BpsPublicationAlert.summary.ilike(search_pattern)) |
+            (BpsPublicationAlert.pub_id.ilike(search_pattern)) |
+            (BpsPublicationAlert.wa_message.ilike(search_pattern))
+        )
+
+    if doc_type in ['PUBLIKASI', 'BRS']:
+        query = query.filter(BpsPublicationAlert.doc_type == doc_type)
+
+    if wa_status in ['SENT', 'FAILED', 'READY']:
+        query = query.filter(BpsPublicationAlert.wa_status == wa_status)
+
+    pagination = query.order_by(BpsPublicationAlert.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    items = []
+    for a in pagination.items:
+        items.append({
+            "id": a.id,
+            "pub_id": a.pub_id,
+            "title": a.title,
+            "release_date": a.release_date,
+            "updt_date": a.updt_date,
+            "is_update": bool(a.is_update),
+            "doc_type": a.doc_type or ("BRS" if str(a.pub_id).startswith("brs_") else "PUBLIKASI"),
+            "cover_url": a.cover_url,
+            "pdf_url": a.pdf_url,
+            "summary": a.summary,
+            "wa_message": a.wa_message,
+            "wa_status": a.wa_status,
+            "wa_error": a.wa_error,
+            "sent_at": a.sent_at.isoformat() if a.sent_at else None,
+            "created_at": a.created_at.isoformat() if a.created_at else None
+        })
+
+    return jsonify({
+        "items": items,
+        "pagination": {
+            "page": pagination.page,
+            "pages": pagination.pages,
+            "total": pagination.total,
+            "per_page": pagination.per_page,
+            "has_next": pagination.has_next,
+            "has_prev": pagination.has_prev
+        }
+    }), 200
+
+
+@document_bp.route('/bps/alerts/<int:alert_id>/forward', methods=['POST'])
+def forward_bps_alert_to_wa(alert_id):
+    """Memicu pengiriman manual pesan siaran WhatsApp untuk publikasi tertentu."""
+    alert = BpsPublicationAlert.query.get(alert_id)
+    if not alert:
+        return jsonify({"error": "Data publikasi alert tidak ditemukan."}), 404
+
+    service = BpsApiService()
+    cfg = service.get_config()
+
+    wa_webhook = cfg.get("wa_webhook_url", "")
+    wa_token = cfg.get("wa_api_token", "")
+    wa_target = cfg.get("wa_target", "")
+    wa_gateway = cfg.get("wa_gateway_type", "webhook")
+
+    if not alert.wa_message:
+        return jsonify({"error": "Pesan WhatsApp belum tersedia untuk publikasi ini."}), 400
+
+    success, detail = send_whatsapp_message(
+        target=wa_target,
+        message=alert.wa_message,
+        gateway_type=wa_gateway,
+        webhook_url=wa_webhook,
+        api_token=wa_token,
+        image_url=alert.cover_url,
+        metadata={"pub_id": alert.pub_id, "title": alert.title, "release_date": alert.release_date, "cover_url": alert.cover_url}
+    )
+
+    if success:
+        alert.wa_status = "SENT"
+        alert.sent_at = datetime.utcnow()
+        alert.wa_error = None
+        db.session.commit()
+        return jsonify({"message": "Berhasil meneruskan pesan ke WhatsApp!", "detail": detail}), 200
+    else:
+        alert.wa_status = "FAILED"
+        alert.wa_error = detail
+        db.session.commit()
+        return jsonify({"error": "Gagal mengirim ke WhatsApp.", "detail": detail}), 500
+
+
+@document_bp.route('/bps/auto-monitor/run', methods=['POST'])
+def trigger_bps_auto_monitor():
+    """Memicu 1 siklus pengecekan dan pengunduhan publikasi baru BPS Web API sekarang."""
+    data = request.get_json() or {}
+    max_items = data.get('max_items', 3)
+
+    job_name = 'bps_api_sync_process'
+    try:
+        job = BatchJob.query.filter_by(job_name=job_name).with_for_update().first()
+        if not job:
+            job = BatchJob(job_name=job_name)
+            db.session.add(job)
+            db.session.flush()
+
+        if job.status in [JobStatus.RUNNING, JobStatus.STOPPING]:
+            thread_alive = is_job_thread_alive(job_id=job.id, job_name=job_name)
+            last_active = job.last_updated or job.started_at or datetime.utcnow()
+            time_since_active = datetime.utcnow() - last_active
+
+            is_stuck = (not thread_alive) and (time_since_active > timedelta(minutes=10))
+            if is_stuck:
+                current_app.logger.warning(f"Job {job_name} stuck. Resetting to RUNNING for auto-monitor.")
+                job.status = JobStatus.IDLE
+                db.session.commit()
+            else:
+                return jsonify({
+                    "error": f"Proses sinkronisasi BPS sedang berjalan (Status: {job.status.value}).",
+                    "status": job.status.value,
+                    "last_update": last_active.isoformat()
+                }), 409
+
+        job.status = JobStatus.RUNNING
+        job.total_items = max_items
+        job.processed_items = 0
+        job.started_at = datetime.utcnow()
+        job.last_updated = datetime.utcnow()
+        job.completed_at = None
+        job.last_error = f"Memeriksa {max_items} rilis terbaru (Publikasi & BRS) dari BPS Web API..."
+        db.session.commit()
+    except Exception as je:
+        db.session.rollback()
+        current_app.logger.warning(f"BatchJob init error in auto-monitor trigger: {je}")
+
+    app_obj = current_app._get_current_object()
+
+    def run_worker():
+        try:
+            check_and_process_latest_publications(app=app_obj, max_items=max_items)
+        except Exception as e:
+            current_app.logger.error(f"Error in manual auto-monitor trigger: {e}")
+
+    thread = threading.Thread(target=run_worker, daemon=True, name="ManualBpsAutoMonitorWorker")
+    thread.start()
+
+    return jsonify({
+        "message": "Pengecekan otomatis publikasi BPS berhasil dimulai di latar belakang.",
+        "status": "RUNNING"
+    }), 202
+
+
+@document_bp.route('/bps/auto-monitor/status', methods=['GET'])
+def get_bps_auto_monitor_status():
+    """Mengambil status pemantauan otomatis BPS."""
+    status = get_monitor_status()
+    return jsonify(status), 200
+
+
+@document_bp.route('/bps/whatsapp-groups', methods=['GET', 'POST'])
+def get_whatsapp_groups():
+    """Mengambil daftar grup WhatsApp aktif dari Local Gateway (Baileys) untuk memudahkan pemilihan target pengiriman."""
+    import requests
+
+    service = BpsApiService()
+    cfg = service.get_config()
+    
+    data = request.get_json() if request.is_json else {}
+    webhook_url = (data.get('webhook_url') or cfg.get('wa_webhook_url') or 'http://localhost:3001/send').strip()
+
+    # Hubungi Local Baileys Gateway
+    target_endpoint = webhook_url or "http://127.0.0.1:3001/send"
+    base_url = target_endpoint
+    for suffix in ['/send', '/webhook', '/api/send']:
+        if base_url.endswith(suffix):
+            base_url = base_url[:-len(suffix)]
+            break
+    base_url = base_url.rstrip('/')
+    groups_url = f"{base_url}/groups"
+
+    try:
+        res = requests.get(groups_url, timeout=10)
+        if res.status_code == 200:
+            res_json = res.json()
+            return jsonify({
+                "success": True,
+                "source": "local_gateway",
+                "groups": res_json.get('groups', []),
+                "total": res_json.get('total', 0)
+            }), 200
+        elif res.status_code == 503:
+            res_json = res.json()
+            return jsonify({
+                "error": res_json.get('error') or "WhatsApp Local Gateway belum terhubung. Silakan scan QR code di terminal terlebih dahulu.",
+                "groups": []
+            }), 503
+        else:
+            return jsonify({
+                "error": f"Local Gateway mengembalikan HTTP {res.status_code}: {res.text[:120]}",
+                "groups": []
+            }), 502
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "error": f"Tidak dapat terhubung ke Local WhatsApp Gateway di {groups_url}. Pastikan gateway sudah dijalankan (jalankan start-wa-gateway.bat atau npm start di folder wa-gateway).",
+            "groups": []
+        }), 503
+    except Exception as e:
+        return jsonify({
+            "error": f"Gagal mengambil grup dari Local Gateway: {str(e)}",
+            "groups": []
+        }), 500
+
+
+@document_bp.route('/bps/whatsapp-status', methods=['GET'])
+def get_whatsapp_status():
+    """Mengambil status koneksi, nomor aktif, dan QR code dari Local WhatsApp Gateway."""
+    import requests
+
+    service = BpsApiService()
+    cfg = service.get_config()
+    webhook_url = (cfg.get('wa_webhook_url') or 'http://localhost:3001/send').strip()
+
+    target_endpoint = webhook_url or "http://127.0.0.1:3001/send"
+    base_url = target_endpoint
+    for suffix in ['/send', '/webhook', '/api/send']:
+        if base_url.endswith(suffix):
+            base_url = base_url[:-len(suffix)]
+            break
+    base_url = base_url.rstrip('/')
+    status_url = f"{base_url}/status"
+
+    try:
+        res = requests.get(status_url, timeout=5)
+        if res.status_code == 200:
+            return jsonify({
+                "success": True,
+                **res.json()
+            }), 200
+        else:
+            return jsonify({
+                "success": False,
+                "status": "DISCONNECTED",
+                "error": f"Gateway mengembalikan status {res.status_code}"
+            }), 200
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "success": False,
+            "status": "OFFLINE",
+            "error": f"Local Gateway offline di {status_url}. Pastikan start-wa-gateway.bat sudah dijalankan."
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "status": "ERROR",
+            "error": str(e)
+        }), 200
+
+
+@document_bp.route('/bps/whatsapp-reset', methods=['POST'])
+def reset_whatsapp_session():
+    """Mereset sesi WhatsApp di Local Gateway untuk logout dan mengganti nomor bot baru."""
+    import requests
+
+    service = BpsApiService()
+    cfg = service.get_config()
+    webhook_url = (cfg.get('wa_webhook_url') or 'http://localhost:3001/send').strip()
+
+    target_endpoint = webhook_url or "http://127.0.0.1:3001/send"
+    base_url = target_endpoint
+    for suffix in ['/send', '/webhook', '/api/send']:
+        if base_url.endswith(suffix):
+            base_url = base_url[:-len(suffix)]
+            break
+    base_url = base_url.rstrip('/')
+    reset_url = f"{base_url}/reset-session"
+
+    try:
+        res = requests.post(reset_url, timeout=8)
+        if res.status_code in [200, 201, 202]:
+            return jsonify({
+                "success": True,
+                "message": "Sesi nomor WhatsApp berhasil direset. Silakan scan QR code baru."
+            }), 200
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Gateway gagal reset sesi: {res.text[:150]}"
+            }), 502
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "success": False,
+            "error": f"Tidak dapat terhubung ke Local Gateway di {reset_url}."
+        }), 503
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Gagal mereset sesi WhatsApp: {str(e)}"
+        }), 500
 
 
 # ===================================================================

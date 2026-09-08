@@ -139,15 +139,26 @@ venv/bin/flask import:csv "data/scrap/hasil_scraping_bps_gorontalo.csv"
 
 Menjalankan proses AI untuk memberikan tag/kategori otomatis pada berita yang belum terklasifikasi.
 
+### 📡 Otomatisasi BPS Web API & Forward WhatsApp
+ 
+Memantau publikasi buku statistik (`model/publication`) dan **Berita Resmi Statistik / BRS** (`model/pressrelease`) dari BPS Web API (`webapi.bps.go.id`), mendeteksi dokumen baru serta **revisi/pembaruan data** (berdasarkan `updt_date`), mengunduh PDF, memproses chunking vektor (mengganti chunk lama jika revisi), merangkum data statistik dengan Gemini AI, dan meneruskan rilis resmi ke WhatsApp.
+
 ```bash
-# Opsi 1: Default (Proses 100 data pertama yg belum ditag)
-venv/bin/flask tags:auto
+# 1. Jalankan 1 siklus pemindaian, download, chunking, AI summary, dan forward WA sekarang
+venv/bin/flask bps:monitor-now
 
-# Opsi 2: Limit Khusus (Misal: hanya 10 data)
-venv/bin/flask tags:auto --limit 10
+# Opsi: batasi jumlah publikasi yang diunduh sekaligus (misal: 3 dokumen)
+venv/bin/flask bps:monitor-now --max-items 3
 
-# Opsi 3: Semua Data (Hati-hati, butuh waktu lama tergantung jumlah data)
-venv/bin/flask tags:auto --all
+# 2. Uji coba koneksi pengiriman pesan WhatsApp Gateway
+venv/bin/flask bps:test-wa --target "08123456789" --message "Halo dari SIGAP BPS! Pesan uji coba gateway."
+
+# 3. Pengecekan cepat via Python One-Liner (Debug & Diagnostic)
+# Cek fetch API BPS:
+venv/bin/python -c "from app import create_app; from app.bps_service import BpsApiService; app=create_app(); ctx=app.app_context(); ctx.push(); print(BpsApiService().fetch_publications(page=1))"
+
+# Cek status thread background monitor:
+venv/bin/python -c "from app import create_app; from app.bps_monitor import get_monitor_status; app=create_app(); ctx=app.app_context(); ctx.push(); print(get_monitor_status())"
 ```
 
 ---

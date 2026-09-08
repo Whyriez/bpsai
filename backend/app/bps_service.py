@@ -1,11 +1,12 @@
 import os
 import re
+import html
 import logging
 import requests
 from urllib.parse import urlparse
 from datetime import datetime
 from flask import current_app
-from app.models import db, BpsApiConfig, PdfDocument
+from app.models import db, BpsApiConfig, PdfDocument, BpsPublicationAlert
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +42,15 @@ class BpsApiService:
                 "id": cfg.id,
                 "api_key": cfg.api_key or "",
                 "api_key_masked": f"{cfg.api_key[:6]}...{cfg.api_key[-4:]}" if cfg.api_key and len(cfg.api_key) > 10 else ("***" if cfg.api_key else ""),
-                "domain_code": cfg.domain_code or self.DEFAULT_DOMAIN,
+                "domain_code": cfg.domain_code or os.getenv("BPS_DOMAIN_CODE", self.DEFAULT_DOMAIN),
                 "domain_name": cfg.domain_name or self.DEFAULT_DOMAIN_NAME,
                 "auto_sync": bool(cfg.auto_sync),
+                "sync_interval_hours": getattr(cfg, 'sync_interval_hours', 6) or 6,
+                "wa_channel_enabled": bool(getattr(cfg, 'wa_channel_enabled', True)),
+                "wa_target": getattr(cfg, 'wa_target', '') or os.getenv("WA_TARGET", "") or '',
+                "wa_gateway_type": getattr(cfg, 'wa_gateway_type', '') or "local",
+                "wa_webhook_url": getattr(cfg, 'wa_webhook_url', '') or os.getenv("WA_WEBHOOK_URL", "http://localhost:3001/send") or 'http://localhost:3001/send',
+                "wa_api_token": getattr(cfg, 'wa_api_token', '') or os.getenv("WA_API_TOKEN", "") or '',
                 "last_sync_at": cfg.last_sync_at.isoformat() if cfg.last_sync_at else None,
                 "last_sync_status": cfg.last_sync_status,
                 "last_sync_message": cfg.last_sync_message
@@ -55,14 +62,24 @@ class BpsApiService:
                 "domain_code": os.getenv("BPS_DOMAIN_CODE", self.DEFAULT_DOMAIN),
                 "domain_name": self.DEFAULT_DOMAIN_NAME,
                 "auto_sync": False,
+                "sync_interval_hours": 6,
+                "wa_channel_enabled": True,
+                "wa_target": os.getenv("WA_TARGET", "") or "",
+                "wa_gateway_type": "local",
+                "wa_webhook_url": os.getenv("WA_WEBHOOK_URL", "http://localhost:3001/send"),
+                "wa_api_token": os.getenv("WA_API_TOKEN", "") or "",
                 "last_sync_at": None,
                 "last_sync_status": None,
                 "last_sync_message": None
             }
 
-    def save_config(self, api_key: str, domain_code: str = "7500", domain_name: str = "BPS Provinsi Gorontalo", auto_sync: bool = False) -> dict:
+    def save_config(self, api_key: str, domain_code: str = "7500", domain_name: str = "BPS Provinsi Gorontalo",
+                    auto_sync: bool = False, sync_interval_hours: int = 6,
+                    wa_channel_enabled: bool = True, wa_target: str = "",
+                    wa_gateway_type: str = "local", wa_webhook_url: str = "http://localhost:3001/send",
+                    wa_api_token: str = "") -> dict:
         """
-        Menyimpan konfigurasi BPS API ke database.
+        Menyimpan konfigurasi BPS API dan integrasi WhatsApp ke database.
         """
         cfg = BpsApiConfig.query.first()
         if not cfg:
@@ -73,6 +90,12 @@ class BpsApiService:
         cfg.domain_code = (domain_code or self.DEFAULT_DOMAIN).strip()
         cfg.domain_name = (domain_name or self.DEFAULT_DOMAIN_NAME).strip()
         cfg.auto_sync = bool(auto_sync)
+        cfg.sync_interval_hours = int(sync_interval_hours or 6)
+        cfg.wa_channel_enabled = bool(wa_channel_enabled)
+        cfg.wa_target = (wa_target or "").strip()
+        cfg.wa_gateway_type = (wa_gateway_type or "local").strip()
+        cfg.wa_webhook_url = (wa_webhook_url or "http://localhost:3001/send").strip()
+        cfg.wa_api_token = (wa_api_token or "").strip()
         db.session.commit()
         return self.get_config()
 
@@ -160,67 +183,243 @@ class BpsApiService:
                 pub_id = str(item.get("pub_id") or "")
                 title = (item.get("title") or "").strip()
                 rl_date = item.get("rl_date") or ""
+                updt_date = item.get("updt_date") or ""
                 cover = item.get("cover") or ""
                 pdf_url = item.get("pdf") or ""
                 size = item.get("size") or ""
                 abstract = item.get("abstract") or ""
 
-                is_downloaded, existing_doc_id = self.is_publication_downloaded(pub_id, title, pdf_url)
+                is_downloaded, existing_doc_id, is_updated = self.is_publication_downloaded(
+                    pub_id=pub_id,
+                    title=title,
+                    pdf_url=pdf_url,
+                    updt_date=updt_date
+                )
 
                 parsed_items.append({
                     "pub_id": pub_id,
                     "title": title,
                     "rl_date": rl_date,
+                    "updt_date": updt_date,
                     "cover": cover,
                     "pdf_url": pdf_url,
                     "size": size,
                     "abstract": abstract,
+                    "doc_type": "PUBLIKASI",
                     "is_downloaded": is_downloaded,
+                    "is_updated": is_updated,
                     "existing_document_id": str(existing_doc_id) if existing_doc_id else None
                 })
 
             return {
                 "success": True,
                 "pagination": pagination,
-                "publications": parsed_items
+                "publications": parsed_items,
+                "doc_type": "PUBLIKASI"
             }
 
         except Exception as e:
             logger.error(f"Exception during BPS Web API fetch: {e}")
             return {"success": False, "error": f"Gagal menghubungi BPS Web API: {str(e)}"}
 
-    def is_publication_downloaded(self, pub_id: str, title: str, pdf_url: str) -> tuple[bool, str | None]:
+    def fetch_press_releases(self, page: int = 1, year: str = None, keyword: str = None, api_key: str = None, domain: str = None) -> dict:
         """
-        Mengecek apakah publikasi ini sudah pernah diunduh/tersimpan di database lokal.
-        Anti-Duplikasi memeriksa: pub_id, link PDF, atau kemiripan nama file.
+        Mengambil daftar Berita Resmi Statistik (BRS / Press Release) dari BPS Web API untuk 1 halaman.
+        """
+        config = self.get_config()
+        effective_key = api_key or config.get("api_key") or os.getenv("BPS_API_KEY", "")
+        effective_domain = domain or config.get("domain_code") or self.DEFAULT_DOMAIN
+
+        if not effective_key:
+            return {
+                "success": False,
+                "error": "BPS API Key belum dikonfigurasi. Silakan masukkan API Key BPS terlebih dahulu."
+            }
+
+        # Format URL Web API BPS untuk BRS:
+        # /list/model/pressrelease/lang/ind/domain/{domain}/page/{page}/key/{key}/
+        url_parts = [
+            f"{self.base_url}/list/model/pressrelease/lang/ind/domain/{effective_domain}/page/{page}"
+        ]
+
+        if year:
+            url_parts.append(f"year/{year}")
+        if keyword:
+            url_parts.append(f"keyword/{requests.utils.quote(keyword)}")
+
+        url_parts.append(f"key/{effective_key}/")
+        full_url = "/".join(url_parts)
+
+        logger.info(f"Fetching BPS Press Release (BRS): {self.base_url}/list/model/pressrelease/lang/ind/domain/{effective_domain}/page/{page}/key/***")
+
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            res = requests.get(full_url, headers=headers, timeout=25)
+            
+            if res.status_code != 200:
+                return {
+                    "success": False,
+                    "error": f"BPS Web API mengembalikan HTTP status {res.status_code}: {res.text[:200]}"
+                }
+
+            data = res.json()
+            if data.get("status") != "OK":
+                error_msg = data.get("message") or "Format respons BPS Web API tidak valid."
+                return {"success": False, "error": error_msg, "raw": data}
+
+            if data.get("data-availability") != "available":
+                return {
+                    "success": True,
+                    "pagination": {"page": page, "pages": 0, "total": 0, "per_page": 10},
+                    "publications": [],
+                    "doc_type": "BRS"
+                }
+
+            raw_data = data.get("data", [])
+            pagination = {"page": page, "pages": 1, "total": 0, "per_page": 10}
+            raw_pressreleases = []
+
+            if isinstance(raw_data, list):
+                if len(raw_data) >= 2 and isinstance(raw_data[0], dict) and isinstance(raw_data[1], list):
+                    pagination = {
+                        "page": raw_data[0].get("page", page),
+                        "pages": raw_data[0].get("pages", 1),
+                        "total": raw_data[0].get("total", len(raw_data[1])),
+                        "per_page": raw_data[0].get("per_page", 10)
+                    }
+                    raw_pressreleases = raw_data[1]
+                elif len(raw_data) >= 1 and isinstance(raw_data[0], list):
+                    raw_pressreleases = raw_data[0]
+                elif len(raw_data) >= 1 and isinstance(raw_data[0], dict):
+                    if "brs_id" in raw_data[0] or "title" in raw_data[0]:
+                        raw_pressreleases = raw_data
+                    else:
+                        pagination = raw_data[0]
+                        raw_pressreleases = raw_data[1:] if len(raw_data) > 1 else []
+
+            parsed_items = []
+            for item in raw_pressreleases:
+                if not isinstance(item, dict):
+                    continue
+                brs_id = str(item.get("brs_id") or "")
+                pub_id = f"brs_{brs_id}" if brs_id else ""
+                title = (item.get("title") or "").strip()
+                rl_date = item.get("rl_date") or ""
+                updt_date = item.get("updt_date") or ""
+                cover = item.get("thumbnail") or ""
+                pdf_url = item.get("pdf") or ""
+                size = item.get("size") or ""
+                category = item.get("subcsa") or item.get("subj") or "Berita Resmi Statistik"
+
+                # Bersihkan HTML tag dan unescape entities dari abstrak BRS
+                raw_abstract = item.get("abstract") or ""
+                clean_abstract = re.sub(r'<[^>]+>', ' ', raw_abstract)
+                clean_abstract = html.unescape(clean_abstract)
+                clean_abstract = re.sub(r'\s+', ' ', clean_abstract).strip()
+
+                is_downloaded, existing_doc_id, is_updated = self.is_publication_downloaded(
+                    pub_id=pub_id,
+                    title=title,
+                    pdf_url=pdf_url,
+                    updt_date=updt_date
+                )
+
+                parsed_items.append({
+                    "pub_id": pub_id,
+                    "brs_id": brs_id,
+                    "title": title,
+                    "rl_date": rl_date,
+                    "updt_date": updt_date,
+                    "cover": cover,
+                    "pdf_url": pdf_url,
+                    "size": size,
+                    "abstract": clean_abstract,
+                    "category": category,
+                    "doc_type": "BRS",
+                    "is_downloaded": is_downloaded,
+                    "is_updated": is_updated,
+                    "existing_document_id": str(existing_doc_id) if existing_doc_id else None
+                })
+
+            return {
+                "success": True,
+                "pagination": pagination,
+                "publications": parsed_items,
+                "doc_type": "BRS"
+            }
+
+        except Exception as e:
+            logger.error(f"Exception during BPS Press Release fetch: {e}")
+            return {"success": False, "error": f"Gagal menghubungi BPS Web API: {str(e)}"}
+
+    def is_publication_downloaded(
+        self,
+        pub_id: str,
+        title: str,
+        pdf_url: str,
+        updt_date: str = None
+    ) -> tuple[bool, str | None, bool]:
+        """
+        Mengecek apakah publikasi ini sudah pernah diunduh/tersimpan di database lokal,
+        serta mendeteksi apakah BPS telah merilis revisi/pembaruan (updt_date lebih baru).
+
+        Returns:
+            tuple: (is_downloaded: bool, existing_document_id: str | None, is_updated: bool)
         """
         try:
+            doc = None
+
             # 1. Cek berdasarkan pub_id di doc_metadata
             if pub_id:
                 doc = PdfDocument.query.filter(
-                    PdfDocument.doc_metadata.op('->>')('pub_id') == pub_id
+                    PdfDocument.doc_metadata.op('->>')('pub_id') == str(pub_id)
                 ).first()
-                if doc:
-                    return True, str(doc.id)
 
-            # 2. Cek berdasarkan link persis
-            if pdf_url:
+            # 2. Cek berdasarkan link persis jika belum ketemu
+            if not doc and pdf_url:
                 doc = PdfDocument.query.filter_by(link=pdf_url).first()
-                if doc:
-                    return True, str(doc.id)
 
-            # 3. Cek berdasarkan nama file/judul
-            safe_filename = self._sanitize_filename(title) + ".pdf"
-            doc = PdfDocument.query.filter(
-                (PdfDocument.filename == safe_filename) | (PdfDocument.filename == f"{title}.pdf")
-            ).first()
-            if doc:
-                return True, str(doc.id)
+            # 3. Cek berdasarkan nama file/judul jika belum ketemu
+            if not doc and title:
+                safe_filename = self._sanitize_filename(title) + ".pdf"
+                doc = PdfDocument.query.filter(
+                    (PdfDocument.filename == safe_filename) | (PdfDocument.filename == f"{title}.pdf")
+                ).first()
 
-            return False, None
+            if not doc:
+                return False, None, False
+
+            # Dokumen sudah ada di database lokal. Sekarang evaluasi apakah ada REVISI / PEMBARUAN:
+            is_updated = False
+            if updt_date:
+                clean_updt = str(updt_date).strip()
+                meta = doc.doc_metadata or {}
+                saved_updt = str(meta.get("updt_date") or "").strip()
+                saved_rl = str(meta.get("release_date") or "").strip()
+
+                if saved_updt:
+                    # Jika sudah ada riwayat updt_date sebelumnya, bandingkan
+                    if clean_updt > saved_updt:
+                        is_updated = True
+                elif saved_rl:
+                    # Jika sebelumnya hanya menyimpan release_date, cek jika tanggal update lebih baru dari tanggal rilis
+                    if clean_updt > saved_rl:
+                        is_updated = True
+
+                # Cek juga pada riwayat BpsPublicationAlert jika ada
+                if not is_updated and pub_id:
+                    alert = BpsPublicationAlert.query.filter_by(pub_id=str(pub_id)).first()
+                    if alert and alert.updt_date:
+                        if clean_updt > str(alert.updt_date).strip():
+                            is_updated = True
+
+            return True, str(doc.id), is_updated
+
         except Exception as e:
             logger.error(f"Error checking is_publication_downloaded: {e}")
-            return False, None
+            return False, None, False
 
     def _sanitize_filename(self, title: str) -> str:
         """Membersihkan judul agar menjadi nama file aman tanpa karakter terlarang."""

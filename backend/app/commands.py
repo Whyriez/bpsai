@@ -128,3 +128,51 @@ def register_commands(app):
             print("Database config created")
         else:
             print("Migration failed")
+
+    @app.cli.command("bps:monitor-now")
+    @click.option("--max-items", default=3, help="Maksimal publikasi baru yang diunduh sekaligus.")
+    @with_appcontext
+    def bps_monitor_now(max_items):
+        """Menjalankan satu siklus pemantauan publikasi BPS, chunking, AI summary, dan forward WhatsApp."""
+        from .bps_monitor import check_and_process_latest_publications
+        click.secho("[*] Memulai pemantauan data terbaru (Publikasi & BRS) dari BPS Web API...", fg="cyan", bold=True)
+        res = check_and_process_latest_publications(app=app, max_items=max_items)
+        if res.get("success"):
+            click.secho(f"[OK] {res.get('message')}", fg="green", bold=True)
+            for item in res.get("processed", []):
+                click.echo(f"  - [{item.get('status')}] {item.get('title')} (WA: {item.get('wa_status')})")
+        else:
+            click.secho(f"[ERROR] Gagal: {res.get('error')}", fg="red", bold=True)
+
+    @app.cli.command("bps:test-wa")
+    @click.option("--target", default="", help="Nomor penerima atau ID Grup")
+    @click.option("--message", default="Halo dari SIGAP BPS! Ini adalah uji coba pengiriman pesan otomatis.", help="Teks pesan uji coba")
+    @click.option("--image", default="", help="URL gambar cover untuk uji coba pengiriman media")
+    @with_appcontext
+    def bps_test_wa(target, message, image):
+        """Menguji koneksi pengiriman pesan WhatsApp (teks atau gambar)."""
+        from .bps_service import BpsApiService
+        from .whatsapp_service import send_whatsapp_message
+        
+        cfg = BpsApiService().get_config()
+        effective_target = target or cfg.get("wa_target")
+        webhook_url = cfg.get("wa_webhook_url")
+        token = cfg.get("wa_api_token")
+        gateway = cfg.get("wa_gateway_type", "webhook")
+
+        image_info = f" dengan gambar [{image}]" if image else ""
+        click.echo(f"[*] Menguji pengiriman WhatsApp via {gateway} ke: {effective_target or 'Default Target'}{image_info}")
+        ok, detail = send_whatsapp_message(
+            target=effective_target,
+            message=message,
+            gateway_type=gateway,
+            webhook_url=webhook_url,
+            api_token=token,
+            image_url=image or None,
+            metadata={"test": True, "image_url": image or None}
+        )
+
+        if ok:
+            click.secho(f"[OK] Pengiriman WhatsApp Berhasil! {detail}", fg="green", bold=True)
+        else:
+            click.secho(f"[ERROR] Pengiriman WhatsApp Gagal: {detail}", fg="red", bold=True)

@@ -43,7 +43,12 @@ const originalFetch = async (url, options = {}) => {
       errorData = { msg: `Server error: ${response.statusText}` };
     }
 
-    const error = new Error(errorData.msg || "Terjadi kesalahan");
+    const errorMessage =
+      errorData.error ||
+      errorData.msg ||
+      errorData.message ||
+      `Server error (${response.status})`;
+    const error = new Error(errorMessage);
     error.response = response; // Lampirkan seluruh response object
     throw error;
   }

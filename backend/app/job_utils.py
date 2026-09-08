@@ -1,8 +1,33 @@
 # app/job_utils.py
 
 from datetime import datetime
+import threading
 from flask import current_app
 from .models import db, BatchJob, JobStatus
+
+def is_job_thread_alive(job_id: int = None, job_name: str = None) -> bool:
+    """
+    Memeriksa apakah worker thread untuk job ini masih aktif berjalan di memori proses Python.
+    Mencegah job dianggap zombie/mati saat sedang memproses operasi lama (seperti embedding/OCR).
+    """
+    prefixes = []
+    if job_id:
+        prefixes.extend([
+            f"chunking-worker-{job_id}",
+            f"manual-upload-worker-{job_id}",
+            f"bps-sync-worker-{job_id}",
+            f"bps-monitor-worker-{job_id}",
+        ])
+
+    for t in threading.enumerate():
+        if t.is_alive():
+            if prefixes and any(t.name.startswith(p) for p in prefixes):
+                return True
+            if job_name == 'bps_api_sync_process' and ("bps-sync-worker" in t.name or t.name == "BpsAutoMonitorThread"):
+                return True
+            if job_name == 'pdf_chunking_process' and ("chunking-worker" in t.name or "manual-upload-worker" in t.name):
+                return True
+    return False
 
 def check_job_should_stop(job_id: int) -> bool:
     """

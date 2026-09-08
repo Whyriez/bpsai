@@ -109,6 +109,12 @@ class BpsApiConfig(db.Model):
     domain_code = db.Column(db.String(20), default='7500')  # 7500 = BPS Provinsi Gorontalo
     domain_name = db.Column(db.String(100), default='BPS Provinsi Gorontalo')
     auto_sync = db.Column(db.Boolean, default=False)
+    sync_interval_hours = db.Column(db.Integer, default=6)  # Pengecekan tiap X jam
+    wa_channel_enabled = db.Column(db.Boolean, default=True) # Forward rilis ke WhatsApp
+    wa_target = db.Column(db.String(255), nullable=True)     # Nomor penerima / ID Grup / Channel
+    wa_gateway_type = db.Column(db.String(50), default='local') # 'local' (Baileys / Local Webhook Gateway)
+    wa_webhook_url = db.Column(db.Text, nullable=True)       # Endpoint WhatsApp webhook/gateway
+    wa_api_token = db.Column(db.String(255), nullable=True)  # Token API gateway jika ada
     last_sync_at = db.Column(db.DateTime(timezone=True), nullable=True)
     last_sync_status = db.Column(db.String(50), nullable=True)
     last_sync_message = db.Column(db.Text, nullable=True)
@@ -117,6 +123,35 @@ class BpsApiConfig(db.Model):
 
     def __repr__(self):
         return f'<BpsApiConfig domain={self.domain_code}>'
+
+
+class BpsPublicationAlert(db.Model):
+    """
+    Menyimpan riwayat publikasi BPS terbaru yang terdeteksi secara otomatis,
+    rangkuman AI eksekutif, dan status pengiriman/forwarding ke WhatsApp.
+    """
+    __tablename__ = 'bps_publication_alerts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    pub_id = db.Column(db.String(100), nullable=True, index=True)
+    title = db.Column(db.String(500), nullable=False)
+    release_date = db.Column(db.String(50), nullable=True)
+    updt_date = db.Column(db.String(50), nullable=True) # Tanggal revisi dari BPS jika ada
+    is_update = db.Column(db.Boolean, default=False)    # Menandakan publikasi merupakan hasil revisi
+    doc_type = db.Column(db.String(50), default='PUBLIKASI') # 'PUBLIKASI' atau 'BRS' (Berita Resmi Statistik)
+    cover_url = db.Column(db.Text, nullable=True) # URL gambar cover dari Web API BPS
+    pdf_url = db.Column(db.Text, nullable=True)
+    local_pdf_path = db.Column(db.Text, nullable=True)
+    summary = db.Column(db.Text, nullable=True) # Ringkasan AI dari publikasi
+    wa_message = db.Column(db.Text, nullable=True) # Pesan berformat WhatsApp
+    wa_status = db.Column(db.String(50), default='READY') # 'READY', 'SENT', 'FAILED', 'PENDING'
+    wa_error = db.Column(db.Text, nullable=True)
+    sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))
+
+    def __repr__(self):
+        return f'<BpsPublicationAlert {self.pub_id} - {self.title[:30]}>'
 
     
 class BatchJob(db.Model):

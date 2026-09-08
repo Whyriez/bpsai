@@ -138,7 +138,17 @@ def create_app():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS picture TEXT;",
             "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id);",
             "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS custom_title VARCHAR(255);",
-            "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE;"
+            "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS sync_interval_hours INTEGER DEFAULT 6;",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_channel_enabled BOOLEAN DEFAULT TRUE;",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_target VARCHAR(255);",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_gateway_type VARCHAR(50) DEFAULT 'webhook';",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_webhook_url TEXT;",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_api_token VARCHAR(255);",
+            "ALTER TABLE bps_publication_alerts ADD COLUMN IF NOT EXISTS is_update BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE bps_publication_alerts ADD COLUMN IF NOT EXISTS updt_date VARCHAR(50);",
+            "ALTER TABLE bps_publication_alerts ADD COLUMN IF NOT EXISTS doc_type VARCHAR(50) DEFAULT 'PUBLIKASI';",
+            "ALTER TABLE bps_publication_alerts ADD COLUMN IF NOT EXISTS cover_url TEXT;"
         ]
         for stmt in statements:
             try:
@@ -185,5 +195,13 @@ def create_app():
         except Exception as e:
             db.session.rollback()
             app.logger.warning(f"Note on ThematicMapping seeding: {e}")
+
+        # Inisialisasi background monitor BPS jika server aktif
+        try:
+            if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+                from .bps_monitor import start_bps_monitor
+                start_bps_monitor(app)
+        except Exception as e:
+            app.logger.warning(f"Could not start BpsBackgroundMonitor on bootstrap: {e}")
 
     return app

@@ -351,11 +351,11 @@ class GeminiService:
                 
                 error_str = str(e).lower()
                 
-                # Deteksi quota/429 error
-                if "429" in str(e) or "quota" in error_str or "resource_exhausted" in error_str:
-                    logging.warning(f"Quota exceeded for key {self.current_key_index}: {e}")
+                # Deteksi quota/429/403/leaked error
+                if "429" in str(e) or "403" in str(e) or "quota" in error_str or "resource_exhausted" in error_str or "permission_denied" in error_str or "leaked" in error_str:
+                    logging.warning(f"Key index {self.current_key_index} error ({e}). Rotating to next key...")
                     if not self._rotate_key():
-                        raise Exception("All API keys have exceeded their quota")
+                        raise Exception("All API keys have failed or exceeded quota")
                     continue  # Retry dengan key baru
                 
                 # Deteksi safety filter
@@ -415,8 +415,8 @@ class GeminiService:
                 
                 error_str = str(e).lower()
                 
-                if "429" in str(e) or "quota" in error_str or "resource_exhausted" in error_str:
-                    logging.warning(f"Quota exceeded for key {self.current_key_index}: {e}")
+                if "429" in str(e) or "403" in str(e) or "quota" in error_str or "resource_exhausted" in error_str or "permission_denied" in error_str or "leaked" in error_str:
+                    logging.warning(f"Key index {self.current_key_index} error ({e}). Rotating to next key...")
                     if not self._rotate_key():
                         return None
                     continue  # Retry dengan key baru
@@ -568,6 +568,17 @@ def process_and_save_pdf(pdf_path: str, job_id: int = None, progress_callback=No
             
         document = PdfDocument.query.filter_by(document_hash=file_hash).first()
 
+        # Cek apakah publikasi dengan pub_id yang sama sudah ada di database (Kasus REVISI / PEMBARUAN BPS)
+        pub_id = (doc_metadata or {}).get("pub_id")
+        if not document and pub_id:
+            document = PdfDocument.query.filter(
+                PdfDocument.doc_metadata.op('->>')('pub_id') == str(pub_id)
+            ).first()
+
+        # Fallback cek berdasarkan link persis jika belum ditemukan
+        if not document and link:
+            document = PdfDocument.query.filter_by(link=link).first()
+
         doc_for_pages = fitz.open(pdf_path)
         total_pages = len(doc_for_pages)
         doc_for_pages.close()
@@ -577,27 +588,37 @@ def process_and_save_pdf(pdf_path: str, job_id: int = None, progress_callback=No
             combined_meta.update(doc_metadata)
 
         if document:
-            # Update link dan metadata jika sebelumnya belum ada
-            if link and not document.link:
+            is_revision = (document.document_hash != file_hash)
+            if is_revision:
+                logging.info(f"Revisi/pembaruan file terdeteksi untuk publikasi '{original_filename}' (ID: {document.id}). Menghapus chunk lama dan memproses ulang dari halaman 1...")
+                DocumentChunk.query.filter_by(document_id=document.id).delete()
+                document.document_hash = file_hash
+                document.total_pages = total_pages
+                document.filename = original_filename
+                start_page = 1
+
+            # Update link dan metadata jika sebelumnya belum ada / diperbarui
+            if link:
                 document.link = link
             if doc_metadata:
                 document.doc_metadata = {**(document.doc_metadata or {}), **doc_metadata}
             db.session.commit()
 
-            # Cek chunk terakhir untuk resume
-            last_chunk = DocumentChunk.query.filter_by(document_id=document.id) \
-                .order_by(DocumentChunk.page_number.desc()).first()
+            if not is_revision:
+                # Cek chunk terakhir untuk resume jika bukan revisi baru
+                last_chunk = DocumentChunk.query.filter_by(document_id=document.id) \
+                    .order_by(DocumentChunk.page_number.desc()).first()
 
-            if last_chunk:
-                if last_chunk.page_number >= total_pages:
-                    logging.info(f"Skipping '{original_filename}': Sudah selesai diproses.")
-                    return {"status": "skipped", "filename": original_filename, "reason": "Dokumen sudah selesai diproses."}
+                if last_chunk:
+                    if last_chunk.page_number >= total_pages:
+                        logging.info(f"Skipping '{original_filename}': Sudah selesai diproses.")
+                        return {"status": "skipped", "filename": original_filename, "reason": "Dokumen sudah selesai diproses."}
 
-                # Resume dari halaman berikutnya
-                start_page = last_chunk.page_number + 1
-                logging.info(f"Resuming '{original_filename}' from page {start_page}.")
-            else:
-                start_page = 1
+                    # Resume dari halaman berikutnya
+                    start_page = last_chunk.page_number + 1
+                    logging.info(f"Resuming '{original_filename}' from page {start_page}.")
+                else:
+                    start_page = 1
         else:
             # Buat entry dokumen baru
             document = PdfDocument(
