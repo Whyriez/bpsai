@@ -92,7 +92,8 @@ def create_or_get_short_link(
     target_url: str,
     title: str = None,
     doc_type: str = "PUBLIKASI",
-    pub_id: str = None
+    pub_id: str = None,
+    web_url: str = None
 ) -> tuple[ShortLink, str]:
     """
     Membuat tautan singkat baru atau mengambil yang sudah ada untuk publikasi BPS.
@@ -124,6 +125,9 @@ def create_or_get_short_link(
         if pub_id and not existing.pub_id:
             existing.pub_id = str(pub_id)
             updated = True
+        if web_url and not getattr(existing, 'web_url', None):
+            existing.web_url = web_url.strip()
+            updated = True
         if existing.target_url != clean_target:
             existing.target_url = clean_target
             updated = True
@@ -144,6 +148,7 @@ def create_or_get_short_link(
     short_link = ShortLink(
         slug=slug,
         target_url=clean_target,
+        web_url=(web_url or "").strip() if web_url else None,
         title=(title or "").strip()[:500] if title else None,
         doc_type=doc_type or "PUBLIKASI",
         pub_id=str(pub_id) if pub_id else None,

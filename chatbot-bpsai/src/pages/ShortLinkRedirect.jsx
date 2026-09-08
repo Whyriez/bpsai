@@ -309,6 +309,25 @@ export default function ShortLinkRedirect() {
                   >
                     <span>💬 Tanya Isi Dokumen ini ke AI SIGAP</span>
                   </button>
+
+                  {docData.bps_web_url && (
+                    <a
+                      href={docData.bps_web_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        if (redirectTimerRef.current) {
+                          clearInterval(redirectTimerRef.current);
+                        }
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-semibold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                    >
+                      <span>🌐 Buka Laman Web Resmi BPS</span>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  )}
                 </div>
 
                 {/* Card Sub-Footer Info */}

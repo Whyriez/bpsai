@@ -116,6 +116,7 @@ class BpsApiConfig(db.Model):
     wa_webhook_url = db.Column(db.Text, nullable=True)       # Endpoint WhatsApp webhook/gateway
     wa_api_token = db.Column(db.String(255), nullable=True)  # Token API gateway jika ada
     chatbot_url = db.Column(db.String(255), nullable=True)   # URL Chatbot Frontend (misal http://localhost:5174 atau https://sigap.bps7500.my.id)
+    portal_url = db.Column(db.String(255), nullable=True, default='https://gorontalo.bps.go.id') # URL Portal Resmi BPS
     last_sync_at = db.Column(db.DateTime(timezone=True), nullable=True)
     last_sync_status = db.Column(db.String(50), nullable=True)
     last_sync_message = db.Column(db.Text, nullable=True)
@@ -148,6 +149,7 @@ class BpsPublicationAlert(db.Model):
     wa_status = db.Column(db.String(50), default='READY') # 'READY', 'SENT', 'FAILED', 'PENDING'
     wa_error = db.Column(db.Text, nullable=True)
     short_code = db.Column(db.String(150), nullable=True, index=True) # Slug tautan singkat dokumen frontend chatbot
+    bps_web_url = db.Column(db.Text, nullable=True) # Tautan langsung ke laman artikel resmi di website BPS
     sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))
@@ -166,6 +168,7 @@ class ShortLink(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     slug = db.Column(db.String(150), unique=True, nullable=False, index=True)
     target_url = db.Column(db.Text, nullable=False)
+    web_url = db.Column(db.Text, nullable=True) # URL artikel website resmi BPS
     title = db.Column(db.String(500), nullable=True)
     doc_type = db.Column(db.String(50), default='PUBLIKASI')
     pub_id = db.Column(db.String(100), nullable=True, index=True)

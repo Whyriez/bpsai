@@ -26,12 +26,11 @@ def generate_publication_summary_and_wa(
     domain_name: str = "BPS Provinsi Gorontalo",
     is_update: bool = False,
     doc_type: str = "PUBLIKASI",
-    pub_id: str = None
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str]:
     """
-    Menghasilkan ringkasan eksekutif berbasis Gemini AI dan format pesan WhatsApp resmi.
+    Menghasilkan ringkasan eksekutif berbasis Gemini AI, tautan resmi BPS, dan format pesan WhatsApp resmi.
     Mendukung publikasi buku statistik dan Berita Resmi Statistik (BRS) baru maupun revisi.
-    Mengembalikan tuple: (summary, wa_message)
+    Mengembalikan tuple: (summary, wa_message, short_code, bps_web_url)
     """
     is_brs = (doc_type or "").upper() == "BRS"
     doc_noun = "Berita Resmi Statistik (BRS)" if is_brs else "Publikasi Statistik"
@@ -125,7 +124,19 @@ Keluarkan hasil dalam format JSON persis seperti berikut (tanpa markdown backtic
         except Exception as e:
             logger.warning(f"Gagal generate short link untuk {title}: {e}")
 
-    # Susun pesan WhatsApp terformat dengan short link
+    # Dapatkan URL Laman Resmi Website BPS
+    from .bps_service import generate_bps_web_url, BpsApiService
+    bps_svc = BpsApiService()
+    portal_base = bps_svc.get_portal_url()
+    bps_web_url = generate_bps_web_url(
+        domain_base=portal_base,
+        doc_type=doc_type,
+        release_date=release_date,
+        item_id=pub_id,
+        title=title
+    )
+
+    # Susun pesan WhatsApp terformat dengan short link dan tautan website resmi BPS
     wa_message = format_publication_whatsapp_message(
         title=title,
         release_date=release_date,
@@ -135,10 +146,11 @@ Keluarkan hasil dalam format JSON persis seperti berikut (tanpa markdown backtic
         domain_name=domain_name,
         is_update=is_update,
         doc_type=doc_type,
-        short_url=short_url
+        short_url=short_url,
+        bps_web_url=bps_web_url
     )
 
-    return summary_text, wa_message, (short_code or "")
+    return summary_text, wa_message, (short_code or ""), (bps_web_url or "")
 
 
 def check_and_process_latest_publications(
@@ -383,7 +395,7 @@ def check_and_process_latest_publications(
             # 5. Gemini AI Summarizer & Format WhatsApp
             report_step("Perangkuman Eksekutif AI (Gemini)")
             logger.info(f"Menjalankan perangkuman cerdas AI ({type_label}) untuk: {title}...")
-            summary, wa_msg, short_code = generate_publication_summary_and_wa(
+            summary, wa_msg, short_code, bps_web_url = generate_publication_summary_and_wa(
                 title=title,
                 release_date=release_date,
                 updt_date=updt_date,
@@ -412,7 +424,8 @@ def check_and_process_latest_publications(
                     summary=summary,
                     wa_message=wa_msg,
                     wa_status="READY",
-                    short_code=short_code
+                    short_code=short_code,
+                    bps_web_url=bps_web_url
                 )
                 db.session.add(alert)
             else:
@@ -429,6 +442,8 @@ def check_and_process_latest_publications(
                 alert.wa_message = wa_msg
                 if short_code:
                     alert.short_code = short_code
+                if bps_web_url:
+                    alert.bps_web_url = bps_web_url
                 alert.updated_at = datetime.now(pytz.utc)
 
             db.session.commit()

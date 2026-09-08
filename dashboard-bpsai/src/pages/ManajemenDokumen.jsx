@@ -954,6 +954,7 @@ const BpsSyncModal = ({
     wa_webhook_url: "",
     wa_api_token: "",
     chatbot_url: "",
+    portal_url: "https://gorontalo.bps.go.id",
   });
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -1199,6 +1200,7 @@ const BpsSyncModal = ({
         wa_webhook_url: res.wa_webhook_url || "",
         wa_api_token: res.wa_api_token || "",
         chatbot_url: res.chatbot_url || "",
+        portal_url: res.portal_url || "https://gorontalo.bps.go.id",
         last_sync_at: res.last_sync_at,
         last_sync_status: res.last_sync_status,
         last_sync_message: res.last_sync_message,
@@ -2019,6 +2021,24 @@ const BpsSyncModal = ({
                       Domain tautan singkat yang dibagikan ke WhatsApp (contoh: <code className="text-gray-600">https://sigap.bps7500.my.id</code> di production, atau <code className="text-gray-600">http://localhost:5174</code> di lokal).
                     </p>
                   </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      URL Portal Web BPS Resmi
+                    </label>
+                    <input
+                      type="text"
+                      value={config.portal_url || ""}
+                      onChange={(e) =>
+                        setConfig({ ...config, portal_url: e.target.value })
+                      }
+                      placeholder="https://gorontalo.bps.go.id"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      Domain portal resmi BPS untuk rilis artikel BRS & Publikasi (default: <code className="text-gray-600">https://gorontalo.bps.go.id</code>).
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
@@ -2402,6 +2422,21 @@ const BpsSyncModal = ({
                             </div>
                           )}
 
+                          {/* Badge Laman Resmi Website BPS */}
+                          {alert.bps_web_url && (
+                            <div className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200/80 rounded-md px-2.5 py-1.5 w-fit">
+                              <span className="font-semibold text-[11px]">🌐 Laman Resmi Website BPS:</span>
+                              <a
+                                href={alert.bps_web_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline font-mono text-[11px] text-emerald-600 hover:text-emerald-800 break-all"
+                              >
+                                {alert.bps_web_url}
+                              </a>
+                            </div>
+                          )}
+
                           {/* Box Preview Pesan WhatsApp */}
                           {alert.wa_message && (
                             <details className="mt-2 text-xs">
@@ -2624,6 +2659,24 @@ const BpsSyncModal = ({
                   />
                   <p className="text-[10px] text-gray-400 mt-1">
                     Domain tautan singkat yang dibagikan ke WhatsApp (contoh: <code className="text-gray-600">https://sigap.bps7500.my.id</code>).
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    URL Portal Web BPS Resmi
+                  </label>
+                  <input
+                    type="text"
+                    value={config.portal_url || ""}
+                    onChange={(e) =>
+                      setConfig({ ...config, portal_url: e.target.value })
+                    }
+                    placeholder="https://gorontalo.bps.go.id"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    Domain portal resmi BPS untuk rilis artikel BRS & Publikasi (default: <code className="text-gray-600">https://gorontalo.bps.go.id</code>).
                   </p>
                 </div>
               </div>

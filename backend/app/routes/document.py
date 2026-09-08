@@ -1600,6 +1600,7 @@ def save_bps_api_config():
     wa_webhook_url = data.get('wa_webhook_url', '')
     wa_api_token = data.get('wa_api_token', '')
     chatbot_url = data.get('chatbot_url', '')
+    portal_url = data.get('portal_url', '')
 
     service = BpsApiService()
     cfg = service.save_config(
@@ -1613,19 +1614,30 @@ def save_bps_api_config():
         wa_gateway_type=wa_gateway_type,
         wa_webhook_url=wa_webhook_url,
         wa_api_token=wa_api_token,
-        chatbot_url=chatbot_url
+        chatbot_url=chatbot_url,
+        portal_url=portal_url
     )
 
-    # Sinkronkan seluruh wa_message riwayat publikasi dengan domain chatbot baru
-    if chatbot_url:
+    # Sinkronkan seluruh wa_message riwayat publikasi dengan domain chatbot dan portal baru
+    if chatbot_url or portal_url:
         try:
             from ..short_link_service import get_chatbot_base_url
             from ..whatsapp_service import format_publication_whatsapp_message
-            base = chatbot_url.strip().rstrip('/')
+            from ..bps_service import generate_bps_web_url
+            base = get_chatbot_base_url()
+            portal_base = service.get_portal_url()
             alerts = BpsPublicationAlert.query.all()
             for a in alerts:
-                if a.short_code and a.wa_message:
-                    short_url = f"{base}/{a.short_code}"
+                computed_web = generate_bps_web_url(
+                    domain_base=portal_base,
+                    doc_type=a.doc_type,
+                    release_date=a.release_date or "",
+                    item_id=a.pub_id,
+                    title=a.title
+                )
+                a.bps_web_url = computed_web
+                if a.wa_message:
+                    short_url = f"{base}/{a.short_code}" if a.short_code else ""
                     a.wa_message = format_publication_whatsapp_message(
                         title=a.title,
                         release_date=a.release_date or "",
@@ -1635,11 +1647,12 @@ def save_bps_api_config():
                         domain_name="BPS Provinsi Gorontalo",
                         is_update=a.is_update or False,
                         doc_type=a.doc_type or "PUBLIKASI",
-                        short_url=short_url
+                        short_url=short_url,
+                        bps_web_url=computed_web
                     )
             db.session.commit()
         except Exception as e:
-            logger.warning(f"Gagal memperbarui pesan WA saat update chatbot_url: {e}")
+            logger.warning(f"Gagal memperbarui pesan WA saat update config: {e}")
 
     return jsonify({"message": "Konfigurasi BPS Web API dan WhatsApp berhasil disimpan.", "config": cfg}), 200
 
@@ -1880,6 +1893,7 @@ def get_bps_alerts():
             "wa_error": a.wa_error,
             "short_code": a.short_code,
             "short_url": f"{chatbot_base}/{a.short_code}" if a.short_code else None,
+            "bps_web_url": a.bps_web_url,
             "sent_at": a.sent_at.isoformat() if a.sent_at else None,
             "created_at": a.created_at.isoformat() if a.created_at else None
         })
@@ -1915,36 +1929,59 @@ def forward_bps_alert_to_wa(alert_id):
     if not alert.wa_message:
         return jsonify({"error": "Pesan WhatsApp belum tersedia untuk publikasi ini."}), 400
 
-    # Pastikan pesan WhatsApp menggunakan short URL terkini dari domain aktif
-    if alert.pdf_url:
-        try:
-            from ..short_link_service import create_or_get_short_link, get_chatbot_base_url
-            from ..whatsapp_service import format_publication_whatsapp_message
-            base = get_chatbot_base_url()
-            short_link, short_url = create_or_get_short_link(
+    # Pastikan pesan WhatsApp menggunakan short URL dan tautan portal BPS resmi terkini
+    try:
+        from ..short_link_service import create_or_get_short_link, get_chatbot_base_url
+        from ..whatsapp_service import format_publication_whatsapp_message
+        from ..bps_service import generate_bps_web_url
+        base = get_chatbot_base_url()
+        portal_base = service.get_portal_url()
+
+        # Hitung dan simpan bps_web_url jika belum ada
+        if not alert.bps_web_url:
+            alert.bps_web_url = generate_bps_web_url(
+                domain_base=portal_base,
+                doc_type=alert.doc_type,
+                release_date=alert.release_date or "",
+                item_id=alert.pub_id,
+                title=alert.title
+            )
+
+        current_short_url = ""
+        if alert.pdf_url:
+            short_link, current_short_url = create_or_get_short_link(
                 target_url=alert.pdf_url,
                 title=alert.title,
                 doc_type=alert.doc_type,
-                pub_id=alert.pub_id
+                pub_id=alert.pub_id,
+                web_url=alert.bps_web_url
             )
             if short_link:
                 alert.short_code = short_link.slug
                 current_short_url = f"{base}/{short_link.slug}"
-                if current_short_url not in (alert.wa_message or ""):
-                    alert.wa_message = format_publication_whatsapp_message(
-                        title=alert.title,
-                        release_date=alert.release_date or "",
-                        updt_date=alert.updt_date or "",
-                        summary=alert.summary or "",
-                        pdf_url=alert.pdf_url,
-                        domain_name="BPS Provinsi Gorontalo",
-                        is_update=alert.is_update or False,
-                        doc_type=alert.doc_type or "PUBLIKASI",
-                        short_url=current_short_url
-                    )
-                    db.session.commit()
-        except Exception as e:
-            logger.warning(f"Gagal memastikan short URL saat forward alert: {e}")
+
+        need_reformat = False
+        if current_short_url and current_short_url not in (alert.wa_message or ""):
+            need_reformat = True
+        if alert.bps_web_url and alert.bps_web_url not in (alert.wa_message or ""):
+            need_reformat = True
+
+        if need_reformat:
+            alert.wa_message = format_publication_whatsapp_message(
+                title=alert.title,
+                release_date=alert.release_date or "",
+                updt_date=alert.updt_date or "",
+                summary=alert.summary or "",
+                pdf_url=alert.pdf_url or "",
+                domain_name="BPS Provinsi Gorontalo",
+                is_update=alert.is_update or False,
+                doc_type=alert.doc_type or "PUBLIKASI",
+                short_url=current_short_url,
+                bps_web_url=alert.bps_web_url
+            )
+            db.session.commit()
+    except Exception as e:
+        logger.warning(f"Gagal memastikan link saat forward alert: {e}")
 
     success, detail = send_whatsapp_message(
         target=wa_target,

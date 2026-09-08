@@ -10,6 +10,59 @@ from app.models import db, BpsApiConfig, PdfDocument, BpsPublicationAlert
 
 logger = logging.getLogger(__name__)
 
+
+def slugify_bps(title: str) -> str:
+    """
+    Menghasilkan slug URL yang sesuai persis dengan pola penamaan laman BPS (Next.js CMS).
+    Karakter alfanumerik dan '-' dipertahankan, sedangkan SEMUA karakter selain itu (spasi, tanda baca, simbol, kurung) diganti '-'.
+    Contoh:
+    'Juli 2026, jumlah...' -> 'juli-2026--jumlah...'
+    'Agustus 2026, inflasi year on year (y-on-y)...' -> 'agustus-2026--inflasi-year-on-year--y-on-y--...'
+    'Juli 2026, nilai ekspor Provinsi Gorontalo sebesar US$6,90 juta' -> 'juli-2026--nilai-ekspor-provinsi-gorontalo-sebesar-us-6-90-juta'
+    """
+    if not title:
+        return ""
+    s = title.strip().lower()
+    return "".join(c if (c.isalnum() or c == '-') else '-' for c in s)
+
+
+def generate_bps_web_url(
+    domain_base: str,
+    doc_type: str,
+    release_date: str,
+    item_id: str,
+    title: str
+) -> str:
+    """
+    Menyusun URL langsung ke laman Berita Resmi Statistik (BRS) atau Publikasi di portal resmi BPS.
+    Format BRS: {portal}/id/pressrelease/{YYYY}/{MM}/{DD}/{brs_id}/{slug}.html
+    Format Publikasi: {portal}/id/publication/{YYYY}/{MM}/{DD}/{pub_id}/{slug}.html
+    """
+    base = (domain_base or "https://gorontalo.bps.go.id").rstrip("/")
+    is_brs = (doc_type or "").upper() == "BRS"
+    section = "pressrelease" if is_brs else "publication"
+
+    clean_date = (release_date or "").split("T")[0].replace("-", "/").strip("/")
+    if not clean_date or clean_date == "Terbaru":
+        clean_date = datetime.now().strftime("%Y/%m/%d")
+    elif len(clean_date.split("/")) < 3:
+        parts = clean_date.split("/")
+        if len(parts) == 1:
+            clean_date = f"{parts[0]}/01/01"
+        elif len(parts) == 2:
+            clean_date = f"{parts[0]}/{parts[1]}/01"
+
+    clean_id = str(item_id or "").replace("brs_", "").strip()
+    if not clean_id:
+        clean_id = "0"
+
+    slug = slugify_bps(title)
+    if not slug:
+        slug = "dokumen"
+
+    return f"{base}/id/{section}/{clean_date}/{clean_id}/{slug}.html"
+
+
 class BpsApiService:
     """
     Layanan integrasi BPS Web API (webapi.bps.go.id) untuk sinkronisasi otomatis publikasi resmi.
@@ -17,9 +70,47 @@ class BpsApiService:
     DEFAULT_BASE_URL = "https://webapi.bps.go.id/v1/api"
     DEFAULT_DOMAIN = "7500"  # BPS Provinsi Gorontalo
     DEFAULT_DOMAIN_NAME = "BPS Provinsi Gorontalo"
+    DEFAULT_PORTAL_URL = "https://gorontalo.bps.go.id"
 
     def __init__(self, base_url: str = None):
         self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip('/')
+
+    def get_portal_url(self, domain_code: str = None) -> str:
+        """
+        Mendapatkan URL dasar portal website BPS (default: https://gorontalo.bps.go.id).
+        """
+        try:
+            cfg = BpsApiConfig.query.first()
+            if cfg and getattr(cfg, 'portal_url', None):
+                val = cfg.portal_url.strip().rstrip('/')
+                if val:
+                    return val
+        except Exception:
+            pass
+
+        env_portal = os.getenv("BPS_PORTAL_URL", "").strip().rstrip('/')
+        if env_portal:
+            return env_portal
+
+        d_code = (domain_code or self.DEFAULT_DOMAIN).strip()
+        if d_code == "0000":
+            return "https://bps.go.id"
+        elif d_code == "7500":
+            return "https://gorontalo.bps.go.id"
+        elif d_code == "7571":
+            return "https://gorontalokota.bps.go.id"
+        elif d_code == "7501":
+            return "https://gorontalokab.bps.go.id"
+        elif d_code == "7502":
+            return "https://boalemokab.bps.go.id"
+        elif d_code == "7503":
+            return "https://bonebolangokab.bps.go.id"
+        elif d_code == "7504":
+            return "https://pahuwatokab.bps.go.id"
+        elif d_code == "7505":
+            return "https://gorontaloutarakab.bps.go.id"
+
+        return self.DEFAULT_PORTAL_URL
 
     def get_config(self) -> dict:
         """
@@ -52,6 +143,7 @@ class BpsApiService:
                 "wa_webhook_url": getattr(cfg, 'wa_webhook_url', '') or os.getenv("WA_WEBHOOK_URL", "http://localhost:3001/send") or 'http://localhost:3001/send',
                 "wa_api_token": getattr(cfg, 'wa_api_token', '') or os.getenv("WA_API_TOKEN", "") or '',
                 "chatbot_url": getattr(cfg, 'chatbot_url', '') or os.getenv("CHATBOT_URL", "") or '',
+                "portal_url": getattr(cfg, 'portal_url', '') or os.getenv("BPS_PORTAL_URL", "https://gorontalo.bps.go.id") or "https://gorontalo.bps.go.id",
                 "last_sync_at": cfg.last_sync_at.isoformat() if cfg.last_sync_at else None,
                 "last_sync_status": cfg.last_sync_status,
                 "last_sync_message": cfg.last_sync_message
@@ -79,7 +171,7 @@ class BpsApiService:
                     auto_sync: bool = False, sync_interval_hours: int = 6,
                     wa_channel_enabled: bool = True, wa_target: str = "",
                     wa_gateway_type: str = "local", wa_webhook_url: str = "http://localhost:3001/send",
-                    wa_api_token: str = "", chatbot_url: str = "") -> dict:
+                    wa_api_token: str = "", chatbot_url: str = "", portal_url: str = "https://gorontalo.bps.go.id") -> dict:
         """
         Menyimpan konfigurasi BPS API dan integrasi WhatsApp ke database.
         """
@@ -100,6 +192,8 @@ class BpsApiService:
         cfg.wa_api_token = (wa_api_token or "").strip()
         if chatbot_url is not None:
             cfg.chatbot_url = (chatbot_url or "").strip().rstrip('/')
+        if portal_url is not None:
+            cfg.portal_url = (portal_url or "https://gorontalo.bps.go.id").strip().rstrip('/')
         db.session.commit()
         return self.get_config()
 
@@ -200,6 +294,14 @@ class BpsApiService:
                     updt_date=updt_date
                 )
 
+                web_url = generate_bps_web_url(
+                    domain_base=self.get_portal_url(effective_domain),
+                    doc_type="PUBLIKASI",
+                    release_date=rl_date,
+                    item_id=pub_id,
+                    title=title
+                )
+
                 parsed_items.append({
                     "pub_id": pub_id,
                     "title": title,
@@ -209,6 +311,7 @@ class BpsApiService:
                     "pdf_url": pdf_url,
                     "size": size,
                     "abstract": abstract,
+                    "web_url": web_url,
                     "doc_type": "PUBLIKASI",
                     "is_downloaded": is_downloaded,
                     "is_updated": is_updated,
@@ -330,6 +433,14 @@ class BpsApiService:
                     updt_date=updt_date
                 )
 
+                web_url = generate_bps_web_url(
+                    domain_base=self.get_portal_url(effective_domain),
+                    doc_type="BRS",
+                    release_date=rl_date,
+                    item_id=brs_id,
+                    title=title
+                )
+
                 parsed_items.append({
                     "pub_id": pub_id,
                     "brs_id": brs_id,
@@ -341,6 +452,7 @@ class BpsApiService:
                     "size": size,
                     "abstract": clean_abstract,
                     "category": category,
+                    "web_url": web_url,
                     "doc_type": "BRS",
                     "is_downloaded": is_downloaded,
                     "is_updated": is_updated,
