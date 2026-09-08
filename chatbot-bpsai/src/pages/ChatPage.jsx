@@ -1,6 +1,6 @@
 // src/pages/ChatPage.jsx
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/Header";
 import Sidebar from "../components/Sidebar";
 import ChatContainer from "../components/ChatContainer";
@@ -31,7 +31,9 @@ function ChatPage() {
     incrementGuestChatCount,
   } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { conversationId } = useParams();
+  const initialPromptProcessedRef = useRef(false);
 
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -356,6 +358,16 @@ function ChatPage() {
       abortControllerRef.current = null;
     }
   };
+
+  // Efek untuk memicu pertanyaan otomatis jika dialihkan dari Short Link Dokumen
+  useEffect(() => {
+    if (location.state?.initialPrompt && !initialPromptProcessedRef.current && !isLoading) {
+      initialPromptProcessedRef.current = true;
+      const promptText = location.state.initialPrompt;
+      window.history.replaceState({}, document.title);
+      handleSendMessage(promptText);
+    }
+  }, [location.state, isLoading]);
 
   const handleCancelGeneration = () => {
     if (abortControllerRef.current) {

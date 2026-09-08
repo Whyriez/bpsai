@@ -110,6 +110,7 @@ def create_app():
     from .routes.api_keys import api_keys_bp
     from .routes.thematic import thematic_bp
     from .routes.users import users_bp
+    from .routes.public import public_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(chat_bp)
@@ -120,6 +121,7 @@ def create_app():
     app.register_blueprint(api_keys_bp)
     app.register_blueprint(thematic_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(public_bp)
 
     # Daftarkan perintah CLI
     # app.cli.add_command(cli)
@@ -145,10 +147,12 @@ def create_app():
             "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_gateway_type VARCHAR(50) DEFAULT 'webhook';",
             "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_webhook_url TEXT;",
             "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_api_token VARCHAR(255);",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS chatbot_url VARCHAR(255);",
             "ALTER TABLE bps_publication_alerts ADD COLUMN IF NOT EXISTS is_update BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE bps_publication_alerts ADD COLUMN IF NOT EXISTS updt_date VARCHAR(50);",
             "ALTER TABLE bps_publication_alerts ADD COLUMN IF NOT EXISTS doc_type VARCHAR(50) DEFAULT 'PUBLIKASI';",
-            "ALTER TABLE bps_publication_alerts ADD COLUMN IF NOT EXISTS cover_url TEXT;"
+            "ALTER TABLE bps_publication_alerts ADD COLUMN IF NOT EXISTS cover_url TEXT;",
+            "ALTER TABLE bps_publication_alerts ADD COLUMN IF NOT EXISTS short_code VARCHAR(150);"
         ]
         for stmt in statements:
             try:

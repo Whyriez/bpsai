@@ -115,6 +115,7 @@ class BpsApiConfig(db.Model):
     wa_gateway_type = db.Column(db.String(50), default='local') # 'local' (Baileys / Local Webhook Gateway)
     wa_webhook_url = db.Column(db.Text, nullable=True)       # Endpoint WhatsApp webhook/gateway
     wa_api_token = db.Column(db.String(255), nullable=True)  # Token API gateway jika ada
+    chatbot_url = db.Column(db.String(255), nullable=True)   # URL Chatbot Frontend (misal http://localhost:5174 atau https://sigap.bps7500.my.id)
     last_sync_at = db.Column(db.DateTime(timezone=True), nullable=True)
     last_sync_status = db.Column(db.String(50), nullable=True)
     last_sync_message = db.Column(db.Text, nullable=True)
@@ -146,12 +147,35 @@ class BpsPublicationAlert(db.Model):
     wa_message = db.Column(db.Text, nullable=True) # Pesan berformat WhatsApp
     wa_status = db.Column(db.String(50), default='READY') # 'READY', 'SENT', 'FAILED', 'PENDING'
     wa_error = db.Column(db.Text, nullable=True)
+    short_code = db.Column(db.String(150), nullable=True, index=True) # Slug tautan singkat dokumen frontend chatbot
     sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc), onupdate=lambda: datetime.now(pytz.utc))
 
     def __repr__(self):
         return f'<BpsPublicationAlert {self.pub_id} - {self.title[:30]}>'
+
+
+class ShortLink(db.Model):
+    """
+    Menyimpan pemetaan tautan singkat (short URL) dokumen/publikasi BPS
+    ke URL dokumen asli (PDF/web BPS), untuk dibagikan ke WhatsApp dan publik.
+    """
+    __tablename__ = 'short_links'
+
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(150), unique=True, nullable=False, index=True)
+    target_url = db.Column(db.Text, nullable=False)
+    title = db.Column(db.String(500), nullable=True)
+    doc_type = db.Column(db.String(50), default='PUBLIKASI')
+    pub_id = db.Column(db.String(100), nullable=True, index=True)
+    click_count = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(pytz.utc))
+    last_accessed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    def __repr__(self):
+        return f'<ShortLink {self.slug} -> {self.pub_id}>'
+
 
     
 class BatchJob(db.Model):

@@ -14,7 +14,8 @@ def format_publication_whatsapp_message(
     pdf_url: str = "",
     domain_name: str = "BPS Provinsi Gorontalo",
     is_update: bool = False,
-    doc_type: str = "PUBLIKASI"
+    doc_type: str = "PUBLIKASI",
+    short_url: str = ""
 ) -> str:
     """
     Menyusun teks siaran resmi publikasi buku atau Berita Resmi Statistik (BRS) baru atau revisi
@@ -29,6 +30,7 @@ def format_publication_whatsapp_message(
     clean_updt = (updt_date or "").strip()
     clean_summary = (summary or "").strip()
     clean_pdf = (pdf_url or "").strip()
+    clean_short = (short_url or "").strip()
 
     if is_update:
         header = f"📢 *PEMBARUAN / REVISI {type_label} BPS* 🔄"
@@ -57,9 +59,11 @@ def format_publication_whatsapp_message(
         lines.append(clean_summary)
         lines.append("")
 
-    if clean_pdf:
+    # Gunakan tautan singkat jika tersedia, atau fallback ke URL asli jika belum ada
+    doc_link = clean_short or clean_pdf
+    if doc_link:
         lines.append("🔗 *Akses Dokumen Resmi Terbaru (PDF):*" if is_update else "🔗 *Akses Dokumen Resmi (PDF):*")
-        lines.append(clean_pdf)
+        lines.append(doc_link)
         lines.append("")
 
     lines.append("─────────────────────")

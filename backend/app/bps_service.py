@@ -51,6 +51,7 @@ class BpsApiService:
                 "wa_gateway_type": getattr(cfg, 'wa_gateway_type', '') or "local",
                 "wa_webhook_url": getattr(cfg, 'wa_webhook_url', '') or os.getenv("WA_WEBHOOK_URL", "http://localhost:3001/send") or 'http://localhost:3001/send',
                 "wa_api_token": getattr(cfg, 'wa_api_token', '') or os.getenv("WA_API_TOKEN", "") or '',
+                "chatbot_url": getattr(cfg, 'chatbot_url', '') or os.getenv("CHATBOT_URL", "") or '',
                 "last_sync_at": cfg.last_sync_at.isoformat() if cfg.last_sync_at else None,
                 "last_sync_status": cfg.last_sync_status,
                 "last_sync_message": cfg.last_sync_message
@@ -68,6 +69,7 @@ class BpsApiService:
                 "wa_gateway_type": "local",
                 "wa_webhook_url": os.getenv("WA_WEBHOOK_URL", "http://localhost:3001/send"),
                 "wa_api_token": os.getenv("WA_API_TOKEN", "") or "",
+                "chatbot_url": os.getenv("CHATBOT_URL", "") or "",
                 "last_sync_at": None,
                 "last_sync_status": None,
                 "last_sync_message": None
@@ -77,7 +79,7 @@ class BpsApiService:
                     auto_sync: bool = False, sync_interval_hours: int = 6,
                     wa_channel_enabled: bool = True, wa_target: str = "",
                     wa_gateway_type: str = "local", wa_webhook_url: str = "http://localhost:3001/send",
-                    wa_api_token: str = "") -> dict:
+                    wa_api_token: str = "", chatbot_url: str = "") -> dict:
         """
         Menyimpan konfigurasi BPS API dan integrasi WhatsApp ke database.
         """
@@ -96,6 +98,8 @@ class BpsApiService:
         cfg.wa_gateway_type = (wa_gateway_type or "local").strip()
         cfg.wa_webhook_url = (wa_webhook_url or "http://localhost:3001/send").strip()
         cfg.wa_api_token = (wa_api_token or "").strip()
+        if chatbot_url is not None:
+            cfg.chatbot_url = (chatbot_url or "").strip().rstrip('/')
         db.session.commit()
         return self.get_config()
 
