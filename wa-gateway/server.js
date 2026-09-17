@@ -3,6 +3,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion
 } from '@whiskeysockets/baileys';
+import { executeWMexQuery } from '@whiskeysockets/baileys/lib/Socket/mex.js';
 import express from 'express';
 import qrcode from 'qrcode-terminal';
 import QRCode from 'qrcode';
@@ -29,10 +30,16 @@ let currentQrUpdatedAt = null;
 function formatJid(target) {
   let cleaned = String(target || '').trim();
   if (!cleaned) return null;
-  if (cleaned.endsWith('@g.us') || cleaned.endsWith('@s.whatsapp.net')) {
+  // Jika sudah berakhiran format WhatsApp valid (@g.us, @s.whatsapp.net, @newsletter)
+  if (
+    cleaned.endsWith('@g.us') ||
+    cleaned.endsWith('@s.whatsapp.net') ||
+    cleaned.endsWith('@newsletter') ||
+    cleaned.includes('@')
+  ) {
     return cleaned;
   }
-  // Bersihkan karakter non-digit
+  // Bersihkan karakter non-digit untuk nomor telepon biasa
   cleaned = cleaned.replace(/[^\d]/g, '');
   if (cleaned.startsWith('0')) {
     cleaned = '62' + cleaned.slice(1);
@@ -192,8 +199,50 @@ app.post(['/reset-session', '/logout', '/change-number'], async (req, res) => {
   }
 });
 
-// Endpoint untuk mengambil daftar grup WhatsApp aktif (untuk pemilihan target di Dashboard)
-app.all(['/groups', '/get-groups'], async (req, res) => {
+// Helper untuk mengambil daftar Saluran WhatsApp Resmi (@newsletter)
+async function fetchSubscribedNewsletters(currentSock) {
+  if (!currentSock?.query || !currentSock?.generateMessageTag) {
+    return [];
+  }
+  try {
+    const raw = await executeWMexQuery(
+      {},
+      '6388546374527196',
+      'xwa2_newsletter_subscribed',
+      currentSock.query,
+      currentSock.generateMessageTag
+    );
+    const channels = [];
+    const list = Array.isArray(raw)
+      ? raw
+      : (raw?.newsletters || raw?.edges || raw?.nodes || []);
+
+    for (const item of list) {
+      const n = item?.node || item;
+      if (n && n.id) {
+        channels.push({
+          id: n.id,
+          name: n.name || n.thread_metadata?.name?.text || 'Saluran WhatsApp',
+          type: 'channel',
+          type_label: 'Saluran Resmi WhatsApp',
+          is_channel: true,
+          is_community: false,
+          is_announce: true,
+          member_count: n.subscribers || n.thread_metadata?.subscribers_count || 0,
+          desc: n.description || n.thread_metadata?.description?.text || '',
+          members: []
+        });
+      }
+    }
+    return channels;
+  } catch (err) {
+    console.warn('ℹ️  [Gateway] Catatan query Saluran WhatsApp (@newsletter):', err.message);
+    return [];
+  }
+}
+
+// Endpoint untuk mengambil daftar grup dan saluran WhatsApp aktif (untuk pemilihan target di Dashboard)
+app.all(['/groups', '/get-groups', '/channels'], async (req, res) => {
   try {
     if (!isConnected || !sock) {
       return res.status(503).json({
@@ -203,36 +252,74 @@ app.all(['/groups', '/get-groups'], async (req, res) => {
       });
     }
 
-    console.log('📋 [Gateway] Mengambil daftar grup WhatsApp yang diikuti bot...');
-    const rawGroups = await sock.groupFetchAllParticipating();
-    const groups = [];
+    console.log('📋 [Gateway] Mengambil daftar grup dan saluran WhatsApp yang diikuti bot...');
+    const items = [];
 
-    for (const [id, g] of Object.entries(rawGroups)) {
-      const participants = g.participants || [];
-      groups.push({
-        id: id,
-        name: g.subject || 'Grup Tanpa Nama',
-        member_count: participants.length,
-        desc: g.desc ? g.desc.toString() : '',
-        members: participants.map((p) => (p.id ? p.id.split('@')[0] : String(p)))
-      });
+    // 1. Ambil seluruh grup WhatsApp & Saluran Pengumuman Komunitas
+    try {
+      const rawGroups = await sock.groupFetchAllParticipating();
+      for (const [id, g] of Object.entries(rawGroups)) {
+        const participants = g.participants || [];
+        const isAnnounce = Boolean(g.isCommunityAnnounce || g.announce);
+        const isComm = Boolean(g.isCommunity);
+        const type = isAnnounce ? 'channel' : (isComm ? 'community' : 'group');
+        const typeLabel = isAnnounce
+          ? 'Saluran Pengumuman Komunitas'
+          : (isComm ? 'Komunitas WhatsApp' : 'Grup WhatsApp');
+
+        items.push({
+          id: id,
+          name: g.subject || 'Grup Tanpa Nama',
+          type: type,
+          type_label: typeLabel,
+          is_channel: isAnnounce,
+          is_community: isComm,
+          is_announce: Boolean(g.announce),
+          member_count: participants.length,
+          desc: g.desc ? g.desc.toString() : '',
+          members: participants.map((p) => (p.id ? p.id.split('@')[0] : String(p)))
+        });
+      }
+    } catch (grpErr) {
+      console.warn('⚠️ [Gateway] Gagal mengambil rawGroups:', grpErr.message);
     }
 
-    // Urutkan grup berdasarkan nama A-Z
-    groups.sort((a, b) => a.name.localeCompare(b.name));
+    // 2. Ambil seluruh Saluran WhatsApp Resmi (Newsletters @newsletter)
+    try {
+      const newsletters = await fetchSubscribedNewsletters(sock);
+      for (const ch of newsletters) {
+        if (!items.some((it) => it.id === ch.id)) {
+          items.push(ch);
+        }
+      }
+    } catch (nlErr) {
+      console.warn('⚠️ [Gateway] Catatan query newsletter:', nlErr.message);
+    }
 
-    console.log(`✅ [Gateway] Ditemukan ${groups.length} grup WhatsApp.`);
+    // Urutkan: Saluran (channels) terlebih dahulu, lalu urutkan nama A-Z
+    items.sort((a, b) => {
+      if (a.is_channel && !b.is_channel) return -1;
+      if (!a.is_channel && b.is_channel) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    const channelsCount = items.filter((i) => i.is_channel).length;
+    const groupsCount = items.filter((i) => !i.is_channel).length;
+
+    console.log(`✅ [Gateway] Ditemukan ${items.length} target (${channelsCount} Saluran/Channel, ${groupsCount} Grup).`);
     return res.json({
       success: true,
-      groups: groups,
-      total: groups.length
+      groups: items,
+      total: items.length,
+      channels_count: channelsCount,
+      groups_count: groupsCount
     });
 
   } catch (err) {
-    console.error('❌ [Gateway] Gagal mengambil daftar grup:', err);
+    console.error('❌ [Gateway] Gagal mengambil daftar target:', err);
     return res.status(500).json({
       success: false,
-      error: `Gagal mengambil daftar grup: ${err.message}`,
+      error: `Gagal mengambil daftar target: ${err.message}`,
       groups: []
     });
   }

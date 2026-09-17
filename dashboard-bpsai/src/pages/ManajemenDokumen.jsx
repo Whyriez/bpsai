@@ -989,10 +989,12 @@ const BpsSyncModal = ({
   const [alertFilterType, setAlertFilterType] = useState("ALL"); // ALL | PUBLIKASI | BRS
   const [alertFilterStatus, setAlertFilterStatus] = useState("ALL"); // ALL | SENT | FAILED | READY
 
-  // State untuk Pemilihan Grup WhatsApp
+  // State untuk Pemilihan Grup & Saluran WhatsApp
   const [waGroups, setWaGroups] = useState([]);
   const [isLoadingWaGroups, setIsLoadingWaGroups] = useState(false);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
+  const [waGroupFilter, setWaGroupFilter] = useState("ALL"); // ALL | CHANNELS | GROUPS
+  const [waGroupSearch, setWaGroupSearch] = useState("");
 
   const handleFetchWaGroups = async () => {
     setIsLoadingWaGroups(true);
@@ -1008,14 +1010,26 @@ const BpsSyncModal = ({
       if (res.groups && res.groups.length > 0) {
         setWaGroups(res.groups);
         setShowGroupPicker(true);
+        const chCount =
+          res.channels_count !== undefined
+            ? res.channels_count
+            : res.groups.filter(
+                (g) => g.is_channel || g.id?.endsWith("@newsletter"),
+              ).length;
+        const grpCount =
+          res.groups_count !== undefined
+            ? res.groups_count
+            : res.groups.length - chCount;
         toast.success(
-          `Ditemukan ${res.groups.length} grup WhatsApp dari Local Gateway!`,
+          `Ditemukan ${res.groups.length} target (${chCount} Saluran/Channel, ${grpCount} Grup)!`,
         );
       } else {
-        toast.error(res.error || "Tidak ada grup WhatsApp yang ditemukan.");
+        toast.error(
+          res.error || "Tidak ada grup atau saluran WhatsApp yang ditemukan.",
+        );
       }
     } catch (err) {
-      toast.error(`Gagal mengambil grup WhatsApp: ${err.message}`);
+      toast.error(`Gagal mengambil grup/saluran: ${err.message}`);
     } finally {
       setIsLoadingWaGroups(false);
     }
@@ -1868,13 +1882,13 @@ const BpsSyncModal = ({
                             type="button"
                             onClick={handleFetchWaGroups}
                             disabled={isLoadingWaGroups}
-                            className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold inline-flex items-center gap-1 transition-colors"
-                            title="Ambil daftar grup WhatsApp yang diikuti bot lokal untuk memilih target secara instan"
+                            className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Ambil daftar saluran dan grup WhatsApp yang diikuti bot lokal untuk memilih target secara instan"
                           >
                             <span>
                               {isLoadingWaGroups
-                                ? "Memuat Grup..."
-                                : "👥 Pilih Grup (Local Gateway)"}
+                                ? "Memuat..."
+                                : "📢 Pilih Saluran / Grup (Local Gateway)"}
                             </span>
                           </button>
                         </div>
@@ -1886,7 +1900,7 @@ const BpsSyncModal = ({
                           onChange={(e) =>
                             setConfig({ ...config, wa_target: e.target.value })
                           }
-                          placeholder="08123456789 atau 120363428675326334@g.us"
+                          placeholder="08123456789, 120363428675326334@g.us, atau 120363xxxxxx@newsletter"
                           className="w-full pl-3 pr-8 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 font-mono"
                         />
                         {config.wa_target && (
@@ -1898,86 +1912,246 @@ const BpsSyncModal = ({
                                 "Nomor target penerima dikosongkan.",
                               );
                             }}
-                            className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-red-600 transition-colors"
+                            className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
                             title="Hapus / Kosongkan nomor target penerima"
                           >
                             ✕
                           </button>
                         )}
                       </div>
+
                       {showGroupPicker && waGroups.length > 0 && (
-                        <div className="mt-2 p-2.5 bg-blue-50/80 border border-blue-200 rounded-lg text-xs space-y-2">
+                        <div className="mt-2.5 p-3 bg-blue-50/90 border border-blue-200 rounded-xl text-xs space-y-2.5 shadow-sm">
                           <div className="flex items-center justify-between">
-                            <span className="font-semibold text-blue-900">
-                              Daftar Grup WhatsApp Terdeteksi (Local Gateway):
-                            </span>
+                            <div className="flex items-center gap-1.5 font-bold text-blue-950">
+                              <span>📢</span>
+                              <span>
+                                Daftar Target WhatsApp (Local Gateway)
+                              </span>
+                              <span className="text-[10px] bg-blue-200/80 text-blue-900 px-2 py-0.5 rounded-full font-bold">
+                                {waGroups.length}
+                              </span>
+                            </div>
                             <button
                               type="button"
-                              onClick={() => setShowGroupPicker(false)}
-                              className="text-gray-500 hover:text-gray-700 text-[11px]"
+                              onClick={() => {
+                                setShowGroupPicker(false);
+                                setWaGroupSearch("");
+                                setWaGroupFilter("ALL");
+                              }}
+                              className="text-gray-500 hover:text-gray-800 text-[11px] font-semibold cursor-pointer"
                             >
                               ✕ Tutup
                             </button>
                           </div>
-                          <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
-                            {waGroups.map((g) => (
-                              <div
-                                key={g.id}
-                                onClick={() => {
-                                  setConfig({ ...config, wa_target: g.id });
-                                  setShowGroupPicker(false);
-                                  toast.success(`Target diset ke: "${g.name}"`);
-                                }}
-                                className={`p-2 rounded-lg cursor-pointer transition-colors border ${
-                                  config.wa_target === g.id
-                                    ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                                    : "bg-white hover:bg-blue-100/70 text-gray-800 border-gray-200"
+
+                          {/* Filter Tabs & Search Bar */}
+                          <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between">
+                            <div className="flex items-center gap-1 bg-white/80 p-0.5 rounded-lg border border-blue-200/70 text-[11px] shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setWaGroupFilter("ALL")}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                                  waGroupFilter === "ALL"
+                                    ? "bg-blue-600 text-white shadow-2xs"
+                                    : "text-gray-600 hover:text-gray-900"
                                 }`}
                               >
-                                <div className="flex items-center justify-between">
-                                  <span className="font-bold">{g.name}</span>
-                                  <span
-                                    className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                                      config.wa_target === g.id
-                                        ? "bg-blue-700 text-white"
-                                        : "bg-gray-100 text-gray-600"
-                                    }`}
-                                  >
-                                    {g.member_count} Anggota
-                                  </span>
-                                </div>
-                                <div
-                                  className={`text-[10px] font-mono mt-0.5 truncate ${
-                                    config.wa_target === g.id
-                                      ? "text-blue-100"
-                                      : "text-gray-500"
-                                  }`}
-                                >
-                                  ID: {g.id}
-                                </div>
-                                {g.members && g.members.length > 0 && (
-                                  <div
-                                    className={`text-[9px] mt-0.5 truncate ${
-                                      config.wa_target === g.id
-                                        ? "text-blue-200"
-                                        : "text-gray-400"
-                                    }`}
-                                  >
-                                    Anggota: {g.members.slice(0, 3).join(", ")}
-                                    {g.members.length > 3 ? "..." : ""}
+                                Semua ({waGroups.length})
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setWaGroupFilter("CHANNELS")}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                  waGroupFilter === "CHANNELS"
+                                    ? "bg-emerald-600 text-white shadow-2xs"
+                                    : "text-emerald-700 hover:text-emerald-900"
+                                }`}
+                              >
+                                <span>📢</span>
+                                <span>
+                                  Saluran (
+                                  {
+                                    waGroups.filter(
+                                      (g) =>
+                                        g.is_channel ||
+                                        g.type === "channel" ||
+                                        g.id?.endsWith("@newsletter"),
+                                    ).length
+                                  }
+                                  )
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setWaGroupFilter("GROUPS")}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                  waGroupFilter === "GROUPS"
+                                    ? "bg-blue-600 text-white shadow-2xs"
+                                    : "text-gray-600 hover:text-gray-900"
+                                }`}
+                              >
+                                <span>👥</span>
+                                <span>
+                                  Grup (
+                                  {
+                                    waGroups.filter(
+                                      (g) =>
+                                        !g.is_channel &&
+                                        g.type !== "channel" &&
+                                        !g.id?.endsWith("@newsletter"),
+                                    ).length
+                                  }
+                                  )
+                                </span>
+                              </button>
+                            </div>
+
+                            <input
+                              type="text"
+                              value={waGroupSearch}
+                              onChange={(e) => setWaGroupSearch(e.target.value)}
+                              placeholder="Cari nama saluran / grup..."
+                              className="w-full sm:w-56 px-2.5 py-1 bg-white border border-blue-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            />
+                          </div>
+
+                          {/* List Items */}
+                          <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                            {(() => {
+                              const filtered = waGroups.filter((g) => {
+                                const isChan =
+                                  g.is_channel ||
+                                  g.type === "channel" ||
+                                  g.id?.endsWith("@newsletter");
+                                if (waGroupFilter === "CHANNELS" && !isChan)
+                                  return false;
+                                if (waGroupFilter === "GROUPS" && isChan)
+                                  return false;
+                                if (waGroupSearch.trim()) {
+                                  const q = waGroupSearch.toLowerCase();
+                                  const matchName = (g.name || "")
+                                    .toLowerCase()
+                                    .includes(q);
+                                  const matchId = (g.id || "")
+                                    .toLowerCase()
+                                    .includes(q);
+                                  const matchDesc = (g.desc || "")
+                                    .toLowerCase()
+                                    .includes(q);
+                                  return matchName || matchId || matchDesc;
+                                }
+                                return true;
+                              });
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <div className="text-center py-4 text-gray-500 text-xs">
+                                    Tidak ada saluran atau grup yang cocok dengan
+                                    pencarian.
                                   </div>
-                                )}
-                              </div>
-                            ))}
+                                );
+                              }
+
+                              return filtered.map((g) => {
+                                const isChan =
+                                  g.is_channel ||
+                                  g.type === "channel" ||
+                                  g.id?.endsWith("@newsletter");
+                                const isComm =
+                                  g.is_community || g.type === "community";
+                                const isSelected = config.wa_target === g.id;
+
+                                return (
+                                  <div
+                                    key={g.id}
+                                    onClick={() => {
+                                      setConfig({ ...config, wa_target: g.id });
+                                      setShowGroupPicker(false);
+                                      toast.success(
+                                        `Target diset ke: "${g.name}" (${isChan ? "Saluran/Channel" : isComm ? "Komunitas" : "Grup"})`,
+                                      );
+                                    }}
+                                    className={`p-2.5 rounded-lg cursor-pointer transition-all border ${
+                                      isSelected
+                                        ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                                        : isChan
+                                          ? "bg-emerald-50/70 hover:bg-emerald-100/80 text-gray-800 border-emerald-200"
+                                          : "bg-white hover:bg-blue-100/70 text-gray-800 border-gray-200"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 truncate">
+                                        <span className="text-xs">
+                                          {isChan ? "📢" : isComm ? "🌐" : "👥"}
+                                        </span>
+                                        <span className="font-bold truncate">
+                                          {g.name}
+                                        </span>
+                                        <span
+                                          className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase shrink-0 ${
+                                            isSelected
+                                              ? "bg-blue-700 text-white"
+                                              : isChan
+                                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                                : isComm
+                                                  ? "bg-purple-100 text-purple-800 border border-purple-300"
+                                                  : "bg-gray-100 text-gray-600 border border-gray-200"
+                                          }`}
+                                        >
+                                          {g.type_label ||
+                                            (isChan
+                                              ? "Saluran"
+                                              : isComm
+                                                ? "Komunitas"
+                                                : "Grup")}
+                                        </span>
+                                      </div>
+                                      <span
+                                        className={`text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${
+                                          isSelected
+                                            ? "bg-blue-700 text-white"
+                                            : "bg-gray-100 text-gray-600"
+                                        }`}
+                                      >
+                                        {g.member_count}{" "}
+                                        {isChan ? "Pengikut" : "Anggota"}
+                                      </span>
+                                    </div>
+                                    <div
+                                      className={`text-[10px] font-mono mt-0.5 truncate ${
+                                        isSelected
+                                          ? "text-blue-100"
+                                          : "text-gray-500"
+                                      }`}
+                                    >
+                                      ID: {g.id}
+                                    </div>
+                                    {g.desc && (
+                                      <div
+                                        className={`text-[9px] mt-0.5 line-clamp-1 italic ${
+                                          isSelected
+                                            ? "text-blue-200"
+                                            : "text-gray-400"
+                                        }`}
+                                      >
+                                        {g.desc}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              });
+                            })()}
                           </div>
                         </div>
                       )}
+
                       <p className="text-[10px] text-gray-500 mt-1 leading-relaxed">
-                        💡 <strong>Catatan Saluran Pengumuman:</strong> Jika
-                        target adalah Saluran Pengumuman Komunitas WhatsApp,
-                        pastikan nomor bot WhatsApp Anda sudah dijadikan{" "}
-                        <strong>Admin Komunitas</strong> di aplikasi WhatsApp
-                        agar diizinkan mempublikasikan pesan.
+                        💡 <strong>Catatan Pengiriman ke Saluran & Komunitas:</strong>{" "}
+                        Mendukung pengiriman ke <strong>Nomor WhatsApp Pribadi</strong>,{" "}
+                        <strong>Grup</strong>, <strong>Saluran Pengumuman Komunitas</strong>, dan{" "}
+                        <strong>Saluran Resmi WhatsApp (Channels)</strong>. Pastikan nomor bot WhatsApp Anda
+                        sudah dijadikan <strong>Admin</strong> pada saluran / komunitas WhatsApp agar memiliki izin mempublikasikan siaran.
                       </p>
                     </div>
                   </div>
@@ -2022,22 +2196,26 @@ const BpsSyncModal = ({
                     </p>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      URL Portal Web BPS Resmi
-                    </label>
-                    <input
-                      type="text"
-                      value={config.portal_url || ""}
-                      onChange={(e) =>
-                        setConfig({ ...config, portal_url: e.target.value })
-                      }
-                      placeholder="https://gorontalo.bps.go.id"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 font-mono"
-                    />
-                    <p className="text-[10px] text-gray-400 mt-1">
-                      Domain portal resmi BPS untuk rilis artikel BRS & Publikasi (default: <code className="text-gray-600">https://gorontalo.bps.go.id</code>).
-                    </p>
+                  {/* Single Source Reference ke Pengaturan BPS */}
+                  <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-blue-900">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🌐</span>
+                      <div>
+                        <span className="font-semibold text-blue-950 block sm:inline">
+                          Portal Web BPS Terhubung:
+                        </span>{" "}
+                        <code className="font-mono text-blue-800 font-semibold bg-white px-1.5 py-0.5 rounded border border-blue-200 text-[11px]">
+                          {config.portal_url || "https://gorontalo.bps.go.id"}
+                        </code>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("config")}
+                      className="text-blue-700 hover:text-blue-900 font-bold underline text-[11px] shrink-0 text-left sm:text-right cursor-pointer"
+                    >
+                      Ubah di Pengaturan BPS →
+                    </button>
                   </div>
                 </div>
 
@@ -2644,25 +2822,7 @@ const BpsSyncModal = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    URL Frontend Chatbot (Domain Short Link)
-                  </label>
-                  <input
-                    type="text"
-                    value={config.chatbot_url || ""}
-                    onChange={(e) =>
-                      setConfig({ ...config, chatbot_url: e.target.value })
-                    }
-                    placeholder="https://sigap.bps7500.my.id"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono"
-                  />
-                  <p className="text-[10px] text-gray-400 mt-1">
-                    Domain tautan singkat yang dibagikan ke WhatsApp (contoh: <code className="text-gray-600">https://sigap.bps7500.my.id</code>).
-                  </p>
-                </div>
-
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
                     URL Portal Web BPS Resmi
                   </label>
@@ -2676,8 +2836,30 @@ const BpsSyncModal = ({
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono"
                   />
                   <p className="text-[10px] text-gray-400 mt-1">
-                    Domain portal resmi BPS untuk rilis artikel BRS & Publikasi (default: <code className="text-gray-600">https://gorontalo.bps.go.id</code>).
+                    Domain portal resmi BPS untuk rilis artikel BRS & Publikasi (default: <code className="text-gray-600">https://gorontalo.bps.go.id</code>). Digunakan untuk mengunduh dokumen, cover publikasi, dan tautan artikel sumber.
                   </p>
+                </div>
+
+                {/* Single Source Reference ke Otomatisasi & WA */}
+                <div className="sm:col-span-2 p-3 bg-gray-50 border border-gray-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-gray-700">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🔗</span>
+                    <div>
+                      <span className="font-semibold text-gray-900 block sm:inline">
+                        Domain Short Link Chatbot WA:
+                      </span>{" "}
+                      <code className="font-mono text-gray-800 font-semibold bg-white px-1.5 py-0.5 rounded border border-gray-200 text-[11px]">
+                        {config.chatbot_url || "https://sigap.bps7500.my.id"}
+                      </code>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("automation")}
+                    className="text-blue-600 hover:text-blue-800 font-bold underline text-[11px] shrink-0 text-left sm:text-right cursor-pointer"
+                  >
+                    Atur di Otomatisasi & WA →
+                  </button>
                 </div>
               </div>
 

@@ -2102,7 +2102,9 @@ def get_whatsapp_groups():
                 "success": True,
                 "source": "local_gateway",
                 "groups": res_json.get('groups', []),
-                "total": res_json.get('total', 0)
+                "total": res_json.get('total', 0),
+                "channels_count": res_json.get('channels_count', 0),
+                "groups_count": res_json.get('groups_count', 0)
             }), 200
         elif res.status_code == 503:
             res_json = res.json()
