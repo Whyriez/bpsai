@@ -154,6 +154,31 @@ Keluarkan hasil dalam format JSON persis seperti berikut (tanpa markdown backtic
     return summary_text, wa_message, (short_code or ""), (bps_web_url or "")
 
 
+def acquire_monitor_advisory_lock() -> bool:
+    """
+    Mengambil PostgreSQL session-level advisory lock untuk memastikan
+    hanya 1 worker Gunicorn / thread yang memproses sinkronisasi pada satu waktu.
+    Lock ID: 75000001
+    """
+    try:
+        from sqlalchemy import text
+        res = db.session.execute(text("SELECT pg_try_advisory_lock(75000001);")).scalar()
+        return bool(res)
+    except Exception as e:
+        logger.warning(f"Note on pg_try_advisory_lock: {e}")
+        return True
+
+
+def release_monitor_advisory_lock():
+    """Melepaskan PostgreSQL advisory lock 75000001."""
+    try:
+        from sqlalchemy import text
+        db.session.execute(text("SELECT pg_advisory_unlock(75000001);"))
+        db.session.commit()
+    except Exception as e:
+        logger.warning(f"Note on pg_advisory_unlock: {e}")
+
+
 def check_and_process_latest_publications(
     app: Flask = None,
     max_items: int = 3,
@@ -176,6 +201,25 @@ def check_and_process_latest_publications(
         return {"success": False, "error": "No Flask application context"}
 
     with ctx_app.app_context():
+        # Anti-Duplicate Concurrency Lock: Mencegah multi-worker Gunicorn jalan bersamaan
+        lock_acquired = acquire_monitor_advisory_lock()
+        if not lock_acquired:
+            logger.info("[Monitor Anti-Duplicate] Proses sinkronisasi BPS sedang aktif di worker lain. Siklus ini dilewati.")
+            return {
+                "success": True,
+                "message": "Proses sinkronisasi sedang berjalan di worker lain.",
+                "new_count": 0,
+                "processed": []
+            }
+
+        try:
+            return _execute_sync_process(ctx_app, max_items, force_resummarize)
+        finally:
+            if lock_acquired:
+                release_monitor_advisory_lock()
+
+
+def _execute_sync_process(ctx_app, max_items: int = 3, force_resummarize: bool = False) -> dict:
         bps_service = BpsApiService()
         config = bps_service.get_config()
 
@@ -249,17 +293,29 @@ def check_and_process_latest_publications(
             pdf_url = it.get("pdf_url") or ""
             updt_date = it.get("updt_date") or ""
             
+            # Cek riwayat alert di database terlebih dahulu
+            existing_alert = BpsPublicationAlert.query.filter_by(pub_id=pub_id).first() if pub_id else None
+
             is_downloaded, existing_id, is_updated = bps_service.is_publication_downloaded(
                 pub_id=pub_id,
                 title=title,
                 pdf_url=pdf_url,
                 updt_date=updt_date
             )
+
             if not is_downloaded:
+                # Dokumen belum ada di database lokal (atau baru saja dihapus oleh admin).
+                # Wajib dimasukkan ke kandidat agar diunduh & diindeks kembali ke AI!
                 it["sync_type"] = "NEW"
                 it["is_updated"] = False
                 candidates.append(it)
             elif is_updated:
+                # Dokumen sudah ada di database lokal, tapi ada rilis revisi yang lebih baru
+                if existing_alert and existing_alert.wa_status == "SENT":
+                    alert_updt = str(existing_alert.updt_date or "").strip()
+                    item_updt = str(updt_date or "").strip()
+                    if alert_updt and item_updt and alert_updt >= item_updt:
+                        continue
                 it["sync_type"] = "UPDATED"
                 it["is_updated"] = True
                 candidates.append(it)
@@ -459,6 +515,31 @@ def check_and_process_latest_publications(
             wa_dispatch_status = "READY"
             wa_dispatch_error = None
 
+            # Anti-Duplicate Guard: Cek apakah alert ini sudah pernah berstatus 'SENT' untuk versi yang sama
+            already_broadcasted = False
+            if alert and alert.wa_status == "SENT":
+                alert_updt = str(alert.updt_date or "").strip()
+                item_updt = str(updt_date or "").strip()
+                if not is_update:
+                    already_broadcasted = True
+                elif alert_updt and item_updt and alert_updt >= item_updt:
+                    already_broadcasted = True
+
+            if already_broadcasted:
+                logger.info(
+                    f"[WA Anti-Duplicate] Rilis '{title}' (pub_id: {pub_id}) sudah pernah terkirim ke WhatsApp pada {alert.sent_at}. "
+                    f"Pengiriman WhatsApp dilewati untuk mencegah pesan duplikat."
+                )
+                success_count += 1
+                processed_results.append({
+                    "pub_id": pub_id,
+                    "title": title,
+                    "status": "already_sent",
+                    "wa_status": "SENT",
+                    "summary": summary[:100] + "..." if len(summary) > 100 else summary
+                })
+                continue
+
             logger.info(
                 f"[WA Debug] enabled={wa_enabled}, target={repr(wa_target)}, "
                 f"webhook={repr(wa_webhook)}, gateway={wa_gateway}"
@@ -638,8 +719,9 @@ class BpsBackgroundMonitor:
             except Exception as e:
                 logger.error(f"Error dalam BPS Background Monitor loop: {e}")
 
-            # Polling check setiap 30 detik agar responsif saat pakai interval menit/detik
-            self.stop_event.wait(30)
+            # Polling check setiap ~30 detik (dengan jitter agar multi-worker Gunicorn tidak bentrok)
+            import random
+            self.stop_event.wait(30 + random.uniform(0.5, 3.5))
 
 
 def start_bps_monitor(app: Flask):

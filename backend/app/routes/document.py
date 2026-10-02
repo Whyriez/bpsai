@@ -338,7 +338,15 @@ def delete_document(document_id):
                 except Exception as e:
                     current_app.logger.error(f"Failed to delete physical PDF file {pdf_path}: {e}")
 
-        # 3. Hapus Record Dokumen & Chunks di Database
+        # 3. Hapus Record Dokumen, Chunks, & riwayat BpsPublicationAlert terkait jika ada
+        pub_id = (doc.doc_metadata or {}).get("pub_id") if doc.doc_metadata else None
+        if pub_id:
+            try:
+                BpsPublicationAlert.query.filter_by(pub_id=str(pub_id)).delete()
+                current_app.logger.info(f"Associated BpsPublicationAlert deleted for pub_id: {pub_id}")
+            except Exception as ae:
+                current_app.logger.warning(f"Note on deleting associated alert: {ae}")
+
         db.session.delete(doc)
         db.session.commit()
 
@@ -2011,6 +2019,41 @@ def forward_bps_alert_to_wa(alert_id):
         alert.wa_error = detail
         db.session.commit()
         return jsonify({"error": "Gagal mengirim ke WhatsApp.", "detail": detail}), 500
+
+
+@document_bp.route('/bps/alerts/<int:alert_id>', methods=['DELETE'])
+def delete_bps_alert(alert_id):
+    """Menghapus satu riwayat rilis alert BPS & rangkuman AI."""
+    try:
+        alert = BpsPublicationAlert.query.get(alert_id)
+        if not alert:
+            return jsonify({"error": "Data riwayat rilis alert tidak ditemukan."}), 404
+
+        title = alert.title
+        db.session.delete(alert)
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "message": f"Riwayat rilis & rangkuman AI '{title}' berhasil dihapus."
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": f"Gagal menghapus alert: {str(e)}"}), 500
+
+
+@document_bp.route('/bps/alerts/clear-all', methods=['DELETE'])
+def clear_all_bps_alerts():
+    """Menghapus seluruh riwayat rilis alert BPS & rangkuman AI."""
+    try:
+        count = BpsPublicationAlert.query.delete()
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "message": f"Berhasil membersihkan seluruh ({count}) riwayat rilis alert BPS."
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": f"Gagal membersihkan riwayat alert: {str(e)}"}), 500
 
 
 @document_bp.route('/bps/auto-monitor/run', methods=['POST'])

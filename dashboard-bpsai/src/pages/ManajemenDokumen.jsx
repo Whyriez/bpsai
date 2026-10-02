@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Link } from "react-router-dom";
 import apiFetch from "../services/api";
@@ -1405,6 +1405,70 @@ const BpsSyncModal = ({
     }
   };
 
+  const handleDeleteAlert = (alert) => {
+    setActionConfirm({
+      isOpen: true,
+      title: "Hapus Riwayat Rangkuman & Siaran WA?",
+      message: `Rangkuman AI dan riwayat siaran untuk publikasi "${alert.title}" akan dihapus. Jika dokumen diindeks ulang, publikasi dapat dideteksi kembali oleh pemantau otomatis.`,
+      confirmText: "Ya, Hapus",
+      confirmColor: "red",
+      onConfirm: async () => {
+        closeActionConfirm();
+        const toastId = toast.loading("Menghapus rangkuman alert...");
+        try {
+          const res = await apiFetch(`/documents/bps/alerts/${alert.id}`, {
+            method: "DELETE",
+          });
+          if (res.success !== false) {
+            toast.success(res.message || "Rangkuman alert berhasil dihapus!", {
+              id: toastId,
+            });
+            loadAlerts(alertsPage);
+          } else {
+            toast.error(res.error || "Gagal menghapus alert", { id: toastId });
+          }
+        } catch (err) {
+          toast.error(err.message || "Gagal menghapus alert", { id: toastId });
+        }
+      },
+    });
+  };
+
+  const handleClearAllAlerts = () => {
+    setActionConfirm({
+      isOpen: true,
+      title: "Bersihkan Semua Riwayat Rangkuman AI & Siaran WA?",
+      message:
+        "Seluruh riwayat rilis publikasi dan rangkuman AI yang tersimpan akan dibersihkan. Tindakan ini tidak menghapus dokumen PDF yang sudah terindeks.",
+      confirmText: "Ya, Bersihkan Semua",
+      confirmColor: "red",
+      onConfirm: async () => {
+        closeActionConfirm();
+        const toastId = toast.loading("Membersihkan seluruh riwayat alert...");
+        try {
+          const res = await apiFetch(`/documents/bps/alerts/clear-all`, {
+            method: "DELETE",
+          });
+          if (res.success !== false) {
+            toast.success(
+              res.message || "Seluruh riwayat berhasil dibersihkan!",
+              { id: toastId },
+            );
+            loadAlerts(1);
+          } else {
+            toast.error(res.error || "Gagal membersihkan riwayat alert", {
+              id: toastId,
+            });
+          }
+        } catch (err) {
+          toast.error(err.message || "Gagal membersihkan riwayat alert", {
+            id: toastId,
+          });
+        }
+      },
+    });
+  };
+
   const handleCopyWaMessage = (msg) => {
     if (!msg) return;
     navigator.clipboard.writeText(msg);
@@ -2459,7 +2523,7 @@ const BpsSyncModal = ({
 
                 {/* Counter & Active Filter Indicators */}
                 <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-500 pt-1 border-t border-gray-100 gap-2">
-                  <div>
+                  <div className="flex items-center gap-2 flex-wrap">
                     {isLoadingAlerts ? (
                       <span>Memuat riwayat...</span>
                     ) : (
@@ -2481,6 +2545,16 @@ const BpsSyncModal = ({
                           </span>
                         )}
                       </span>
+                    )}
+                    {!isLoadingAlerts && alerts.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAllAlerts}
+                        className="px-2 py-0.5 text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded font-medium transition-colors"
+                        title="Bersihkan semua riwayat rangkuman AI & siaran WA"
+                      >
+                        Bersihkan Semua
+                      </button>
                     )}
                   </div>
                   {(alertSearchKeyword ||
@@ -2681,6 +2755,15 @@ const BpsSyncModal = ({
                                   PDF BPS ↗
                                 </a>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAlert(alert)}
+                                className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded text-xs font-medium flex items-center gap-1 transition-colors"
+                                title="Hapus riwayat rangkuman AI & siaran WA ini"
+                              >
+                                <TrashIcon />
+                                <span>Hapus</span>
+                              </button>
                             </div>
                           </div>
 

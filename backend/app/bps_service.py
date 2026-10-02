@@ -542,21 +542,24 @@ class BpsApiService:
                 saved_updt = str(meta.get("updt_date") or "").strip()
                 saved_rl = str(meta.get("release_date") or "").strip()
 
-                if saved_updt:
-                    # Jika sudah ada riwayat updt_date sebelumnya, bandingkan
-                    if clean_updt > saved_updt:
-                        is_updated = True
-                elif saved_rl:
-                    # Jika sebelumnya hanya menyimpan release_date, cek jika tanggal update lebih baru dari tanggal rilis
+                # Cek terlebih dahulu apakah riwayat alert di database sudah mencatat updt_date ini
+                alert = BpsPublicationAlert.query.filter_by(pub_id=str(pub_id)).first() if pub_id else None
+                alert_updt = str(alert.updt_date or "").strip() if alert else ""
+
+                if alert_updt and clean_updt <= alert_updt:
+                    # Sudah pernah terkirim untuk versi tanggal update ini atau yang lebih baru
+                    is_updated = False
+                elif saved_updt and clean_updt <= saved_updt:
+                    # Sudah tersimpan versi tanggal update ini di metadata dokumen
+                    is_updated = False
+                elif alert_updt and clean_updt > alert_updt:
+                    is_updated = True
+                elif saved_updt and clean_updt > saved_updt:
+                    is_updated = True
+                elif not alert_updt and not saved_updt and saved_rl:
+                    # Hanya bandingkan dengan release_date jika belum pernah ada riwayat update sama sekali
                     if clean_updt > saved_rl:
                         is_updated = True
-
-                # Cek juga pada riwayat BpsPublicationAlert jika ada
-                if not is_updated and pub_id:
-                    alert = BpsPublicationAlert.query.filter_by(pub_id=str(pub_id)).first()
-                    if alert and alert.updt_date:
-                        if clean_updt > str(alert.updt_date).strip():
-                            is_updated = True
 
             return True, str(doc.id), is_updated
 
