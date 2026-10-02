@@ -1600,36 +1600,41 @@ const BpsSyncModal = ({
     previewData.publications.every((p) => selectedPubIds.includes(p.pub_id));
 
   return createPortal(
-    <div className="fixed inset-0 z-50 w-screen h-screen min-h-screen overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 m-0">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[88vh] max-h-[850px] flex flex-col overflow-hidden border border-gray-200 animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 w-screen h-screen min-h-screen overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 lg:p-6 m-0">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl xl:max-w-6xl h-[90vh] max-h-[880px] flex flex-col overflow-hidden border border-gray-200/90 animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
-        <div className="shrink-0 p-4 sm:px-6 sm:py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50/90 backdrop-blur-sm">
-          <div>
-            <h3 className="text-base font-bold text-gray-800">
-              Tarik Data & Otomatisasi BPS Web API
-            </h3>
-            <p className="text-xs text-gray-500">
-              Sinkronisasi publikasi resmi BPS, pemantauan otomatis, perangkuman
-              AI, dan forward WhatsApp.
-            </p>
+        <div className="shrink-0 px-6 py-4.5 border-b border-gray-200 flex justify-between items-center bg-gray-50/90 backdrop-blur-sm">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+              <CloudDownloadIcon />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-gray-900 leading-tight truncate">
+                Tarik Data & Otomatisasi BPS Web API
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">
+                Sinkronisasi publikasi resmi BPS, pemantauan otomatis, perangkuman AI, dan forward WhatsApp.
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+            className="text-gray-400 hover:text-gray-600 p-2 rounded-xl hover:bg-gray-200/80 transition-colors cursor-pointer shrink-0 ml-3"
+            title="Tutup jendela"
           >
             ✕
           </button>
         </div>
 
-        {/* Tab Navigation - Fixed Sticky / Shrink-0 agar tidak terhalang saat scroll */}
-        <div className="shrink-0 bg-white border-b border-gray-200 px-6 flex items-center gap-2 overflow-x-auto hide-scrollbar z-10 min-h-[48px]">
+        {/* Tab Navigation - Fixed Sticky / Shrink-0 */}
+        <div className="shrink-0 bg-white border-b border-gray-200 px-6 flex items-center gap-2 overflow-x-auto hide-scrollbar z-10 min-h-[50px]">
           <button
             type="button"
             onClick={() => setActiveTab("sync")}
-            className={`py-3 px-3.5 border-b-2 transition-all flex items-center gap-2 text-xs font-semibold whitespace-nowrap ${
+            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 text-xs font-semibold whitespace-nowrap cursor-pointer ${
               activeTab === "sync"
-                ? "border-blue-600 text-blue-600 font-bold bg-blue-50/40"
-                : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300"
+                ? "border-blue-600 text-blue-700 font-bold bg-blue-50/50"
+                : "border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300"
             }`}
           >
             <CloudDownloadIcon />
@@ -1639,10 +1644,10 @@ const BpsSyncModal = ({
           <button
             type="button"
             onClick={() => setActiveTab("automation")}
-            className={`py-3 px-3.5 border-b-2 transition-all flex items-center gap-2 text-xs font-semibold whitespace-nowrap ${
+            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 text-xs font-semibold whitespace-nowrap cursor-pointer ${
               activeTab === "automation"
-                ? "border-blue-600 text-blue-600 font-bold bg-blue-50/40"
-                : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300"
+                ? "border-blue-600 text-blue-700 font-bold bg-blue-50/50"
+                : "border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300"
             }`}
           >
             <SparklesIcon />
@@ -1655,10 +1660,10 @@ const BpsSyncModal = ({
               setActiveTab("alerts");
               loadAlerts(1);
             }}
-            className={`py-3 px-3.5 border-b-2 transition-all flex items-center gap-2 text-xs font-semibold whitespace-nowrap ${
+            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 text-xs font-semibold whitespace-nowrap cursor-pointer ${
               activeTab === "alerts"
-                ? "border-blue-600 text-blue-600 font-bold bg-blue-50/40"
-                : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300"
+                ? "border-blue-600 text-blue-700 font-bold bg-blue-50/50"
+                : "border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300"
             }`}
           >
             <WhatsAppIcon />
@@ -1673,10 +1678,10 @@ const BpsSyncModal = ({
           <button
             type="button"
             onClick={() => setActiveTab("config")}
-            className={`py-3 px-3.5 border-b-2 transition-all flex items-center gap-2 text-xs font-semibold whitespace-nowrap ${
+            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 text-xs font-semibold whitespace-nowrap cursor-pointer ${
               activeTab === "config"
-                ? "border-blue-600 text-blue-600 font-bold bg-blue-50/40"
-                : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300"
+                ? "border-blue-600 text-blue-700 font-bold bg-blue-50/50"
+                : "border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300"
             }`}
           >
             <SettingsIcon />
@@ -1685,7 +1690,7 @@ const BpsSyncModal = ({
         </div>
 
         {/* Modal Body - Scrollable Content with min-h-0 */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-4 bg-white">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-5 bg-gray-50/40">
           {/* Live Progress Bar jika sedang sinkronisasi / auto-monitor */}
           {bpsSyncJobStatus && bpsSyncJobStatus.status !== "IDLE" && (
             <JobProgressBar
@@ -1710,17 +1715,17 @@ const BpsSyncModal = ({
 
           {/* TAB 1: OTOMATISASI & WHATSAPP */}
           {activeTab === "automation" && (
-            <div className="space-y-4 w-full py-1">
+            <div className="space-y-5 w-full py-1">
               {/* Banner Status Pemantauan */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
+              <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-blue-50/90 border border-blue-200/90 rounded-2xl p-5 shadow-2xs">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2.5">
                       <span className="text-sm font-bold text-gray-900">
                         Pemantauan Otomatis (SIGAP)
                       </span>
                       <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                           config.auto_sync
                             ? "bg-green-100 text-green-800 border border-green-300"
                             : "bg-gray-100 text-gray-600 border border-gray-300"
@@ -1729,7 +1734,7 @@ const BpsSyncModal = ({
                         {config.auto_sync ? "AKTIF" : "NONAKTIF"}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-600 mt-1">
+                    <p className="text-xs text-gray-600 leading-relaxed">
                       {config.auto_sync
                         ? (() => {
                             const val = config.sync_interval_hours || 6;
@@ -1740,15 +1745,15 @@ const BpsSyncModal = ({
                         : "Pemantauan otomatis saat ini sedang dimatikan."}
                     </p>
                     {config.last_sync_at && (
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        Pemeriksaan Terakhir:{" "}
-                        {new Date(config.last_sync_at).toLocaleString("id-ID")}{" "}
-                        ({config.last_sync_status || "IDLE"})
+                      <p className="text-[11px] text-gray-500 flex items-center gap-1.5 pt-0.5">
+                        <span>🕒 Pemeriksaan Terakhir:</span>
+                        <strong className="text-gray-700">{new Date(config.last_sync_at).toLocaleString("id-ID")}</strong>
+                        <span className="text-gray-400">({config.last_sync_status || "IDLE"})</span>
                       </p>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <div className="flex items-center gap-1.5 bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 shadow-sm text-xs">
+                  <div className="flex flex-wrap items-center gap-2.5 shrink-0 w-full sm:w-auto justify-end">
+                    <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-xl px-3 py-2 shadow-2xs text-xs">
                       <span className="text-gray-500 font-medium">Batas:</span>
                       <select
                         value={scanMaxItems}
@@ -1768,7 +1773,7 @@ const BpsSyncModal = ({
                       type="button"
                       onClick={handleTriggerScanNow}
                       disabled={isScanningNow}
-                      className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3.5 py-2 rounded-lg text-xs shadow-sm transition-colors disabled:opacity-50"
+                      className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-xl text-xs shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <RefreshIcon />
                       <span>
@@ -1784,38 +1789,48 @@ const BpsSyncModal = ({
               {/* Form Pengaturan Penjadwalan & WhatsApp */}
               <form
                 onSubmit={handleSaveConfig}
-                className="bg-white border border-gray-200 rounded-xl p-4 space-y-4"
+                className="bg-white border border-gray-200/90 rounded-2xl p-5 sm:p-6 shadow-xs space-y-5"
               >
-                <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider border-b pb-2">
-                  Pengaturan Penjadwalan & WhatsApp Forwarding
+                <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider border-b border-gray-100 pb-3 flex items-center gap-2">
+                  <span>⚙️</span>
+                  <span>Pengaturan Penjadwalan & WhatsApp Forwarding</span>
                 </h4>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="flex items-center gap-2.5 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <input
-                      type="checkbox"
-                      id="auto_sync_toggle"
-                      checked={Boolean(config.auto_sync)}
-                      onChange={(e) =>
-                        setConfig({ ...config, auto_sync: e.target.checked })
-                      }
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
-                    />
-                    <label
-                      htmlFor="auto_sync_toggle"
-                      className="text-xs font-medium text-gray-800 cursor-pointer"
-                    >
-                      Aktifkan Background Auto-Sync
-                    </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Card Toggle Auto Sync */}
+                  <div className="p-4 bg-gray-50/80 rounded-xl border border-gray-200 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          id="auto_sync_toggle"
+                          checked={Boolean(config.auto_sync)}
+                          onChange={(e) =>
+                            setConfig({ ...config, auto_sync: e.target.checked })
+                          }
+                          className="w-4.5 h-4.5 text-blue-600 rounded-md focus:ring-blue-500 border-gray-300 cursor-pointer"
+                        />
+                        <label
+                          htmlFor="auto_sync_toggle"
+                          className="text-xs font-bold text-gray-800 cursor-pointer"
+                        >
+                          Aktifkan Background Auto-Sync
+                        </label>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
+                        Sistem SIGAP akan secara otomatis mengecek rilis publikasi terbaru dari portal BPS di latar belakang tanpa perlu campur tangan manual.
+                      </p>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  {/* Card Interval Pengecekan */}
+                  <div className="p-4 bg-gray-50/80 rounded-xl border border-gray-200 space-y-2">
+                    <label className="block text-xs font-bold text-gray-800">
                       Interval Pengecekan
                     </label>
 
                     {/* Preset cepat untuk testing */}
-                    <div className="flex flex-wrap gap-1 mb-2">
+                    <div className="flex flex-wrap gap-1.5 pb-0.5">
                       {[
                         { label: "30 dtk", val: 30, unit: "seconds", test: true },
                         { label: "1 mnt", val: 1, unit: "minutes", test: true },
@@ -1838,12 +1853,12 @@ const BpsSyncModal = ({
                                 sync_interval_unit: p.unit,
                               })
                             }
-                            className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all ${
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-semibold border transition-all cursor-pointer ${
                               active
-                                ? "bg-blue-600 text-white border-blue-600"
+                                ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
                                 : p.test
                                 ? "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
-                                : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
+                                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-100"
                             }`}
                           >
                             {p.test && "🧪 "}{p.label}
@@ -1865,7 +1880,7 @@ const BpsSyncModal = ({
                             sync_interval_hours: parseInt(e.target.value) || 1,
                           })
                         }
-                        className="w-24 px-2 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 text-center font-mono"
+                        className="w-24 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 text-center font-mono"
                       />
                       <select
                         value={config.sync_interval_unit || "hours"}
@@ -1875,7 +1890,7 @@ const BpsSyncModal = ({
                             sync_interval_unit: e.target.value,
                           })
                         }
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 font-medium"
                       >
                         <option value="seconds">Detik (⚠️ Testing Only)</option>
                         <option value="minutes">Menit</option>
@@ -1883,15 +1898,16 @@ const BpsSyncModal = ({
                       </select>
                     </div>
                     {(config.sync_interval_unit === "seconds" || config.sync_interval_unit === "minutes") && (
-                      <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1">
+                      <p className="text-[10px] text-amber-600 flex items-center gap-1">
                         ⚠️ Satuan menit/detik hanya untuk <strong>testing</strong>. Gunakan jam untuk produksi.
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-gray-100 space-y-3">
-                  <div className="flex items-center gap-2.5 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                {/* Section WhatsApp Forwarding */}
+                <div className="pt-2 border-t border-gray-100 space-y-4">
+                  <div className="flex items-center gap-3 p-4 bg-emerald-50/80 rounded-xl border border-emerald-200">
                     <input
                       type="checkbox"
                       id="wa_channel_toggle"
@@ -1902,26 +1918,27 @@ const BpsSyncModal = ({
                           wa_channel_enabled: e.target.checked,
                         })
                       }
-                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 border-gray-300"
+                      className="w-4.5 h-4.5 text-emerald-600 rounded-md focus:ring-emerald-500 border-gray-300 cursor-pointer"
                     />
                     <label
                       htmlFor="wa_channel_toggle"
-                      className="text-xs font-medium text-emerald-900 cursor-pointer"
+                      className="text-xs font-bold text-emerald-950 cursor-pointer"
                     >
                       Forward Otomatis Rilis Publikasi Baru ke WhatsApp
                     </label>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* 2 Proportional Balanced Cards: Gateway Status & Target WA */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Gateway Lokal Card */}
-                    <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl flex flex-col justify-between">
+                    <div className="p-4 sm:p-5 bg-emerald-50/50 border border-emerald-200/90 rounded-2xl flex flex-col justify-between shadow-2xs min-h-[200px]">
                       <div>
-                        <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center justify-between mb-2">
                           <label className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
                             <span>🟢 Local WhatsApp Gateway (Baileys)</span>
                           </label>
                           <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                               waStatus?.is_connected
                                 ? "bg-emerald-100 text-emerald-800"
                                 : waStatus?.status === "SCAN_QR"
@@ -1938,7 +1955,7 @@ const BpsSyncModal = ({
                         </div>
 
                         {waStatus?.phone_formatted ? (
-                          <div className="mt-2 p-2 bg-white rounded-lg border border-emerald-200 flex items-center justify-between shadow-2xs">
+                          <div className="mt-2 p-2.5 bg-white rounded-xl border border-emerald-200 flex items-center justify-between shadow-2xs">
                             <div>
                               <span className="text-[10px] text-gray-400 font-semibold uppercase block">
                                 Nomor Bot Aktif
@@ -1947,7 +1964,7 @@ const BpsSyncModal = ({
                                 {waStatus.phone_formatted}
                               </span>
                             </div>
-                            <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2 py-0.5 rounded">
+                            <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2 py-0.5 rounded-md">
                               ✓ Online
                             </span>
                           </div>
@@ -1961,7 +1978,7 @@ const BpsSyncModal = ({
                       </div>
 
                       {/* Tombol Ganti Nomor / Scan QR & Hapus Nomor & Cek Status */}
-                      <div className="mt-3 pt-2.5 border-t border-emerald-200/80 flex flex-wrap items-center justify-between gap-2">
+                      <div className="mt-4 pt-3 border-t border-emerald-200/80 flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <button
                             type="button"
@@ -1973,7 +1990,7 @@ const BpsSyncModal = ({
                               }
                             }}
                             disabled={isResettingWa}
-                            className="px-2.5 py-1.5 bg-white hover:bg-emerald-100/70 border border-emerald-300 text-emerald-900 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors"
+                            className="px-3 py-1.5 bg-white hover:bg-emerald-100/70 border border-emerald-300 text-emerald-900 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
                             title="Ganti nomor WhatsApp bot atau hubungkan ulang"
                           >
                             <span>🔄</span>
@@ -1991,11 +2008,11 @@ const BpsSyncModal = ({
                               type="button"
                               onClick={handleDisconnectWaSession}
                               disabled={isResettingWa}
-                              className="px-2 py-1.5 bg-white hover:bg-red-50 border border-red-200 text-red-600 hover:text-red-700 rounded-lg text-[11px] font-medium flex items-center gap-1 shadow-2xs transition-colors"
+                              className="px-2.5 py-1.5 bg-white hover:bg-red-50 border border-red-200 text-red-600 hover:text-red-700 rounded-lg text-[11px] font-medium flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
                               title="Putuskan / Hapus nomor bot WhatsApp dari gateway"
                             >
                               <span>🗑️</span>
-                              <span>Hapus Nomor Bot</span>
+                              <span>Hapus Bot</span>
                             </button>
                           )}
                         </div>
@@ -2004,7 +2021,7 @@ const BpsSyncModal = ({
                           type="button"
                           onClick={loadWaStatus}
                           disabled={isLoadingWaStatus}
-                          className="text-[11px] text-emerald-700 hover:text-emerald-900 font-medium flex items-center gap-1 transition-colors ml-auto"
+                          className="text-[11px] text-emerald-700 hover:text-emerald-900 font-medium flex items-center gap-1 transition-colors ml-auto cursor-pointer"
                           title="Perbarui status koneksi gateway"
                         >
                           <span>
@@ -2016,95 +2033,95 @@ const BpsSyncModal = ({
                       </div>
                     </div>
 
-                    {/* Target Penerima */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-xs font-semibold text-gray-700">
-                          Target Penerima WhatsApp (Nomor / ID Grup)
-                        </label>
-                        <div className="flex items-center gap-2">
+                    {/* Target Penerima Card (Balanced and Styled!) */}
+                    <div className="p-4 sm:p-5 bg-blue-50/40 border border-blue-200/90 rounded-2xl flex flex-col justify-between shadow-2xs min-h-[200px]">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold text-gray-800">
+                            Target Penerima WhatsApp (Nomor / ID Grup)
+                          </label>
                           {config.wa_target && (
                             <button
                               type="button"
                               onClick={() => {
                                 setConfig({ ...config, wa_target: "" });
-                                toast.success(
-                                  "Nomor target penerima dikosongkan.",
-                                );
+                                toast.success("Nomor target penerima dikosongkan.");
                               }}
-                              className="text-[11px] text-red-500 hover:text-red-700 font-medium transition-colors"
+                              className="text-[11px] text-red-500 hover:text-red-700 font-semibold transition-colors cursor-pointer"
                               title="Kosongkan nomor target penerima"
                             >
-                              Hapus Target
+                              ✕ Hapus Target
                             </button>
                           )}
+                        </div>
+
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={config.wa_target || ""}
+                            onChange={(e) =>
+                              setConfig({ ...config, wa_target: e.target.value })
+                            }
+                            placeholder="08123456789, 120363428675326334@g.us, atau 120363xxxxxx@newsletter"
+                            className="w-full pl-3.5 pr-8 py-2 bg-white border border-blue-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-mono shadow-2xs"
+                          />
+                          {config.wa_target && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfig({ ...config, wa_target: "" });
+                                toast.success("Nomor target penerima dikosongkan.");
+                              }}
+                              className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
+                              title="Hapus / Kosongkan nomor target penerima"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Dedicated Quick Action Toolbar */}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-blue-200/60">
                           <button
                             type="button"
                             onClick={handleFetchWaGroups}
                             disabled={isLoadingWaGroups}
-                            className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer"
-                            title="Ambil daftar saluran dan grup WhatsApp yang diikuti bot lokal untuk memilih target secara instan"
+                            className="px-2.5 py-1.5 bg-white hover:bg-blue-100/70 border border-blue-300 text-blue-900 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                            title="Ambil daftar saluran dan grup WhatsApp yang diikuti bot lokal"
                           >
-                            <span>
-                              {isLoadingWaGroups
-                                ? "Memuat..."
-                                : "📢 Pilih Saluran / Grup (Local Gateway)"}
-                            </span>
+                            <span>📢</span>
+                            <span>{isLoadingWaGroups ? "Memuat..." : "Pilih Saluran / Grup"}</span>
                           </button>
-                        <button
-  type="button"
-  onClick={handleBackupWhatsApp}
-  disabled={isBackingUp}
-  className="text-[11px] text-green-600 hover:text-green-800 font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer"
-  title="Backup semua data WhatsApp (chat, grup, channel)"
->
-  <span>{isBackingUp ? "Membuat backup..." : "💾 Backup WhatsApp Data"}</span>
-</button>
-                        <Link
-                          to="/whatsapp-chat"
-                          className="text-[11px] text-emerald-600 hover:text-emerald-800 font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer"
-                          title="Buka WhatsApp Chat & Backup Explorer untuk melihat riwayat pesan, media, tautan, dan balas chat"
-                        >
-                          <span>📱 Buka Riwayat & Balas Chat</span>
-                        </Link>
-</div>
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={config.wa_target || ""}
-                          onChange={(e) =>
-                            setConfig({ ...config, wa_target: e.target.value })
-                          }
-                          placeholder="08123456789, 120363428675326334@g.us, atau 120363xxxxxx@newsletter"
-                          className="w-full pl-3 pr-8 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 font-mono"
-                        />
-                        {config.wa_target && (
+
                           <button
                             type="button"
-                            onClick={() => {
-                              setConfig({ ...config, wa_target: "" });
-                              toast.success(
-                                "Nomor target penerima dikosongkan.",
-                              );
-                            }}
-                            className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
-                            title="Hapus / Kosongkan nomor target penerima"
+                            onClick={handleBackupWhatsApp}
+                            disabled={isBackingUp}
+                            className="px-2.5 py-1.5 bg-white hover:bg-emerald-100/70 border border-emerald-300 text-emerald-900 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                            title="Backup semua data WhatsApp (chat, grup, channel)"
                           >
-                            ✕
+                            <span>💾</span>
+                            <span>{isBackingUp ? "Mencadangkan..." : "Backup Data WA"}</span>
                           </button>
-                        )}
+
+                          <Link
+                            to="/whatsapp-chat"
+                            className="px-2.5 py-1.5 bg-white hover:bg-teal-100/70 border border-teal-300 text-teal-900 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                            title="Buka WhatsApp Chat Explorer untuk membaca obrolan dan membalas pesan"
+                          >
+                            <span>📱</span>
+                            <span>Buka Obrolan</span>
+                          </Link>
+                        </div>
                       </div>
 
                       {showGroupPicker && waGroups.length > 0 && (
-                        <div className="mt-2.5 p-3 bg-blue-50/90 border border-blue-200 rounded-xl text-xs space-y-2.5 shadow-sm">
+                        <div className="mt-3 p-3.5 bg-white border border-blue-200 rounded-xl text-xs space-y-2.5 shadow-md">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5 font-bold text-blue-950">
                               <span>📢</span>
-                              <span>
-                                Daftar Target WhatsApp (Local Gateway)
-                              </span>
-                              <span className="text-[10px] bg-blue-200/80 text-blue-900 px-2 py-0.5 rounded-full font-bold">
+                              <span>Daftar Target WhatsApp (Local Gateway)</span>
+                              <span className="text-[10px] bg-blue-100 text-blue-900 px-2 py-0.5 rounded-full font-bold">
                                 {waGroups.length}
                               </span>
                             </div>
@@ -2123,13 +2140,13 @@ const BpsSyncModal = ({
 
                           {/* Filter Tabs & Search Bar */}
                           <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between">
-                            <div className="flex items-center gap-1 bg-white/80 p-0.5 rounded-lg border border-blue-200/70 text-[11px] shrink-0">
+                            <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg border border-gray-200 text-[11px] shrink-0">
                               <button
                                 type="button"
                                 onClick={() => setWaGroupFilter("ALL")}
                                 className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
                                   waGroupFilter === "ALL"
-                                    ? "bg-blue-600 text-white shadow-2xs"
+                                    ? "bg-white text-blue-700 shadow-2xs font-bold"
                                     : "text-gray-600 hover:text-gray-900"
                                 }`}
                               >
@@ -2140,7 +2157,7 @@ const BpsSyncModal = ({
                                 onClick={() => setWaGroupFilter("CHANNELS")}
                                 className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
                                   waGroupFilter === "CHANNELS"
-                                    ? "bg-emerald-600 text-white shadow-2xs"
+                                    ? "bg-white text-emerald-700 shadow-2xs font-bold"
                                     : "text-emerald-700 hover:text-emerald-900"
                                 }`}
                               >
@@ -2163,7 +2180,7 @@ const BpsSyncModal = ({
                                 onClick={() => setWaGroupFilter("GROUPS")}
                                 className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
                                   waGroupFilter === "GROUPS"
-                                    ? "bg-blue-600 text-white shadow-2xs"
+                                    ? "bg-white text-blue-700 shadow-2xs font-bold"
                                     : "text-gray-600 hover:text-gray-900"
                                 }`}
                               >
@@ -2188,7 +2205,7 @@ const BpsSyncModal = ({
                               value={waGroupSearch}
                               onChange={(e) => setWaGroupSearch(e.target.value)}
                               placeholder="Cari nama saluran / grup..."
-                              className="w-full sm:w-56 px-2.5 py-1 bg-white border border-blue-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                              className="w-full sm:w-56 px-3 py-1 bg-gray-50 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
                             />
                           </div>
 
@@ -2248,7 +2265,7 @@ const BpsSyncModal = ({
                                         `Target diset ke: "${g.name}" (${isChan ? "Saluran/Channel" : isComm ? "Komunitas" : "Grup"})`,
                                       );
                                     }}
-                                    className={`p-2.5 rounded-lg cursor-pointer transition-all border ${
+                                    className={`p-2.5 rounded-xl cursor-pointer transition-all border ${
                                       isSelected
                                         ? "bg-blue-600 text-white border-blue-600 shadow-sm"
                                         : isChan
@@ -2322,65 +2339,60 @@ const BpsSyncModal = ({
                         </div>
                       )}
 
-                      <p className="text-[10px] text-gray-500 mt-1 leading-relaxed">
-                        💡 <strong>Catatan Pengiriman ke Saluran & Komunitas:</strong>{" "}
-                        Mendukung pengiriman ke <strong>Nomor WhatsApp Pribadi</strong>,{" "}
-                        <strong>Grup</strong>, <strong>Saluran Pengumuman Komunitas</strong>, dan{" "}
-                        <strong>Saluran Resmi WhatsApp (Channels)</strong>. Pastikan nomor bot WhatsApp Anda
-                        sudah dijadikan <strong>Admin</strong> pada saluran / komunitas WhatsApp agar memiliki izin mempublikasikan siaran.
+                      <p className="text-[10.5px] text-gray-500 mt-2.5 leading-relaxed">
+                        💡 <strong>Info:</strong> Mendukung pengiriman ke <strong>Nomor Pribadi</strong>, <strong>Grup</strong>, dan <strong>Saluran Resmi WhatsApp (Channels)</strong>. Pastikan bot Anda berstatus <strong>Admin</strong> bila mengirim ke Saluran.
                       </p>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      URL Endpoint Local Gateway
-                    </label>
-                    <input
-                      type="text"
-                      value={config.wa_webhook_url || ""}
-                      onChange={(e) =>
-                        setConfig({ ...config, wa_webhook_url: e.target.value })
-                      }
-                      placeholder="http://localhost:3001/send"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 font-mono"
-                    />
-                    <p className="text-[10px] text-gray-400 mt-1">
-                      Default:{" "}
-                      <code className="text-gray-600">
-                        http://localhost:3001/send
-                      </code>{" "}
-                      (Endpoint server Baileys di folder wa-gateway).
-                    </p>
-                  </div>
+                  {/* Section Endpoints & References */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-gray-700">
+                        URL Endpoint Local Gateway
+                      </label>
+                      <input
+                        type="text"
+                        value={config.wa_webhook_url || ""}
+                        onChange={(e) =>
+                          setConfig({ ...config, wa_webhook_url: e.target.value })
+                        }
+                        placeholder="http://localhost:3001/send"
+                        className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 font-mono bg-white shadow-2xs"
+                      />
+                      <p className="text-[10px] text-gray-400">
+                        Default: <code className="text-gray-600">http://localhost:3001/send</code> (Server Baileys wa-gateway).
+                      </p>
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      URL Frontend Chatbot (Domain Short Link)
-                    </label>
-                    <input
-                      type="text"
-                      value={config.chatbot_url || ""}
-                      onChange={(e) =>
-                        setConfig({ ...config, chatbot_url: e.target.value })
-                      }
-                      placeholder="https://sigap.bps7500.my.id"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 font-mono"
-                    />
-                    <p className="text-[10px] text-gray-400 mt-1">
-                      Domain tautan singkat yang dibagikan ke WhatsApp (contoh: <code className="text-gray-600">https://sigap.bps7500.my.id</code> di production, atau <code className="text-gray-600">http://localhost:5174</code> di lokal).
-                    </p>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-gray-700">
+                        URL Frontend Chatbot (Domain Short Link)
+                      </label>
+                      <input
+                        type="text"
+                        value={config.chatbot_url || ""}
+                        onChange={(e) =>
+                          setConfig({ ...config, chatbot_url: e.target.value })
+                        }
+                        placeholder="https://sigap.bps7500.my.id"
+                        className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 font-mono bg-white shadow-2xs"
+                      />
+                      <p className="text-[10px] text-gray-400">
+                        Domain tautan publik yang dilampirkan ke pesan WhatsApp.
+                      </p>
+                    </div>
                   </div>
 
                   {/* Single Source Reference ke Pengaturan BPS */}
-                  <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-blue-900">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">🌐</span>
+                  <div className="p-4 bg-blue-50/70 border border-blue-200/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-900 shadow-2xs">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-lg">🌐</span>
                       <div>
-                        <span className="font-semibold text-blue-950 block sm:inline">
+                        <span className="font-bold text-blue-950 block sm:inline">
                           Portal Web BPS Terhubung:
                         </span>{" "}
-                        <code className="font-mono text-blue-800 font-semibold bg-white px-1.5 py-0.5 rounded border border-blue-200 text-[11px]">
+                        <code className="font-mono text-blue-800 font-semibold bg-white px-2 py-0.5 rounded-md border border-blue-200 text-[11px]">
                           {config.portal_url || "https://gorontalo.bps.go.id"}
                         </code>
                       </div>
@@ -2395,11 +2407,11 @@ const BpsSyncModal = ({
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                   <button
                     type="submit"
                     disabled={isSavingConfig}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 text-xs"
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold disabled:opacity-50 text-xs shadow-xs transition-colors cursor-pointer"
                   >
                     {isSavingConfig
                       ? "Menyimpan..."
@@ -2940,17 +2952,20 @@ const BpsSyncModal = ({
           {activeTab === "config" && (
             <form
               onSubmit={handleSaveConfig}
-              className="space-y-3.5 w-full py-2"
+              className="space-y-4.5 bg-white border border-gray-200/90 rounded-2xl p-5 sm:p-6 shadow-xs w-full"
             >
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
-                <p className="font-semibold">BPS Web API Key:</p>
-                <p className="mt-0.5">
-                  Dapatkan API Key di portal resmi:{" "}
+              <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 shadow-2xs">
+                <p className="font-bold flex items-center gap-1.5 text-sm text-blue-950">
+                  <span>🔑</span>
+                  <span>BPS Web API Key & Akses Data</span>
+                </p>
+                <p className="mt-1 leading-relaxed text-blue-800">
+                  Dapatkan API Key resmi secara gratis melalui portal resmi Badan Pusat Statistik:{" "}
                   <a
                     href="https://webapi.bps.go.id/developer/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="underline font-bold"
+                    className="underline font-bold text-blue-900 hover:text-blue-950"
                   >
                     webapi.bps.go.id/developer
                   </a>
@@ -2958,7 +2973,7 @@ const BpsSyncModal = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                <label className="block text-xs font-bold text-gray-800 mb-1">
                   API Key BPS <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -2967,15 +2982,15 @@ const BpsSyncModal = ({
                   onChange={(e) =>
                     setConfig({ ...config, api_key: e.target.value })
                   }
-                  placeholder="Masukkan API Key"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                  placeholder="Masukkan API Key dari webapi.bps.go.id"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono bg-gray-50 shadow-2xs"
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label className="block text-xs font-bold text-gray-800 mb-1">
                     Wilayah / Domain BPS
                   </label>
                   <select
@@ -2992,7 +3007,7 @@ const BpsSyncModal = ({
                           : config.domain_name,
                       });
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs bg-gray-50 focus:bg-white shadow-2xs"
                   >
                     {domainOptions.map((opt) => (
                       <option key={opt.code} value={opt.code}>
@@ -3003,8 +3018,8 @@ const BpsSyncModal = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Kode Domain
+                  <label className="block text-xs font-bold text-gray-800 mb-1">
+                    Kode Domain BPS
                   </label>
                   <input
                     type="text"
@@ -3013,12 +3028,12 @@ const BpsSyncModal = ({
                       setConfig({ ...config, domain_code: e.target.value })
                     }
                     placeholder="7500"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono bg-gray-50 focus:bg-white shadow-2xs"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label className="block text-xs font-bold text-gray-800 mb-1">
                     URL Portal Web BPS Resmi
                   </label>
                   <input
@@ -3028,22 +3043,22 @@ const BpsSyncModal = ({
                       setConfig({ ...config, portal_url: e.target.value })
                     }
                     placeholder="https://gorontalo.bps.go.id"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono"
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono bg-gray-50 focus:bg-white shadow-2xs"
                   />
-                  <p className="text-[10px] text-gray-400 mt-1">
-                    Domain portal resmi BPS untuk rilis artikel BRS & Publikasi (default: <code className="text-gray-600">https://gorontalo.bps.go.id</code>). Digunakan untuk mengunduh dokumen, cover publikasi, dan tautan artikel sumber.
+                  <p className="text-[10.5px] text-gray-400 mt-1">
+                    Domain portal resmi BPS untuk mengunduh dokumen publikasi, file rilis BRS, dan gambar sampul (default: <code className="text-gray-600">https://gorontalo.bps.go.id</code>).
                   </p>
                 </div>
 
                 {/* Single Source Reference ke Otomatisasi & WA */}
-                <div className="sm:col-span-2 p-3 bg-gray-50 border border-gray-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-gray-700">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">🔗</span>
+                <div className="sm:col-span-2 p-4 bg-gray-50 border border-gray-200/90 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-gray-700 shadow-2xs">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-lg">🔗</span>
                     <div>
-                      <span className="font-semibold text-gray-900 block sm:inline">
+                      <span className="font-bold text-gray-900 block sm:inline">
                         Domain Short Link Chatbot WA:
                       </span>{" "}
-                      <code className="font-mono text-gray-800 font-semibold bg-white px-1.5 py-0.5 rounded border border-gray-200 text-[11px]">
+                      <code className="font-mono text-gray-800 font-semibold bg-white px-2 py-0.5 rounded-md border border-gray-200 text-[11px]">
                         {config.chatbot_url || "https://sigap.bps7500.my.id"}
                       </code>
                     </div>
@@ -3059,20 +3074,23 @@ const BpsSyncModal = ({
               </div>
 
               {config.last_sync_at && (
-                <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600">
-                  <span className="font-semibold">Terakhir Sinkron:</span>{" "}
-                  {new Date(config.last_sync_at).toLocaleString("id-ID")} (
-                  {config.last_sync_status || "IDLE"})
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-600 flex items-center gap-2">
+                  <span>🕒</span>
+                  <div>
+                    <span className="font-semibold text-gray-800">Terakhir Sinkron:</span>{" "}
+                    {new Date(config.last_sync_at).toLocaleString("id-ID")}{" "}
+                    <span className="text-gray-400 font-mono">({config.last_sync_status || "IDLE"})</span>
+                  </div>
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                 <button
                   type="submit"
                   disabled={isSavingConfig}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 text-xs"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold disabled:opacity-50 text-xs shadow-xs transition-colors cursor-pointer"
                 >
-                  {isSavingConfig ? "Menyimpan..." : "Simpan Pengaturan"}
+                  {isSavingConfig ? "Menyimpan..." : "Simpan Pengaturan BPS"}
                 </button>
               </div>
             </form>
@@ -3080,9 +3098,9 @@ const BpsSyncModal = ({
 
           {/* TAB 4: PILIH PUBLIKASI (MANUAL) */}
           {activeTab === "sync" && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {/* Toggle Kategori Dokumen BPS */}
-              <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg w-fit text-xs font-semibold">
+              <div className="flex items-center gap-2 bg-gray-100 p-1.5 rounded-xl w-fit text-xs font-semibold shadow-2xs">
                 <button
                   type="button"
                   onClick={() => {
@@ -3090,9 +3108,9 @@ const BpsSyncModal = ({
                     setSelectedPubIds([]);
                     loadPreview(1, config.domain_code, "publication");
                   }}
-                  className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+                  className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                     previewType === "publication"
-                      ? "bg-white text-blue-700 shadow-sm font-bold"
+                      ? "bg-white text-blue-700 shadow-2xs font-bold"
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
@@ -3106,9 +3124,9 @@ const BpsSyncModal = ({
                     setSelectedPubIds([]);
                     loadPreview(1, config.domain_code, "brs");
                   }}
-                  className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+                  className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                     previewType === "brs"
-                      ? "bg-white text-indigo-700 shadow-sm font-bold"
+                      ? "bg-white text-indigo-700 shadow-2xs font-bold"
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
@@ -3117,9 +3135,10 @@ const BpsSyncModal = ({
                 </button>
               </div>
 
-              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
+              {/* Filter Search Bar Proportional Grid */}
+              <div className="bg-white p-4.5 rounded-2xl border border-gray-200/90 shadow-2xs grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-end">
+                <div className="sm:col-span-3">
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1">
                     Filter Tahun
                   </label>
                   <input
@@ -3127,28 +3146,28 @@ const BpsSyncModal = ({
                     value={filterYear}
                     onChange={(e) => setFilterYear(e.target.value)}
                     placeholder="Contoh: 2024"
-                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs shadow-2xs"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
-                    Kata Kunci
+                <div className="sm:col-span-6">
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                    Kata Kunci Pencarian
                   </label>
                   <input
                     type="text"
                     value={filterKeyword}
                     onChange={(e) => setFilterKeyword(e.target.value)}
-                    placeholder="Contoh: Dalam Angka"
-                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+                    placeholder="Contoh: Gorontalo Dalam Angka / PDRB / Ekspor"
+                    className="w-full px-3.5 py-2 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs shadow-2xs"
                   />
                 </div>
 
-                <div className="flex items-end">
+                <div className="sm:col-span-3">
                   <button
                     onClick={() => loadPreview(1)}
                     disabled={isLoadingPreview}
-                    className="w-full bg-gray-800 hover:bg-gray-700 text-white font-medium py-1.5 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5"
+                    className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold py-2 px-3.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
                   >
                     <RefreshIcon />
                     <span>
@@ -3158,12 +3177,13 @@ const BpsSyncModal = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-1.5">
+              {/* Action Selection Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-blue-50/50 border border-blue-200/80 rounded-xl text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={handleToggleSelectAllOnPage}
-                    className="px-2.5 py-1 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 font-medium"
+                    className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 font-semibold shadow-2xs transition-colors cursor-pointer"
                   >
                     {isAllPageSelected
                       ? "Batal Pilih Semua"
@@ -3172,7 +3192,7 @@ const BpsSyncModal = ({
                   <button
                     type="button"
                     onClick={handleSelectOnlyNew}
-                    className="px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 text-blue-700 font-medium"
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold shadow-2xs transition-colors cursor-pointer"
                   >
                     Pilih Yang Baru / Revisi
                   </button>
@@ -3180,24 +3200,24 @@ const BpsSyncModal = ({
                     <button
                       type="button"
                       onClick={handleClearSelection}
-                      className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg font-medium"
+                      className="px-2.5 py-1.5 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg font-medium transition-colors cursor-pointer"
                     >
                       Batal Semua ({selectedPubIds.length})
                     </button>
                   )}
                 </div>
 
-                <div className="text-gray-500 font-medium">
+                <div className="text-gray-600 font-medium">
                   Terpilih:{" "}
-                  <span className="text-blue-600 font-bold">
+                  <span className="text-blue-700 font-bold">
                     {selectedPubIds.length}
                   </span>{" "}
                   publikasi
                 </div>
               </div>
 
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="max-h-[42vh] overflow-y-auto">
+              <div className="border border-gray-200/90 rounded-2xl overflow-hidden shadow-2xs bg-white">
+                <div className="max-h-[46vh] overflow-y-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 sticky top-0 z-10">
                       <tr>

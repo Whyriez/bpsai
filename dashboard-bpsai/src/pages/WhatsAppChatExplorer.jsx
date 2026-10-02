@@ -653,8 +653,8 @@ export default function WhatsAppChatExplorer() {
   };
 
   return (
-    // Outer Container: full bleed (-m-6 to cancel MainLayout padding) and precise full height!
-    <div className="-m-6 h-[calc(100vh-64px)] flex overflow-hidden bg-[#efeae2] select-none text-gray-800">
+    // Outer Container: 100% fit in to parent viewport, zero outer scroll!
+    <div className="w-full h-full flex overflow-hidden bg-[#efeae2] select-none text-gray-800">
       {/* ======================================================== */}
       {/* COLUMN 1: LEFT SIDEBAR (CHATS LIST) — Proportional Width */}
       {/* ======================================================== */}
