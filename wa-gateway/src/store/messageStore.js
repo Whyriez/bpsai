@@ -636,10 +636,11 @@ function getChatSummaries() {
 
     const existingIds = new Set(summaries.map(s => s.id));
 
-    // Also include chats from chats.json (if not already having message files)
+    // Include chats from chats.json ONLY if they had a real conversation (conversationTimestamp exists)
+    // This filters out ghost entries that never had actual messages.
     const storedChats = getStoredChats();
     for (const [id, c] of Object.entries(storedChats)) {
-      if (!existingIds.has(id)) {
+      if (!existingIds.has(id) && c.conversationTimestamp) {
         const isGroup = id.endsWith('@g.us');
         const isChannel = id.endsWith('@newsletter');
         const isDirect = id.endsWith('@s.whatsapp.net');
@@ -676,37 +677,11 @@ function getChatSummaries() {
       }
     }
 
-    // Also include contacts from contacts.json as direct chats if not already listed and has valid phone
-    for (const [jid, contact] of Object.entries(contacts)) {
-      if (!existingIds.has(jid) && isValidPhoneNumber(jid)) {
-        const phone = formatPhoneNumber(jid);
-        const name = contact.name || phone;
-        summaries.push({
-          id: jid,
-          name,
-          phone,
-          raw_phone: jid.split('@')[0],
-          type: 'direct',
-          is_group: false,
-          is_channel: false,
-          is_direct: true,
-          message_count: 0,
-          media_count: 0,
-          link_count: 0,
-          participant_count: 1,
-          participants: [{ jid, phone, name }],
-          last_message: {
-            text: 'Kontak WhatsApp',
-            type: 'text',
-            timestamp: null,
-            date: null,
-            fromMe: false,
-            sender: null,
-          },
-        });
-        existingIds.add(jid);
-      }
-    }
+    // NOTE: contacts.json loop REMOVED intentionally.
+    // contacts.json contains ALL contacts ever seen (including group members, senders from group messages, etc.)
+    // Adding them all as "personal chats" would result in hundreds of ghost entries with no real conversation.
+    // Only chats with actual message files (data/messages/*.json) or chats.json entries with conversationTimestamp
+    // are legitimate conversations to show in the Explorer.
 
     // Sort descending by newest message timestamp
     summaries.sort((a, b) => {
@@ -1000,41 +975,10 @@ async function inspectBackupZip(zipFilename) {
     existingIds.add(id);
   }
 
-  // 2. Also add contacts from contacts.json ONLY if valid phone number
-  for (const [jid, contact] of Object.entries(contacts)) {
-    if (!existingIds.has(jid) && isValidPhoneNumber(jid)) {
-      const isGroup = jid.endsWith('@g.us');
-      const isChannel = jid.endsWith('@newsletter');
-      const isDirect = !isGroup && !isChannel;
-      const phone = formatPhoneNumber(jid);
-      let name = contact.name || phone;
-      if (jid.includes('260593114161297')) {
-        name = 'Catatan / Nomor Pribadi (+62 895-7074-91166)';
-      }
-
-      summaries.push({
-        id: jid,
-        name,
-        phone: isDirect ? phone : null,
-        raw_phone: isDirect ? jid.split('@')[0] : null,
-        type: isGroup ? 'group' : (isChannel ? 'channel' : 'direct'),
-        is_group: isGroup,
-        is_channel: isChannel,
-        is_direct: isDirect,
-        message_count: 0,
-        media_count: 0,
-        link_count: 0,
-        participant_count: 1,
-        last_message: {
-          text: 'Kontak tersimpan dalam backup',
-          type: 'text',
-          timestamp: null,
-          fromMe: false,
-        },
-      });
-      existingIds.add(jid);
-    }
-  }
+  // 2. contacts.json loop REMOVED intentionally from backup inspect.
+  // contacts.json in backup contains ALL contacts ever seen (group members, senders, etc.)
+  // Adding them all as "personal chats" causes false inflation of counts.
+  // Only chats with actual recorded messages (messageIndex) are legitimate to show here.
 
   // 3. Also add groups from groups.json
   for (const grp of groups) {
@@ -1098,7 +1042,10 @@ async function inspectBackupZip(zipFilename) {
     summary: {
       total_groups: groups.length,
       total_channels: channels.length,
-      total_contacts: Object.keys(contacts).length,
+      total_contacts: messageIndex.filter(m => {
+        const id = m.chat_id || m.id || '';
+        return !id.endsWith('@g.us') && !id.endsWith('@newsletter');
+      }).length,
       total_chats: summaries.length,
       total_messages: messageIndex.reduce((s, c) => s + (c.message_count || 0), 0),
     },
