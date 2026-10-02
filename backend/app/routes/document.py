@@ -1588,73 +1588,80 @@ def get_bps_api_config():
 @document_bp.route('/bps/config', methods=['POST'])
 def save_bps_api_config():
     """Menyimpan konfigurasi BPS Web API dan integrasi WhatsApp."""
-    data = request.get_json() or {}
-    api_key = data.get('api_key', '')
-    domain_code = data.get('domain_code', '7500')
-    domain_name = data.get('domain_name', 'BPS Provinsi Gorontalo')
-    auto_sync = data.get('auto_sync', False)
-    sync_interval_hours = data.get('sync_interval_hours', 6)
-    wa_channel_enabled = data.get('wa_channel_enabled', True)
-    wa_target = data.get('wa_target', '')
-    wa_gateway_type = data.get('wa_gateway_type', 'webhook')
-    wa_webhook_url = data.get('wa_webhook_url', '')
-    wa_api_token = data.get('wa_api_token', '')
-    chatbot_url = data.get('chatbot_url', '')
-    portal_url = data.get('portal_url', '')
+    try:
+        data = request.get_json() or {}
+        api_key = data.get('api_key', '')
+        domain_code = data.get('domain_code', '7500')
+        domain_name = data.get('domain_name', 'BPS Provinsi Gorontalo')
+        auto_sync = data.get('auto_sync', False)
+        sync_interval_hours = data.get('sync_interval_hours', 6)
+        sync_interval_unit = data.get('sync_interval_unit', 'hours')
+        wa_channel_enabled = data.get('wa_channel_enabled', True)
+        wa_target = data.get('wa_target', '')
+        wa_gateway_type = data.get('wa_gateway_type', 'webhook')
+        wa_webhook_url = data.get('wa_webhook_url', '')
+        wa_api_token = data.get('wa_api_token', '')
+        chatbot_url = data.get('chatbot_url', '')
+        portal_url = data.get('portal_url', '')
 
-    service = BpsApiService()
-    cfg = service.save_config(
-        api_key=api_key,
-        domain_code=domain_code,
-        domain_name=domain_name,
-        auto_sync=auto_sync,
-        sync_interval_hours=sync_interval_hours,
-        wa_channel_enabled=wa_channel_enabled,
-        wa_target=wa_target,
-        wa_gateway_type=wa_gateway_type,
-        wa_webhook_url=wa_webhook_url,
-        wa_api_token=wa_api_token,
-        chatbot_url=chatbot_url,
-        portal_url=portal_url
-    )
+        service = BpsApiService()
+        cfg = service.save_config(
+            api_key=api_key,
+            domain_code=domain_code,
+            domain_name=domain_name,
+            auto_sync=auto_sync,
+            sync_interval_hours=sync_interval_hours,
+            sync_interval_unit=sync_interval_unit,
+            wa_channel_enabled=wa_channel_enabled,
+            wa_target=wa_target,
+            wa_gateway_type=wa_gateway_type,
+            wa_webhook_url=wa_webhook_url,
+            wa_api_token=wa_api_token,
+            chatbot_url=chatbot_url,
+            portal_url=portal_url
+        )
 
-    # Sinkronkan seluruh wa_message riwayat publikasi dengan domain chatbot dan portal baru
-    if chatbot_url or portal_url:
-        try:
-            from ..short_link_service import get_chatbot_base_url
-            from ..whatsapp_service import format_publication_whatsapp_message
-            from ..bps_service import generate_bps_web_url
-            base = get_chatbot_base_url()
-            portal_base = service.get_portal_url()
-            alerts = BpsPublicationAlert.query.all()
-            for a in alerts:
-                computed_web = generate_bps_web_url(
-                    domain_base=portal_base,
-                    doc_type=a.doc_type,
-                    release_date=a.release_date or "",
-                    item_id=a.pub_id,
-                    title=a.title
-                )
-                a.bps_web_url = computed_web
-                if a.wa_message:
-                    short_url = f"{base}/{a.short_code}" if a.short_code else ""
-                    a.wa_message = format_publication_whatsapp_message(
-                        title=a.title,
+        # Sinkronkan seluruh wa_message riwayat publikasi dengan domain chatbot dan portal baru
+        if chatbot_url or portal_url:
+            try:
+                from ..short_link_service import get_chatbot_base_url
+                from ..whatsapp_service import format_publication_whatsapp_message
+                from ..bps_service import generate_bps_web_url
+                base = get_chatbot_base_url()
+                portal_base = service.get_portal_url()
+                alerts = BpsPublicationAlert.query.all()
+                for a in alerts:
+                    computed_web = generate_bps_web_url(
+                        domain_base=portal_base,
+                        doc_type=a.doc_type,
                         release_date=a.release_date or "",
-                        updt_date=a.updt_date or "",
-                        summary=a.summary or "",
-                        pdf_url=a.pdf_url,
-                        domain_name="BPS Provinsi Gorontalo",
-                        is_update=a.is_update or False,
-                        doc_type=a.doc_type or "PUBLIKASI",
-                        short_url=short_url,
-                        bps_web_url=computed_web
+                        item_id=a.pub_id,
+                        title=a.title
                     )
-            db.session.commit()
-        except Exception as e:
-            logger.warning(f"Gagal memperbarui pesan WA saat update config: {e}")
+                    a.bps_web_url = computed_web
+                    if a.wa_message:
+                        short_url = f"{base}/{a.short_code}" if a.short_code else ""
+                        a.wa_message = format_publication_whatsapp_message(
+                            title=a.title,
+                            release_date=a.release_date or "",
+                            updt_date=a.updt_date or "",
+                            summary=a.summary or "",
+                            pdf_url=a.pdf_url,
+                            domain_name="BPS Provinsi Gorontalo",
+                            is_update=a.is_update or False,
+                            doc_type=a.doc_type or "PUBLIKASI",
+                            short_url=short_url,
+                            bps_web_url=computed_web
+                        )
+                db.session.commit()
+            except Exception as e:
+                logger.warning(f"Gagal memperbarui pesan WA saat update config: {e}")
 
-    return jsonify({"message": "Konfigurasi BPS Web API dan WhatsApp berhasil disimpan.", "config": cfg}), 200
+        return jsonify({"message": "Konfigurasi BPS Web API dan WhatsApp berhasil disimpan.", "config": cfg}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Gagal menyimpan konfigurasi BPS API: {e}", exc_info=True)
+        return jsonify({"error": f"Gagal menyimpan konfigurasi: {str(e)}"}), 500
 
 
 @document_bp.route('/bps/preview', methods=['GET'])
@@ -2111,22 +2118,22 @@ def get_whatsapp_groups():
             return jsonify({
                 "error": res_json.get('error') or "WhatsApp Local Gateway belum terhubung. Silakan scan QR code di terminal terlebih dahulu.",
                 "groups": []
-            }), 503
+            }), 200
         else:
             return jsonify({
                 "error": f"Local Gateway mengembalikan HTTP {res.status_code}: {res.text[:120]}",
                 "groups": []
-            }), 502
+            }), 200
     except requests.exceptions.ConnectionError:
         return jsonify({
             "error": f"Tidak dapat terhubung ke Local WhatsApp Gateway di {groups_url}. Pastikan gateway sudah dijalankan (jalankan start-wa-gateway.bat atau npm start di folder wa-gateway).",
             "groups": []
-        }), 503
+        }), 200
     except Exception as e:
         return jsonify({
             "error": f"Gagal mengambil grup dari Local Gateway: {str(e)}",
             "groups": []
-        }), 500
+        }), 200
 
 
 @document_bp.route('/bps/whatsapp-status', methods=['GET'])
@@ -2150,21 +2157,29 @@ def get_whatsapp_status():
     try:
         res = requests.get(status_url, timeout=5)
         if res.status_code == 200:
-            return jsonify({
-                "success": True,
-                **res.json()
-            }), 200
+            try:
+                data = res.json()
+                return jsonify({
+                    "success": True,
+                    **data
+                }), 200
+            except Exception:
+                return jsonify({
+                    "success": False,
+                    "status": "ERROR",
+                    "error": f"Gateway mengembalikan respons non-JSON (mungkin port salah atau server lain): {res.text[:150]}"
+                }), 200
         else:
             return jsonify({
                 "success": False,
                 "status": "DISCONNECTED",
-                "error": f"Gateway mengembalikan status {res.status_code}"
+                "error": f"Gateway mengembalikan status HTTP {res.status_code}"
             }), 200
     except requests.exceptions.ConnectionError:
         return jsonify({
             "success": False,
             "status": "OFFLINE",
-            "error": f"Local Gateway offline di {status_url}. Pastikan start-wa-gateway.bat sudah dijalankan."
+            "error": f"Local Gateway offline di {status_url}. Pastikan gateway service sudah dijalankan."
         }), 200
     except Exception as e:
         return jsonify({
@@ -2202,18 +2217,226 @@ def reset_whatsapp_session():
         else:
             return jsonify({
                 "success": False,
-                "error": f"Gateway gagal reset sesi: {res.text[:150]}"
-            }), 502
+                "error": f"Gateway gagal reset sesi (HTTP {res.status_code}): {res.text[:150]}"
+            }), 200
     except requests.exceptions.ConnectionError:
         return jsonify({
             "success": False,
-            "error": f"Tidak dapat terhubung ke Local Gateway di {reset_url}."
-        }), 503
+            "error": f"Tidak dapat terhubung ke Local Gateway di {reset_url}. Pastikan gateway sudah berjalan."
+        }), 200
     except Exception as e:
         return jsonify({
             "success": False,
             "error": f"Gagal mereset sesi WhatsApp: {str(e)}"
+        }), 200
+
+
+@document_bp.route('/bps/whatsapp-backup', methods=['POST'])
+def backup_whatsapp_data():
+    """Membuat backup data WhatsApp (chat, grup, channel) dari Local Gateway (Baileys)."""
+    import requests
+
+    service = BpsApiService()
+    cfg = service.get_config()
+    webhook_url = (cfg.get('wa_webhook_url') or 'http://localhost:3001/send').strip()
+
+    target_endpoint = webhook_url or "http://127.0.0.1:3001/send"
+    base_url = target_endpoint
+    for suffix in ['/send', '/webhook', '/api/send']:
+        if base_url.endswith(suffix):
+            base_url = base_url[:-len(suffix)]
+            break
+    base_url = base_url.rstrip('/')
+    backup_url = f"{base_url}/whatsapp/backup"
+
+    data = request.get_json() if request.is_json else {}
+    scope = data.get('scope', {"chats": True, "groups": True, "channels": True, "media": False})
+
+    try:
+        res = requests.post(backup_url, json={"scope": scope}, timeout=60)
+        if res.status_code == 200:
+            res_json = res.json()
+            # Rewrite downloadUrl to point through the gateway
+            download_url = res_json.get('downloadUrl', '')
+            if download_url:
+                res_json['downloadUrl'] = f"{base_url}{download_url}"
+            return jsonify(res_json), 200
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Gateway mengembalikan HTTP {res.status_code}: {res.text[:200]}"
+            }), 200
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "success": False,
+            "error": f"Tidak dapat terhubung ke Local WhatsApp Gateway di {backup_url}. Pastikan gateway sudah dijalankan."
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Gagal membuat backup WhatsApp: {str(e)}"
+        }), 200
+
+
+# ===================================================================
+# WHATSAPP MESSAGE STATS
+# ===================================================================
+
+@document_bp.route('/bps/whatsapp-message-stats', methods=['GET'])
+def get_whatsapp_message_stats():
+    """Mengambil statistik pesan WhatsApp tersimpan dari Local Gateway."""
+    import requests
+
+    service = BpsApiService()
+    cfg = service.get_config()
+    webhook_url = (cfg.get('wa_webhook_url') or 'http://localhost:3001/send').strip()
+
+    target_endpoint = webhook_url or "http://127.0.0.1:3001/send"
+    base_url = target_endpoint
+    for suffix in ['/send', '/webhook', '/api/send']:
+        if base_url.endswith(suffix):
+            base_url = base_url[:-len(suffix)]
+            break
+    base_url = base_url.rstrip('/')
+    stats_url = f"{base_url}/message-stats"
+
+    try:
+        res = requests.get(stats_url, timeout=10)
+        if res.status_code == 200:
+            return jsonify(res.json()), 200
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Gateway mengembalikan HTTP {res.status_code}"
+            }), 502
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "success": False,
+            "total_chats": 0, "total_messages": 0, "total_contacts": 0,
+            "error": "Gateway tidak terhubung"
+        }), 503
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Gagal mengambil statistik: {str(e)}"
         }), 500
+
+
+
+# ===================================================================
+# WHATSAPP CHAT & BACKUP EXPLORER PROXY ENDPOINTS
+# ===================================================================
+
+def _get_wa_gateway_base_url():
+    """Helper untuk mendapatkan base URL WhatsApp Gateway lokal."""
+    service = BpsApiService()
+    cfg = service.get_config()
+    webhook_url = (cfg.get('wa_webhook_url') or 'http://localhost:3001/send').strip()
+    target_endpoint = webhook_url or "http://127.0.0.1:3001/send"
+    base_url = target_endpoint
+    for suffix in ['/send', '/webhook', '/api/send']:
+        if base_url.endswith(suffix):
+            base_url = base_url[:-len(suffix)]
+            break
+    return base_url.rstrip('/')
+
+
+@document_bp.route('/bps/whatsapp-explorer/chats', methods=['GET'])
+def get_whatsapp_explorer_chats():
+    """Mengambil daftar ringkasan percakapan tersimpan dari gateway."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    try:
+        res = requests.get(f"{base_url}/whatsapp/explorer/chats", timeout=15)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "chats": [], "total": 0, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/chats/<path:chat_id>', methods=['GET'])
+def get_whatsapp_explorer_chat_detail(chat_id):
+    """Mengambil riwayat percakapan, media, dan tautan untuk chat tertentu."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    try:
+        res = requests.get(f"{base_url}/whatsapp/explorer/chats/{chat_id}", timeout=15)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/backups', methods=['GET'])
+def get_whatsapp_explorer_backups():
+    """Mengambil daftar berkas backup ZIP yang ada di server gateway."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    try:
+        res = requests.get(f"{base_url}/whatsapp/explorer/backups", timeout=10)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "backups": [], "total": 0, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/backups/inspect', methods=['GET'])
+def get_whatsapp_explorer_backup_inspect():
+    """Memeriksa isi berkas backup ZIP (daftar chat & metadata)."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    filename = request.args.get('filename', '')
+    if not filename:
+        return jsonify({"success": False, "error": "Parameter filename wajib diisi"}), 400
+    try:
+        res = requests.get(f"{base_url}/whatsapp/explorer/backups/inspect", params={"filename": filename}, timeout=20)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/backups/chat', methods=['GET'])
+def get_whatsapp_explorer_backup_chat():
+    """Mengambil pesan chat tertentu dari dalam berkas backup ZIP."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    filename = request.args.get('filename', '')
+    chat_id = request.args.get('chatId', '')
+    if not filename or not chat_id:
+        return jsonify({"success": False, "error": "Parameter filename dan chatId wajib diisi"}), 400
+    try:
+        res = requests.get(f"{base_url}/whatsapp/explorer/backups/chat", params={"filename": filename, "chatId": chat_id}, timeout=20)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/reply', methods=['POST'])
+def post_whatsapp_explorer_reply():
+    """Mengirim pesan balasan langsung ke nomor tujuan via WhatsApp Gateway."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    body = request.get_json() if request.is_json else {}
+    target = body.get('target')
+    message = body.get('message')
+
+    if not target or not message:
+        return jsonify({"success": False, "error": "Parameter target dan message wajib diisi"}), 400
+
+    try:
+        res = requests.post(f"{base_url}/whatsapp/explorer/reply", json={"target": target, "message": message}, timeout=15)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Tidak dapat terhubung ke WhatsApp Gateway"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ===================================================================

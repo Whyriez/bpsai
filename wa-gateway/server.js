@@ -1,7 +1,8 @@
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  Browsers
 } from '@whiskeysockets/baileys';
 import { executeWMexQuery } from '@whiskeysockets/baileys/lib/Socket/mex.js';
 import express from 'express';
@@ -12,6 +13,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import backupRouter, { setBackupService } from './src/routes/backupRoute.js';
+import explorerRouter, { setExplorerSocketGetter } from './src/routes/chatExplorerRoute.js';
+import { createBackupService } from './src/services/whatsappBackupService.js';
+import messageStore from './src/store/messageStore.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -26,6 +31,11 @@ let isConnected = false;
 let currentQr = null;
 let currentQrDataUrl = null;
 let currentQrUpdatedAt = null;
+
+// Initialize backup service with socket getters
+const backupService = createBackupService(() => sock, () => isConnected, messageStore);
+setBackupService(backupService);
+setExplorerSocketGetter(() => sock, () => isConnected, fetchSubscribedNewsletters);
 
 function formatJid(target) {
   let cleaned = String(target || '').trim();
@@ -62,7 +72,17 @@ async function connectToWhatsApp() {
       auth: state,
       logger,
       printQRInTerminal: false,
-      browser: ['SIGAP BPS Gateway', 'Chrome', '1.0.0']
+      syncFullHistory: true,
+      shouldSyncHistoryMessage: () => true,
+      browser: ['SIGAP BPS Gateway', 'Chrome', '1.0.0'],
+      getMessage: async (key) => {
+        // Required for message retries & media decryption
+        const msgs = messageStore.readChatMessages(key.remoteJid);
+        const found = msgs.find(m => m.id === key.id);
+        if (found?.rawMessage) return found.rawMessage;
+        if (found?.text) return { conversation: found.text };
+        return undefined;
+      }
     });
 
     sock.ev.on('connection.update', async (update) => {
@@ -111,10 +131,84 @@ async function connectToWhatsApp() {
         console.log(`📱 Nomor Bot: ${senderNum}`);
         console.log(`🚀 Siap melayani pengiriman rilis BPS dari backend SIGAP!`);
         console.log('=============================================================\n');
+
+
+        setTimeout(async () => {
+          // Trigger App State resync
+          try {
+            console.log('🔄 [Gateway] Sinkronisasi App State WhatsApp...');
+            await sock.resyncAppState(['critical_block', 'critical_unblock_low', 'regular_high', 'regular_low', 'regular'], false);
+          } catch (e) {
+            console.warn('Catatan resyncAppState:', e.message);
+          }
+
+          // Request History Sync on demand from phone
+          try {
+            if (sock.sendPeerDataOperationMessage) {
+              console.log('🔄 [Gateway] Mengirim permintaan riwayat chat ke HP utama...');
+              await sock.sendPeerDataOperationMessage({
+                peerDataOperationRequestType: 6, // FULL_HISTORY_SYNC_ON_DEMAND
+                fullHistorySyncOnDemandRequest: {
+                  requestMetadata: {
+                    requestId: sock.generateMessageTag()
+                  }
+                }
+              });
+              console.log('📨 [Gateway] Permintaan riwayat berhasil dikirim ke HP.');
+            }
+          } catch (e) {}
+        }, 2500);
       }
     });
 
     sock.ev.on('creds.update', saveCreds);
+
+    // Message store: capture all incoming & outgoing messages
+    sock.ev.on('messages.upsert', (upsert) => {
+      console.log(`\n📩 [Gateway] Event messages.upsert: tipe=${upsert.type}, jumlah=${upsert.messages?.length || 0}`);
+      for (const m of (upsert.messages || [])) {
+        const jid = m.key?.remoteJid;
+        const direction = m.key?.fromMe ? 'Keluar (dari HP/saya)' : 'Masuk (dari luar)';
+        console.log(`   💬 [${direction}] Chat: ${jid} | ID: ${m.key?.id} | Nama: ${m.pushName || '-'}`);
+        console.log(`   🔍 [DEBUG FULL M]:`, JSON.stringify(m));
+        if (m.message) {
+          console.log(`   🔍 [DEBUG MSG BODY]:`, JSON.stringify(m.message).slice(0, 300));
+        }
+      }
+      try {
+        messageStore.handleMessagesUpsert(upsert);
+      } catch (err) {
+        console.error('❌ Error handling messages.upsert:', err);
+      }
+    });
+
+    // Message store: capture history sync (initial bulk sync)
+    sock.ev.on('messaging-history.set', (data) => {
+      console.log(`📥 [Gateway] Event messaging-history.set diterima!`);
+      messageStore.handleHistorySync(data);
+    });
+
+    // Contacts tracking
+    sock.ev.on('contacts.upsert', (contacts) => {
+      messageStore.handleContactsUpsert(contacts);
+    });
+    sock.ev.on('contacts.update', (contacts) => {
+      messageStore.handleContactsUpsert(contacts);
+    });
+
+    // Chats tracking (all 1-on-1 direct chats & groups)
+    sock.ev.on('chats.upsert', (chats) => {
+      messageStore.handleChatsUpsert(chats);
+    });
+    sock.ev.on('chats.update', (updates) => {
+      messageStore.handleChatsUpsert(updates);
+    });
+
+    // Phone number share (mapping between LID and real phone number)
+    sock.ev.on('chats.phoneNumberShare', (data) => {
+      console.log(`🔗 [Gateway] Nomor telepon dishare untuk LID: ${data.lid} -> ${data.jid}`);
+      messageStore.handlePhoneNumberShare(data);
+    });
 
   } catch (err) {
     console.error('Error saat inisialisasi Baileys:', err);
@@ -149,6 +243,16 @@ function getStatusResponse() {
 // Endpoint status
 app.all(['/', '/status', '/get-status'], (req, res) => {
   res.json(getStatusResponse());
+});
+
+// Endpoint: message store statistics
+app.get('/message-stats', (req, res) => {
+  try {
+    const stats = messageStore.getMessageStats();
+    res.json({ success: true, ...stats });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Endpoint untuk mereset sesi lama / ganti nomor WhatsApp bot
@@ -306,6 +410,7 @@ app.all(['/groups', '/get-groups', '/channels'], async (req, res) => {
     const channelsCount = items.filter((i) => i.is_channel).length;
     const groupsCount = items.filter((i) => !i.is_channel).length;
 
+
     console.log(`✅ [Gateway] Ditemukan ${items.length} target (${channelsCount} Saluran/Channel, ${groupsCount} Grup).`);
     return res.json({
       success: true,
@@ -374,6 +479,25 @@ app.post(['/webhook', '/send'], async (req, res) => {
       console.log(`✅ [Gateway] Berhasil mengirim pesan teks ke: ${jid}`);
     }
 
+    // Save outgoing message to messageStore
+    try {
+      const outgoingMsg = {
+        key: {
+          id: sentResult?.key?.id || `out-${Date.now()}`,
+          remoteJid: jid,
+          fromMe: true,
+        },
+        message: cleanImageUrl
+          ? { imageMessage: { caption: message || '' } }
+          : { conversation: message || '' },
+        messageTimestamp: Math.floor(Date.now() / 1000),
+        pushName: 'SIGAP BPS Admin',
+      };
+      messageStore.saveMessages(jid, [outgoingMsg]);
+    } catch (saveErr) {
+      console.warn('⚠️ Gagal menyimpan pesan keluar ke store:', saveErr.message);
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Pesan berhasil dikirim ke WhatsApp via Baileys Gateway.',
@@ -390,7 +514,16 @@ app.post(['/webhook', '/send'], async (req, res) => {
 });
 
 // Jalankan HTTP server
+// Serve backup files
+app.use('/backups', express.static(path.join(__dirname, 'backups')));
+
+// Register backup and explorer routers
+app.use('/whatsapp', backupRouter);
+app.use('/whatsapp/explorer', explorerRouter);
+app.use('/media', express.static(path.join(__dirname, 'data', 'media')));
+
 app.listen(PORT, () => {
+
   console.log(`\n=============================================================`);
   console.log(`🤖 SIGAP BPS WhatsApp Gateway berjalan pada port http://127.0.0.1:${PORT}`);
   console.log(`=============================================================`);

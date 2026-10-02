@@ -97,6 +97,12 @@ const UsersIcon = () => (
   </svg>
 );
 
+const WhatsAppNavIcon = () => (
+  <svg fill="currentColor" viewBox="0 0 24 24">
+    <path d="M12.031 2c-5.508 0-9.985 4.477-9.985 9.985 0 1.761.459 3.477 1.332 4.996L2 22l5.166-1.355c1.465.799 3.119 1.22 4.865 1.22h.005c5.507 0 9.984-4.477 9.984-9.985 0-2.668-1.039-5.176-2.925-7.062A9.92 9.92 0 0012.031 2zm0 18.312h-.004c-1.492 0-2.953-.401-4.227-1.159l-.303-.18-3.141.824.838-3.061-.198-.315a8.283 8.283 0 01-1.272-4.436c0-4.577 3.724-8.301 8.305-8.301 2.217 0 4.301.864 5.869 2.433a8.243 8.243 0 012.434 5.868c0 4.578-3.724 8.302-8.304 8.302z" />
+  </svg>
+);
+
 const NavItem = ({ to, children, onClick, icon }) => (
   <NavLink
     to={to}
@@ -140,6 +146,13 @@ export default function Sidebar({ isOpen, onClose }) {
             icon={<DocumentIcon />}
           >
             Data Dokumen
+          </NavItem>
+          <NavItem
+            to="/whatsapp-chat"
+            onClick={onClose}
+            icon={<WhatsAppNavIcon />}
+          >
+            Riwayat WhatsApp
           </NavItem>
           <NavItem
             to="/thematic-mappings"

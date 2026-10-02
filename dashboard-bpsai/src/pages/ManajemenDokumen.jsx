@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { NavLink } from "react-router-dom";
+import { NavLink, Link } from "react-router-dom";
 import apiFetch from "../services/api";
 import routes from "../routes";
 import toast, { Toaster } from "react-hot-toast";
@@ -948,6 +948,7 @@ const BpsSyncModal = ({
     domain_name: "BPS Provinsi Gorontalo",
     auto_sync: false,
     sync_interval_hours: 6,
+    sync_interval_unit: "hours",
     wa_channel_enabled: true,
     wa_target: "",
     wa_gateway_type: "webhook",
@@ -995,6 +996,16 @@ const BpsSyncModal = ({
   const [showGroupPicker, setShowGroupPicker] = useState(false);
   const [waGroupFilter, setWaGroupFilter] = useState("ALL"); // ALL | CHANNELS | GROUPS
   const [waGroupSearch, setWaGroupSearch] = useState("");
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [backupScope, setBackupScope] = useState({
+    groups: true,
+    channels: true,
+    contacts: true,
+    messages: true,
+  });
+  const [messageStats, setMessageStats] = useState(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
 
   const handleFetchWaGroups = async () => {
     setIsLoadingWaGroups(true);
@@ -1034,6 +1045,27 @@ const BpsSyncModal = ({
       setIsLoadingWaGroups(false);
     }
   };
+   const handleBackupWhatsApp = async () => {
+     setIsBackingUp(true);
+     try {
+       const res = await apiFetch('/documents/bps/whatsapp-backup', {
+         method: 'POST',
+         body: JSON.stringify({ scope: { chats: true, groups: true, channels: true, media: false } }),
+       });
+       if (res.success && res.downloadUrl) {
+         toast.success('Backup siap diunduh!');
+         const a = document.createElement('a');
+         a.href = res.downloadUrl;
+         a.click();
+       } else {
+         toast.error(res.error || 'Backup gagal');
+       }
+     } catch (err) {
+       toast.error(err.message || 'Backup gagal');
+     } finally {
+       setIsBackingUp(false);
+     }
+   };
 
   // State WhatsApp Gateway Status & Ganti Nomor
   const [waStatus, setWaStatus] = useState(null);
@@ -1207,6 +1239,7 @@ const BpsSyncModal = ({
         domain_name: res.domain_name || "BPS Provinsi Gorontalo",
         auto_sync: res.auto_sync || false,
         sync_interval_hours: res.sync_interval_hours || 6,
+        sync_interval_unit: res.sync_interval_unit || "hours",
         wa_channel_enabled:
           res.wa_channel_enabled !== undefined ? res.wa_channel_enabled : true,
         wa_target: res.wa_target || "",
@@ -1634,7 +1667,12 @@ const BpsSyncModal = ({
                     </div>
                     <p className="text-xs text-gray-600 mt-1">
                       {config.auto_sync
-                        ? `Sistem memeriksa publikasi terbaru BPS setiap ${config.sync_interval_hours || 6} jam di latar belakang.`
+                        ? (() => {
+                            const val = config.sync_interval_hours || 6;
+                            const unit = config.sync_interval_unit || 'hours';
+                            const unitLabel = unit === 'seconds' ? 'detik' : unit === 'minutes' ? 'menit' : 'jam';
+                            return `Sistem memeriksa publikasi terbaru BPS setiap ${val} ${unitLabel} di latar belakang.`;
+                          })()
                         : "Pemantauan otomatis saat ini sedang dimatikan."}
                     </p>
                     {config.last_sync_at && (
@@ -1711,22 +1749,80 @@ const BpsSyncModal = ({
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
                       Interval Pengecekan
                     </label>
-                    <select
-                      value={config.sync_interval_hours || 6}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          sync_interval_hours: parseInt(e.target.value) || 6,
-                        })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value={1}>Setiap 1 Jam</option>
-                      <option value={3}>Setiap 3 Jam</option>
-                      <option value={6}>Setiap 6 Jam (Direkomendasikan)</option>
-                      <option value={12}>Setiap 12 Jam</option>
-                      <option value={24}>Setiap 24 Jam (1 Kali Sehari)</option>
-                    </select>
+
+                    {/* Preset cepat untuk testing */}
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {[
+                        { label: "30 dtk", val: 30, unit: "seconds", test: true },
+                        { label: "1 mnt", val: 1, unit: "minutes", test: true },
+                        { label: "5 mnt", val: 5, unit: "minutes", test: true },
+                        { label: "1 jam", val: 1, unit: "hours" },
+                        { label: "6 jam", val: 6, unit: "hours" },
+                        { label: "24 jam", val: 24, unit: "hours" },
+                      ].map((p) => {
+                        const active =
+                          config.sync_interval_hours === p.val &&
+                          (config.sync_interval_unit || "hours") === p.unit;
+                        return (
+                          <button
+                            key={`${p.val}-${p.unit}`}
+                            type="button"
+                            onClick={() =>
+                              setConfig({
+                                ...config,
+                                sync_interval_hours: p.val,
+                                sync_interval_unit: p.unit,
+                              })
+                            }
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all ${
+                              active
+                                ? "bg-blue-600 text-white border-blue-600"
+                                : p.test
+                                ? "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
+                                : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
+                            }`}
+                          >
+                            {p.test && "🧪 "}{p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Input nilai + satuan manual */}
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="999"
+                        value={config.sync_interval_hours || 6}
+                        onChange={(e) =>
+                          setConfig({
+                            ...config,
+                            sync_interval_hours: parseInt(e.target.value) || 1,
+                          })
+                        }
+                        className="w-24 px-2 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 text-center font-mono"
+                      />
+                      <select
+                        value={config.sync_interval_unit || "hours"}
+                        onChange={(e) =>
+                          setConfig({
+                            ...config,
+                            sync_interval_unit: e.target.value,
+                          })
+                        }
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="seconds">Detik (⚠️ Testing Only)</option>
+                        <option value="minutes">Menit</option>
+                        <option value="hours">Jam (Produksi)</option>
+                      </select>
+                    </div>
+                    {(config.sync_interval_unit === "seconds" || config.sync_interval_unit === "minutes") && (
+                      <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1">
+                        ⚠️ Satuan menit/detik hanya untuk <strong>testing</strong>. Gunakan jam untuk produksi.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1891,7 +1987,23 @@ const BpsSyncModal = ({
                                 : "📢 Pilih Saluran / Grup (Local Gateway)"}
                             </span>
                           </button>
-                        </div>
+                        <button
+  type="button"
+  onClick={handleBackupWhatsApp}
+  disabled={isBackingUp}
+  className="text-[11px] text-green-600 hover:text-green-800 font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer"
+  title="Backup semua data WhatsApp (chat, grup, channel)"
+>
+  <span>{isBackingUp ? "Membuat backup..." : "💾 Backup WhatsApp Data"}</span>
+</button>
+                        <Link
+                          to="/whatsapp-chat"
+                          className="text-[11px] text-emerald-600 hover:text-emerald-800 font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Buka WhatsApp Chat & Backup Explorer untuk melihat riwayat pesan, media, tautan, dan balas chat"
+                        >
+                          <span>📱 Buka Riwayat & Balas Chat</span>
+                        </Link>
+</div>
                       </div>
                       <div className="relative">
                         <input

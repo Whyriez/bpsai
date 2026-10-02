@@ -117,7 +117,18 @@ class BpsApiService:
         Mengambil konfigurasi BPS API dari database (atau fallback ke environment variable).
         """
         try:
-            cfg = BpsApiConfig.query.first()
+            try:
+                cfg = BpsApiConfig.query.first()
+            except Exception:
+                db.session.rollback()
+                try:
+                    from sqlalchemy import text
+                    db.session.execute(text("ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS sync_interval_unit VARCHAR(20) DEFAULT 'hours';"))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                cfg = BpsApiConfig.query.first()
+
             if not cfg:
                 api_key_env = os.getenv("BPS_API_KEY", "")
                 domain_env = os.getenv("BPS_DOMAIN_CODE", self.DEFAULT_DOMAIN)
@@ -137,6 +148,7 @@ class BpsApiService:
                 "domain_name": cfg.domain_name or self.DEFAULT_DOMAIN_NAME,
                 "auto_sync": bool(cfg.auto_sync),
                 "sync_interval_hours": getattr(cfg, 'sync_interval_hours', 6) or 6,
+                "sync_interval_unit": getattr(cfg, 'sync_interval_unit', 'hours') or 'hours',
                 "wa_channel_enabled": bool(getattr(cfg, 'wa_channel_enabled', True)),
                 "wa_target": getattr(cfg, 'wa_target', '') or os.getenv("WA_TARGET", "") or '',
                 "wa_gateway_type": getattr(cfg, 'wa_gateway_type', '') or "local",
@@ -156,6 +168,7 @@ class BpsApiService:
                 "domain_name": self.DEFAULT_DOMAIN_NAME,
                 "auto_sync": False,
                 "sync_interval_hours": 6,
+                "sync_interval_unit": "hours",
                 "wa_channel_enabled": True,
                 "wa_target": os.getenv("WA_TARGET", "") or "",
                 "wa_gateway_type": "local",
@@ -168,14 +181,25 @@ class BpsApiService:
             }
 
     def save_config(self, api_key: str, domain_code: str = "7500", domain_name: str = "BPS Provinsi Gorontalo",
-                    auto_sync: bool = False, sync_interval_hours: int = 6,
+                    auto_sync: bool = False, sync_interval_hours: int = 6, sync_interval_unit: str = "hours",
                     wa_channel_enabled: bool = True, wa_target: str = "",
                     wa_gateway_type: str = "local", wa_webhook_url: str = "http://localhost:3001/send",
                     wa_api_token: str = "", chatbot_url: str = "", portal_url: str = "https://gorontalo.bps.go.id") -> dict:
         """
         Menyimpan konfigurasi BPS API dan integrasi WhatsApp ke database.
         """
-        cfg = BpsApiConfig.query.first()
+        try:
+            cfg = BpsApiConfig.query.first()
+        except Exception:
+            db.session.rollback()
+            try:
+                from sqlalchemy import text
+                db.session.execute(text("ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS sync_interval_unit VARCHAR(20) DEFAULT 'hours';"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            cfg = BpsApiConfig.query.first()
+
         if not cfg:
             cfg = BpsApiConfig()
             db.session.add(cfg)
@@ -185,6 +209,9 @@ class BpsApiService:
         cfg.domain_name = (domain_name or self.DEFAULT_DOMAIN_NAME).strip()
         cfg.auto_sync = bool(auto_sync)
         cfg.sync_interval_hours = int(sync_interval_hours or 6)
+        cfg.sync_interval_unit = (sync_interval_unit or 'hours').strip().lower()
+        if cfg.sync_interval_unit not in ('hours', 'minutes', 'seconds'):
+            cfg.sync_interval_unit = 'hours'
         cfg.wa_channel_enabled = bool(wa_channel_enabled)
         cfg.wa_target = (wa_target or "").strip()
         cfg.wa_gateway_type = (wa_gateway_type or "local").strip()

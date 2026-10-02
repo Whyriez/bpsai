@@ -72,7 +72,7 @@ def login():
     # 2. PROSES AUTENTIKASI KE IMAP (Satu-satunya cara verifikasi password)
     # ---------------------------------------------------------
     try:
-        imap_host = 'mail.bps.go.id'
+        imap_host = 'arsipmail.bps.go.id'
         imap_port = 993
 
         # Konfigurasi SSL Context (Legacy Support untuk Server Lama)

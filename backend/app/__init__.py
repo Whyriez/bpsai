@@ -42,6 +42,10 @@ def create_app():
     # Konfigurasi aplikasi
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_pre_ping': True,
+        'pool_recycle': 280,
+    }
     # app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'a-super-secret-key')
     app.config["JWT_SECRET_KEY"] = os.getenv('JWT_SECRET_KEY')
 
@@ -142,6 +146,7 @@ def create_app():
             "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS custom_title VARCHAR(255);",
             "ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS sync_interval_hours INTEGER DEFAULT 6;",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS sync_interval_unit VARCHAR(20) DEFAULT 'hours';",
             "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_channel_enabled BOOLEAN DEFAULT TRUE;",
             "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_target VARCHAR(255);",
             "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS wa_gateway_type VARCHAR(50) DEFAULT 'webhook';",

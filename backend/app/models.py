@@ -109,7 +109,8 @@ class BpsApiConfig(db.Model):
     domain_code = db.Column(db.String(20), default='7500')  # 7500 = BPS Provinsi Gorontalo
     domain_name = db.Column(db.String(100), default='BPS Provinsi Gorontalo')
     auto_sync = db.Column(db.Boolean, default=False)
-    sync_interval_hours = db.Column(db.Integer, default=6)  # Pengecekan tiap X jam
+    sync_interval_hours = db.Column(db.Integer, default=6)       # Nilai interval pengecekan
+    sync_interval_unit = db.Column(db.String(20), default='hours') # Satuan: 'hours', 'minutes', 'seconds'
     wa_channel_enabled = db.Column(db.Boolean, default=True) # Forward rilis ke WhatsApp
     wa_target = db.Column(db.String(255), nullable=True)     # Nomor penerima / ID Grup / Channel
     wa_gateway_type = db.Column(db.String(50), default='local') # 'local' (Baileys / Local Webhook Gateway)

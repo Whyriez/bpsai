@@ -20,6 +20,7 @@ import ManajemenAkun from "./pages/ManajemenAkun";
 import ThematicMappings from "./pages/ThematicMappings";
 import Documentation from "./pages/Documentation";
 import Developer from "./pages/Developer";
+import WhatsAppChatExplorer from "./pages/WhatsAppChatExplorer";
 
 export default function App() {
     return (
@@ -92,6 +93,14 @@ export default function App() {
                     element={
                         <ProtectedRoute>
                             <Developer/>
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path={routes.whatsappChat}
+                    element={
+                        <ProtectedRoute>
+                            <WhatsAppChatExplorer/>
                         </ProtectedRoute>
                     }
                 />

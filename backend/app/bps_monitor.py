@@ -26,6 +26,7 @@ def generate_publication_summary_and_wa(
     domain_name: str = "BPS Provinsi Gorontalo",
     is_update: bool = False,
     doc_type: str = "PUBLIKASI",
+    pub_id: str = None,
 ) -> tuple[str, str, str, str]:
     """
     Menghasilkan ringkasan eksekutif berbasis Gemini AI, tautan resmi BPS, dan format pesan WhatsApp resmi.
@@ -450,7 +451,6 @@ def check_and_process_latest_publications(
 
             # 7. Teruskan ke WhatsApp Channel jika diaktifkan
             wa_enabled = config.get("wa_channel_enabled", True)
-            wa_enabled = config.get("wa_channel_enabled", True)
             wa_webhook = (config.get("wa_webhook_url") or os.getenv("WA_WEBHOOK_URL", "http://localhost:3001/send")).strip()
             wa_token = config.get("wa_api_token", "")
             wa_target = config.get("wa_target", "")
@@ -459,10 +459,15 @@ def check_and_process_latest_publications(
             wa_dispatch_status = "READY"
             wa_dispatch_error = None
 
+            logger.info(
+                f"[WA Debug] enabled={wa_enabled}, target={repr(wa_target)}, "
+                f"webhook={repr(wa_webhook)}, gateway={wa_gateway}"
+            )
+
             if wa_enabled and wa_target and wa_webhook:
                 target_disp = wa_target or 'Default Target'
                 report_step(f"Mengirim Broadcast WA ({target_disp})")
-                logger.info(f"Mengirim notifikasi WhatsApp ke {target_disp} via Local Gateway...")
+                logger.info(f"Mengirim notifikasi WhatsApp ke {target_disp} via {wa_gateway} gateway...")
                 wa_ok, wa_detail = send_whatsapp_message(
                     target=wa_target,
                     message=wa_msg,
@@ -475,10 +480,17 @@ def check_and_process_latest_publications(
                 if wa_ok:
                     wa_dispatch_status = "SENT"
                     alert.sent_at = datetime.now(pytz.utc)
+                    logger.info(f"[WA] Notifikasi BERHASIL dikirim ke {target_disp}: {wa_detail}")
                 else:
                     wa_dispatch_status = "FAILED"
                     wa_dispatch_error = wa_detail
+                    logger.error(f"[WA] Notifikasi GAGAL dikirim ke {target_disp}: {wa_detail}")
             else:
+                reasons = []
+                if not wa_enabled: reasons.append('wa_channel_enabled=False')
+                if not wa_target: reasons.append('wa_target kosong')
+                if not wa_webhook: reasons.append('wa_webhook_url kosong')
+                logger.warning(f"[WA] Skip pengiriman WA karena: {', '.join(reasons) or 'kondisi tidak terpenuhi'}")
                 wa_dispatch_status = "READY"
 
             alert.wa_status = wa_dispatch_status
@@ -590,26 +602,44 @@ class BpsBackgroundMonitor:
                     with self.app.app_context():
                         cfg = BpsApiConfig.query.first()
                         if cfg and cfg.auto_sync:
-                            interval_hours = cfg.sync_interval_hours or 6
+                            interval_value = cfg.sync_interval_hours or 6
+                            interval_unit = getattr(cfg, 'sync_interval_unit', 'hours') or 'hours'
                             last_sync = cfg.last_sync_at
+
+                            # Hitung interval dalam detik berdasarkan satuan
+                            if interval_unit == 'seconds':
+                                interval_seconds = int(interval_value)
+                            elif interval_unit == 'minutes':
+                                interval_seconds = int(interval_value) * 60
+                            else:  # hours (default)
+                                interval_seconds = int(interval_value) * 3600
 
                             should_run = False
                             if not last_sync:
                                 should_run = True
                             else:
                                 elapsed = datetime.now(pytz.utc) - last_sync
-                                if elapsed >= timedelta(hours=interval_hours):
+                                if elapsed >= timedelta(seconds=interval_seconds):
                                     should_run = True
 
                             if should_run:
-                                logger.info("Memicu siklus otomatis BPS Background Monitor...")
+                                logger.info(
+                                    f"Memicu siklus otomatis BPS Background Monitor "
+                                    f"(interval: {interval_value} {interval_unit})..."
+                                )
                                 check_and_process_latest_publications(app=self.app)
+                            else:
+                                remaining = interval_seconds - elapsed.total_seconds() if last_sync else 0
+                                logger.debug(
+                                    f"[Monitor] Next check in {int(remaining)}s "
+                                    f"(interval: {interval_value} {interval_unit})"
+                                )
 
             except Exception as e:
                 logger.error(f"Error dalam BPS Background Monitor loop: {e}")
 
-            # Cek berkala setiap 10 menit apakah sudah saatnya memeriksa ulang
-            self.stop_event.wait(600)
+            # Polling check setiap 30 detik agar responsif saat pakai interval menit/detik
+            self.stop_event.wait(30)
 
 
 def start_bps_monitor(app: Flask):
@@ -632,6 +662,7 @@ def get_monitor_status() -> dict:
         "is_thread_running": bool(monitor.is_running),
         "auto_sync_enabled": bool(cfg.auto_sync) if cfg else False,
         "sync_interval_hours": cfg.sync_interval_hours if cfg else 6,
+        "sync_interval_unit": getattr(cfg, 'sync_interval_unit', 'hours') if cfg else 'hours',
         "last_sync_at": cfg.last_sync_at.isoformat() if cfg and cfg.last_sync_at else None,
         "last_sync_status": cfg.last_sync_status if cfg else None,
         "last_sync_message": cfg.last_sync_message if cfg else None

@@ -11,6 +11,7 @@ const routes = {
     settings: "/settings",
     documentation: "/documentation",
     developer: "/developer",
+    whatsappChat: "/whatsapp-chat",
 };
 
 export default routes;

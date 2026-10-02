@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.19",
+    "adm-zip": "^0.6.1",
+    "archiver": "^8.0.0",
     "express": "^4.21.2",
     "pino": "^9.6.0",
     "qrcode": "^1.5.4",
