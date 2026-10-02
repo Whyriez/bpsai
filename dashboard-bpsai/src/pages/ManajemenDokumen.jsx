@@ -1978,8 +1978,8 @@ const BpsSyncModal = ({
                       </div>
 
                       {/* Tombol Ganti Nomor / Scan QR & Hapus Nomor & Cek Status */}
-                      <div className="mt-4 pt-3 border-t border-emerald-200/80 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                      <div className="mt-4 pt-3 border-t border-emerald-200/80 flex flex-wrap items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <button
                             type="button"
                             onClick={() => {
@@ -1990,7 +1990,7 @@ const BpsSyncModal = ({
                               }
                             }}
                             disabled={isResettingWa}
-                            className="px-3 py-1.5 bg-white hover:bg-emerald-100/70 border border-emerald-300 text-emerald-900 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                            className="px-3.5 py-2 bg-white hover:bg-emerald-100/80 active:scale-[0.98] border border-emerald-300 text-emerald-900 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
                             title="Ganti nomor WhatsApp bot atau hubungkan ulang"
                           >
                             <span>🔄</span>
@@ -2008,7 +2008,7 @@ const BpsSyncModal = ({
                               type="button"
                               onClick={handleDisconnectWaSession}
                               disabled={isResettingWa}
-                              className="px-2.5 py-1.5 bg-white hover:bg-red-50 border border-red-200 text-red-600 hover:text-red-700 rounded-lg text-[11px] font-medium flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                              className="px-3 py-2 bg-white hover:bg-red-50 active:scale-[0.98] border border-red-200 text-red-600 hover:text-red-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
                               title="Putuskan / Hapus nomor bot WhatsApp dari gateway"
                             >
                               <span>🗑️</span>
@@ -2021,24 +2021,26 @@ const BpsSyncModal = ({
                           type="button"
                           onClick={loadWaStatus}
                           disabled={isLoadingWaStatus}
-                          className="text-[11px] text-emerald-700 hover:text-emerald-900 font-medium flex items-center gap-1 transition-colors ml-auto cursor-pointer"
+                          className="px-3 py-2 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all ml-auto cursor-pointer"
                           title="Perbarui status koneksi gateway"
                         >
+                          <span>⚡</span>
                           <span>
                             {isLoadingWaStatus
                               ? "Mengecek..."
-                              : "⚡ Cek Status"}
+                              : "Cek Status"}
                           </span>
                         </button>
                       </div>
                     </div>
 
-                    {/* Target Penerima Card (Balanced and Styled!) */}
+                    {/* Target Penerima Card (Spacious, Balanced, & Non-Cramped!) */}
                     <div className="p-4 sm:p-5 bg-blue-50/40 border border-blue-200/90 rounded-2xl flex flex-col justify-between shadow-2xs min-h-[200px]">
                       <div>
+                        {/* Header & Status Indicator */}
                         <div className="flex items-center justify-between mb-2">
-                          <label className="text-xs font-bold text-gray-800">
-                            Target Penerima WhatsApp (Nomor / ID Grup)
+                          <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                            <span>🎯 Target Penerima WhatsApp</span>
                           </label>
                           {config.wa_target && (
                             <button
@@ -2047,303 +2049,342 @@ const BpsSyncModal = ({
                                 setConfig({ ...config, wa_target: "" });
                                 toast.success("Nomor target penerima dikosongkan.");
                               }}
-                              className="text-[11px] text-red-500 hover:text-red-700 font-semibold transition-colors cursor-pointer"
+                              className="text-[11px] text-red-600 hover:text-red-700 font-semibold px-2 py-0.5 rounded-md hover:bg-red-50 transition-colors cursor-pointer flex items-center gap-1"
                               title="Kosongkan nomor target penerima"
                             >
-                              ✕ Hapus Target
+                              <span>✕ Hapus Target</span>
                             </button>
                           )}
                         </div>
 
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={config.wa_target || ""}
-                            onChange={(e) =>
-                              setConfig({ ...config, wa_target: e.target.value })
-                            }
-                            placeholder="08123456789, 120363428675326334@g.us, atau 120363xxxxxx@newsletter"
-                            className="w-full pl-3.5 pr-8 py-2 bg-white border border-blue-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-mono shadow-2xs"
-                          />
-                          {config.wa_target && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setConfig({ ...config, wa_target: "" });
-                                toast.success("Nomor target penerima dikosongkan.");
-                              }}
-                              className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
-                              title="Hapus / Kosongkan nomor target penerima"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
+                        {/* Input Row with Integrated "Pilih Saluran / Grup" Button */}
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <div className="relative flex-1">
+                            <input
+                              type="text"
+                              value={config.wa_target || ""}
+                              onChange={(e) =>
+                                setConfig({ ...config, wa_target: e.target.value })
+                              }
+                              placeholder="08123456789, ID Saluran / Grup..."
+                              className="w-full pl-3.5 pr-8 py-2 bg-white border border-blue-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-mono shadow-2xs text-gray-800 placeholder:text-gray-400"
+                            />
+                            {config.wa_target && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfig({ ...config, wa_target: "" });
+                                  toast.success("Nomor target penerima dikosongkan.");
+                                }}
+                                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
+                                title="Hapus nomor target"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
 
-                        {/* Dedicated Quick Action Toolbar */}
-                        <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-blue-200/60">
                           <button
                             type="button"
-                            onClick={handleFetchWaGroups}
+                            onClick={() => {
+                              if (showGroupPicker) {
+                                setShowGroupPicker(false);
+                              } else {
+                                handleFetchWaGroups();
+                              }
+                            }}
                             disabled={isLoadingWaGroups}
-                            className="px-2.5 py-1.5 bg-white hover:bg-blue-100/70 border border-blue-300 text-blue-900 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-                            title="Ambil daftar saluran dan grup WhatsApp yang diikuti bot lokal"
+                            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs transition-all shrink-0 cursor-pointer ${
+                              showGroupPicker
+                                ? "bg-blue-800 text-white shadow-inner"
+                                : "bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-sm"
+                            } disabled:opacity-50`}
+                            title="Pilih dari daftar saluran atau grup WhatsApp bot"
                           >
                             <span>📢</span>
-                            <span>{isLoadingWaGroups ? "Memuat..." : "Pilih Saluran / Grup"}</span>
+                            <span>
+                              {isLoadingWaGroups
+                                ? "Memuat..."
+                                : showGroupPicker
+                                  ? "Tutup Saluran/Grup"
+                                  : "Pilih Saluran / Grup"}
+                            </span>
                           </button>
+                        </div>
 
+                        {/* Target Type Identification Pill */}
+                        {config.wa_target && (
+                          <div className="mt-2 flex items-center gap-2 text-[11px]">
+                            <span className="text-gray-500 font-medium">Tipe:</span>
+                            {config.wa_target.endsWith("@newsletter") ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-semibold border border-emerald-300">
+                                📢 Saluran Resmi (Channel)
+                              </span>
+                            ) : config.wa_target.endsWith("@g.us") ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-semibold border border-blue-300">
+                                👥 Grup Diskusi WhatsApp
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-semibold border border-purple-300">
+                                👤 Kontak Pribadi WhatsApp
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Dedicated 2-Column Action Bar for Companion Features (No More Berdempetan!) */}
+                        <div className="grid grid-cols-2 gap-3 mt-3.5 pt-3.5 border-t border-blue-200/70">
                           <button
                             type="button"
                             onClick={handleBackupWhatsApp}
                             disabled={isBackingUp}
-                            className="px-2.5 py-1.5 bg-white hover:bg-emerald-100/70 border border-emerald-300 text-emerald-900 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                            className="w-full py-2.5 px-3 bg-white hover:bg-emerald-50 active:scale-[0.98] border border-emerald-300/90 text-emerald-900 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs hover:shadow-xs transition-all cursor-pointer disabled:opacity-50"
                             title="Backup semua data WhatsApp (chat, grup, channel)"
                           >
-                            <span>💾</span>
-                            <span>{isBackingUp ? "Mencadangkan..." : "Backup Data WA"}</span>
+                            <span className="text-sm">💾</span>
+                            <span className="truncate">{isBackingUp ? "Mencadangkan..." : "Backup Data WA"}</span>
                           </button>
 
                           <Link
                             to="/whatsapp-chat"
-                            className="px-2.5 py-1.5 bg-white hover:bg-teal-100/70 border border-teal-300 text-teal-900 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                            className="w-full py-2.5 px-3 bg-white hover:bg-teal-50 active:scale-[0.98] border border-teal-300/90 text-teal-900 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
                             title="Buka WhatsApp Chat Explorer untuk membaca obrolan dan membalas pesan"
                           >
-                            <span>📱</span>
-                            <span>Buka Obrolan</span>
+                            <span className="text-sm">📱</span>
+                            <span className="truncate">Buka Obrolan WA</span>
                           </Link>
                         </div>
                       </div>
-
-                      {showGroupPicker && waGroups.length > 0 && (
-                        <div className="mt-3 p-3.5 bg-white border border-blue-200 rounded-xl text-xs space-y-2.5 shadow-md">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 font-bold text-blue-950">
-                              <span>📢</span>
-                              <span>Daftar Target WhatsApp (Local Gateway)</span>
-                              <span className="text-[10px] bg-blue-100 text-blue-900 px-2 py-0.5 rounded-full font-bold">
-                                {waGroups.length}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowGroupPicker(false);
-                                setWaGroupSearch("");
-                                setWaGroupFilter("ALL");
-                              }}
-                              className="text-gray-500 hover:text-gray-800 text-[11px] font-semibold cursor-pointer"
-                            >
-                              ✕ Tutup
-                            </button>
-                          </div>
-
-                          {/* Filter Tabs & Search Bar */}
-                          <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between">
-                            <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg border border-gray-200 text-[11px] shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => setWaGroupFilter("ALL")}
-                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
-                                  waGroupFilter === "ALL"
-                                    ? "bg-white text-blue-700 shadow-2xs font-bold"
-                                    : "text-gray-600 hover:text-gray-900"
-                                }`}
-                              >
-                                Semua ({waGroups.length})
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setWaGroupFilter("CHANNELS")}
-                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-                                  waGroupFilter === "CHANNELS"
-                                    ? "bg-white text-emerald-700 shadow-2xs font-bold"
-                                    : "text-emerald-700 hover:text-emerald-900"
-                                }`}
-                              >
-                                <span>📢</span>
-                                <span>
-                                  Saluran (
-                                  {
-                                    waGroups.filter(
-                                      (g) =>
-                                        g.is_channel ||
-                                        g.type === "channel" ||
-                                        g.id?.endsWith("@newsletter"),
-                                    ).length
-                                  }
-                                  )
-                                </span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setWaGroupFilter("GROUPS")}
-                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-                                  waGroupFilter === "GROUPS"
-                                    ? "bg-white text-blue-700 shadow-2xs font-bold"
-                                    : "text-gray-600 hover:text-gray-900"
-                                }`}
-                              >
-                                <span>👥</span>
-                                <span>
-                                  Grup (
-                                  {
-                                    waGroups.filter(
-                                      (g) =>
-                                        !g.is_channel &&
-                                        g.type !== "channel" &&
-                                        !g.id?.endsWith("@newsletter"),
-                                    ).length
-                                  }
-                                  )
-                                </span>
-                              </button>
-                            </div>
-
-                            <input
-                              type="text"
-                              value={waGroupSearch}
-                              onChange={(e) => setWaGroupSearch(e.target.value)}
-                              placeholder="Cari nama saluran / grup..."
-                              className="w-full sm:w-56 px-3 py-1 bg-gray-50 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                            />
-                          </div>
-
-                          {/* List Items */}
-                          <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
-                            {(() => {
-                              const filtered = waGroups.filter((g) => {
-                                const isChan =
-                                  g.is_channel ||
-                                  g.type === "channel" ||
-                                  g.id?.endsWith("@newsletter");
-                                if (waGroupFilter === "CHANNELS" && !isChan)
-                                  return false;
-                                if (waGroupFilter === "GROUPS" && isChan)
-                                  return false;
-                                if (waGroupSearch.trim()) {
-                                  const q = waGroupSearch.toLowerCase();
-                                  const matchName = (g.name || "")
-                                    .toLowerCase()
-                                    .includes(q);
-                                  const matchId = (g.id || "")
-                                    .toLowerCase()
-                                    .includes(q);
-                                  const matchDesc = (g.desc || "")
-                                    .toLowerCase()
-                                    .includes(q);
-                                  return matchName || matchId || matchDesc;
-                                }
-                                return true;
-                              });
-
-                              if (filtered.length === 0) {
-                                return (
-                                  <div className="text-center py-4 text-gray-500 text-xs">
-                                    Tidak ada saluran atau grup yang cocok dengan
-                                    pencarian.
-                                  </div>
-                                );
-                              }
-
-                              return filtered.map((g) => {
-                                const isChan =
-                                  g.is_channel ||
-                                  g.type === "channel" ||
-                                  g.id?.endsWith("@newsletter");
-                                const isComm =
-                                  g.is_community || g.type === "community";
-                                const isSelected = config.wa_target === g.id;
-
-                                return (
-                                  <div
-                                    key={g.id}
-                                    onClick={() => {
-                                      setConfig({ ...config, wa_target: g.id });
-                                      setShowGroupPicker(false);
-                                      toast.success(
-                                        `Target diset ke: "${g.name}" (${isChan ? "Saluran/Channel" : isComm ? "Komunitas" : "Grup"})`,
-                                      );
-                                    }}
-                                    className={`p-2.5 rounded-xl cursor-pointer transition-all border ${
-                                      isSelected
-                                        ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                                        : isChan
-                                          ? "bg-emerald-50/70 hover:bg-emerald-100/80 text-gray-800 border-emerald-200"
-                                          : "bg-white hover:bg-blue-100/70 text-gray-800 border-gray-200"
-                                    }`}
-                                  >
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-1.5 truncate">
-                                        <span className="text-xs">
-                                          {isChan ? "📢" : isComm ? "🌐" : "👥"}
-                                        </span>
-                                        <span className="font-bold truncate">
-                                          {g.name}
-                                        </span>
-                                        <span
-                                          className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase shrink-0 ${
-                                            isSelected
-                                              ? "bg-blue-700 text-white"
-                                              : isChan
-                                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                                                : isComm
-                                                  ? "bg-purple-100 text-purple-800 border border-purple-300"
-                                                  : "bg-gray-100 text-gray-600 border border-gray-200"
-                                          }`}
-                                        >
-                                          {g.type_label ||
-                                            (isChan
-                                              ? "Saluran"
-                                              : isComm
-                                                ? "Komunitas"
-                                                : "Grup")}
-                                        </span>
-                                      </div>
-                                      <span
-                                        className={`text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${
-                                          isSelected
-                                            ? "bg-blue-700 text-white"
-                                            : "bg-gray-100 text-gray-600"
-                                        }`}
-                                      >
-                                        {g.member_count}{" "}
-                                        {isChan ? "Pengikut" : "Anggota"}
-                                      </span>
-                                    </div>
-                                    <div
-                                      className={`text-[10px] font-mono mt-0.5 truncate ${
-                                        isSelected
-                                          ? "text-blue-100"
-                                          : "text-gray-500"
-                                      }`}
-                                    >
-                                      ID: {g.id}
-                                    </div>
-                                    {g.desc && (
-                                      <div
-                                        className={`text-[9px] mt-0.5 line-clamp-1 italic ${
-                                          isSelected
-                                            ? "text-blue-200"
-                                            : "text-gray-400"
-                                        }`}
-                                      >
-                                        {g.desc}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
-                        </div>
-                      )}
 
                       <p className="text-[10.5px] text-gray-500 mt-2.5 leading-relaxed">
                         💡 <strong>Info:</strong> Mendukung pengiriman ke <strong>Nomor Pribadi</strong>, <strong>Grup</strong>, dan <strong>Saluran Resmi WhatsApp (Channels)</strong>. Pastikan bot Anda berstatus <strong>Admin</strong> bila mengirim ke Saluran.
                       </p>
                     </div>
                   </div>
+
+                  {/* Saluran & Grup WhatsApp Picker (Full Width, Spacious, Non-Cramped) */}
+                  {showGroupPicker && waGroups.length > 0 && (
+                    <div className="p-4 sm:p-5 bg-white border border-blue-300 rounded-2xl text-xs space-y-3 shadow-md animate-fadeIn">
+                      <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                        <div className="flex items-center gap-2 font-bold text-blue-950 text-sm">
+                          <span>📢</span>
+                          <span>Daftar Saluran & Grup WhatsApp Bot</span>
+                          <span className="text-xs bg-blue-100 text-blue-900 px-2.5 py-0.5 rounded-full font-bold">
+                            {waGroups.length} Target Tersedia
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowGroupPicker(false);
+                            setWaGroupSearch("");
+                            setWaGroupFilter("ALL");
+                          }}
+                          className="px-2.5 py-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                        >
+                          ✕ Tutup
+                        </button>
+                      </div>
+
+                      {/* Filter Tabs & Search Bar */}
+                      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                        <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200 text-xs shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setWaGroupFilter("ALL")}
+                            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                              waGroupFilter === "ALL"
+                                ? "bg-white text-blue-700 shadow-2xs font-bold"
+                                : "text-gray-600 hover:text-gray-900"
+                            }`}
+                          >
+                            Semua ({waGroups.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setWaGroupFilter("CHANNELS")}
+                            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                              waGroupFilter === "CHANNELS"
+                                ? "bg-white text-emerald-700 shadow-2xs font-bold"
+                                : "text-emerald-700 hover:text-emerald-900"
+                            }`}
+                          >
+                            <span>📢</span>
+                            <span>
+                              Saluran (
+                              {
+                                waGroups.filter(
+                                  (g) =>
+                                    g.is_channel ||
+                                    g.type === "channel" ||
+                                    g.id?.endsWith("@newsletter"),
+                                ).length
+                              }
+                              )
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setWaGroupFilter("GROUPS")}
+                            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                              waGroupFilter === "GROUPS"
+                                ? "bg-white text-blue-700 shadow-2xs font-bold"
+                                : "text-gray-600 hover:text-gray-900"
+                            }`}
+                          >
+                            <span>👥</span>
+                            <span>
+                              Grup (
+                              {
+                                waGroups.filter(
+                                  (g) =>
+                                    !g.is_channel &&
+                                    g.type !== "channel" &&
+                                    !g.id?.endsWith("@newsletter"),
+                                ).length
+                              }
+                              )
+                            </span>
+                          </button>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={waGroupSearch}
+                          onChange={(e) => setWaGroupSearch(e.target.value)}
+                          placeholder="🔍 Cari nama saluran / grup..."
+                          className="w-full sm:w-72 px-3.5 py-1.5 bg-gray-50 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </div>
+
+                      {/* List Items in 2-Column Responsive Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                        {(() => {
+                          const filtered = waGroups.filter((g) => {
+                            const isChan =
+                              g.is_channel ||
+                              g.type === "channel" ||
+                              g.id?.endsWith("@newsletter");
+                            if (waGroupFilter === "CHANNELS" && !isChan)
+                              return false;
+                            if (waGroupFilter === "GROUPS" && isChan)
+                              return false;
+                            if (waGroupSearch.trim()) {
+                              const q = waGroupSearch.toLowerCase();
+                              const matchName = (g.name || "")
+                                .toLowerCase()
+                                .includes(q);
+                              const matchId = (g.id || "")
+                                .toLowerCase()
+                                .includes(q);
+                              const matchDesc = (g.desc || "")
+                                .toLowerCase()
+                                .includes(q);
+                              return matchName || matchId || matchDesc;
+                            }
+                            return true;
+                          });
+
+                          if (filtered.length === 0) {
+                            return (
+                              <div className="col-span-full text-center py-6 text-gray-500 text-xs">
+                                Tidak ada saluran atau grup yang cocok dengan pencarian.
+                              </div>
+                            );
+                          }
+
+                          return filtered.map((g) => {
+                            const isChan =
+                              g.is_channel ||
+                              g.type === "channel" ||
+                              g.id?.endsWith("@newsletter");
+                            const isComm =
+                              g.is_community || g.type === "community";
+                            const isSelected = config.wa_target === g.id;
+
+                            return (
+                              <div
+                                key={g.id}
+                                onClick={() => {
+                                  setConfig({ ...config, wa_target: g.id });
+                                  setShowGroupPicker(false);
+                                  toast.success(
+                                    `Target diset ke: "${g.name}" (${isChan ? "Saluran/Channel" : isComm ? "Komunitas" : "Grup"})`,
+                                  );
+                                }}
+                                className={`p-3 rounded-xl cursor-pointer transition-all border ${
+                                  isSelected
+                                    ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                                    : isChan
+                                      ? "bg-emerald-50/70 hover:bg-emerald-100/90 text-gray-800 border-emerald-200"
+                                      : "bg-white hover:bg-blue-50 text-gray-800 border-gray-200 hover:border-blue-300"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <span className="text-xs">
+                                      {isChan ? "📢" : isComm ? "🌐" : "👥"}
+                                    </span>
+                                    <span className="font-bold truncate">
+                                      {g.name}
+                                    </span>
+                                    <span
+                                      className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase shrink-0 ${
+                                        isSelected
+                                          ? "bg-blue-700 text-white"
+                                          : isChan
+                                            ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                            : isComm
+                                              ? "bg-purple-100 text-purple-800 border border-purple-300"
+                                              : "bg-gray-100 text-gray-600 border border-gray-200"
+                                      }`}
+                                    >
+                                      {g.type_label ||
+                                        (isChan
+                                          ? "Saluran"
+                                          : isComm
+                                            ? "Komunitas"
+                                            : "Grup")}
+                                    </span>
+                                  </div>
+                                  <span
+                                    className={`text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${
+                                      isSelected
+                                        ? "bg-blue-700 text-white"
+                                        : "bg-gray-100 text-gray-600"
+                                    }`}
+                                  >
+                                    {g.member_count}{" "}
+                                    {isChan ? "Pengikut" : "Anggota"}
+                                  </span>
+                                </div>
+                                <div
+                                  className={`text-[10px] font-mono mt-0.5 truncate ${
+                                    isSelected
+                                      ? "text-blue-100"
+                                      : "text-gray-500"
+                                  }`}
+                                >
+                                  ID: {g.id}
+                                </div>
+                                {g.desc && (
+                                  <div
+                                    className={`text-[9px] mt-0.5 line-clamp-1 italic ${
+                                      isSelected
+                                        ? "text-blue-200"
+                                        : "text-gray-400"
+                                    }`}
+                                  >
+                                    {g.desc}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Section Endpoints & References */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
