@@ -627,7 +627,12 @@ const UploadPdfModal = ({ isOpen, onClose, onUploadSuccess }) => {
 };
 
 // --- Modal Konfirmasi Hapus Dokumen (Clean, Anti-Overflow, & Opsi File Fisik) ---
-const DeleteConfirmModal = ({ isOpen, onClose, document: docItem, onConfirm }) => {
+const DeleteConfirmModal = ({
+  isOpen,
+  onClose,
+  document: docItem,
+  onConfirm,
+}) => {
   const [deletePhysicalFile, setDeletePhysicalFile] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -1045,27 +1050,29 @@ const BpsSyncModal = ({
       setIsLoadingWaGroups(false);
     }
   };
-   const handleBackupWhatsApp = async () => {
-     setIsBackingUp(true);
-     try {
-       const res = await apiFetch('/documents/bps/whatsapp-backup', {
-         method: 'POST',
-         body: JSON.stringify({ scope: { chats: true, groups: true, channels: true, media: false } }),
-       });
-       if (res.success && res.downloadUrl) {
-         toast.success('Backup siap diunduh!');
-         const a = document.createElement('a');
-         a.href = res.downloadUrl;
-         a.click();
-       } else {
-         toast.error(res.error || 'Backup gagal');
-       }
-     } catch (err) {
-       toast.error(err.message || 'Backup gagal');
-     } finally {
-       setIsBackingUp(false);
-     }
-   };
+  const handleBackupWhatsApp = async () => {
+    setIsBackingUp(true);
+    try {
+      const res = await apiFetch("/documents/bps/whatsapp-backup", {
+        method: "POST",
+        body: JSON.stringify({
+          scope: { chats: true, groups: true, channels: true, media: false },
+        }),
+      });
+      if (res.success && res.downloadUrl) {
+        toast.success("Backup siap diunduh!");
+        const a = document.createElement("a");
+        a.href = res.downloadUrl;
+        a.click();
+      } else {
+        toast.error(res.error || "Backup gagal");
+      }
+    } catch (err) {
+      toast.error(err.message || "Backup gagal");
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
 
   // State WhatsApp Gateway Status & Ganti Nomor
   const [waStatus, setWaStatus] = useState(null);
@@ -1613,7 +1620,8 @@ const BpsSyncModal = ({
                 Tarik Data & Otomatisasi BPS Web API
               </h3>
               <p className="text-xs text-gray-500 mt-0.5 truncate">
-                Sinkronisasi publikasi resmi BPS, pemantauan otomatis, perangkuman AI, dan forward WhatsApp.
+                Sinkronisasi publikasi resmi BPS, pemantauan otomatis,
+                perangkuman AI, dan forward WhatsApp.
               </p>
             </div>
           </div>
@@ -1738,8 +1746,13 @@ const BpsSyncModal = ({
                       {config.auto_sync
                         ? (() => {
                             const val = config.sync_interval_hours || 6;
-                            const unit = config.sync_interval_unit || 'hours';
-                            const unitLabel = unit === 'seconds' ? 'detik' : unit === 'minutes' ? 'menit' : 'jam';
+                            const unit = config.sync_interval_unit || "hours";
+                            const unitLabel =
+                              unit === "seconds"
+                                ? "detik"
+                                : unit === "minutes"
+                                  ? "menit"
+                                  : "jam";
                             return `Sistem memeriksa publikasi terbaru BPS setiap ${val} ${unitLabel} di latar belakang.`;
                           })()
                         : "Pemantauan otomatis saat ini sedang dimatikan."}
@@ -1747,8 +1760,14 @@ const BpsSyncModal = ({
                     {config.last_sync_at && (
                       <p className="text-[11px] text-gray-500 flex items-center gap-1.5 pt-0.5">
                         <span>🕒 Pemeriksaan Terakhir:</span>
-                        <strong className="text-gray-700">{new Date(config.last_sync_at).toLocaleString("id-ID")}</strong>
-                        <span className="text-gray-400">({config.last_sync_status || "IDLE"})</span>
+                        <strong className="text-gray-700">
+                          {new Date(config.last_sync_at).toLocaleString(
+                            "id-ID",
+                          )}
+                        </strong>
+                        <span className="text-gray-400">
+                          ({config.last_sync_status || "IDLE"})
+                        </span>
                       </p>
                     )}
                   </div>
@@ -1806,7 +1825,10 @@ const BpsSyncModal = ({
                           id="auto_sync_toggle"
                           checked={Boolean(config.auto_sync)}
                           onChange={(e) =>
-                            setConfig({ ...config, auto_sync: e.target.checked })
+                            setConfig({
+                              ...config,
+                              auto_sync: e.target.checked,
+                            })
                           }
                           className="w-4.5 h-4.5 text-blue-600 rounded-md focus:ring-blue-500 border-gray-300 cursor-pointer"
                         />
@@ -1818,7 +1840,9 @@ const BpsSyncModal = ({
                         </label>
                       </div>
                       <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
-                        Sistem SIGAP akan secara otomatis mengecek rilis publikasi terbaru dari portal BPS di latar belakang tanpa perlu campur tangan manual.
+                        Sistem SIGAP akan secara otomatis mengecek rilis
+                        publikasi terbaru dari portal BPS di latar belakang
+                        tanpa perlu campur tangan manual.
                       </p>
                     </div>
                   </div>
@@ -1832,7 +1856,12 @@ const BpsSyncModal = ({
                     {/* Preset cepat untuk testing */}
                     <div className="flex flex-wrap gap-1.5 pb-0.5">
                       {[
-                        { label: "30 dtk", val: 30, unit: "seconds", test: true },
+                        {
+                          label: "30 dtk",
+                          val: 30,
+                          unit: "seconds",
+                          test: true,
+                        },
                         { label: "1 mnt", val: 1, unit: "minutes", test: true },
                         { label: "5 mnt", val: 5, unit: "minutes", test: true },
                         { label: "1 jam", val: 1, unit: "hours" },
@@ -1857,11 +1886,12 @@ const BpsSyncModal = ({
                               active
                                 ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
                                 : p.test
-                                ? "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
-                                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-100"
+                                  ? "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
+                                  : "bg-white text-gray-600 border-gray-300 hover:bg-gray-100"
                             }`}
                           >
-                            {p.test && "🧪 "}{p.label}
+                            {p.test && "🧪 "}
+                            {p.label}
                           </button>
                         );
                       })}
@@ -1897,9 +1927,11 @@ const BpsSyncModal = ({
                         <option value="hours">Jam (Produksi)</option>
                       </select>
                     </div>
-                    {(config.sync_interval_unit === "seconds" || config.sync_interval_unit === "minutes") && (
+                    {(config.sync_interval_unit === "seconds" ||
+                      config.sync_interval_unit === "minutes") && (
                       <p className="text-[10px] text-amber-600 flex items-center gap-1">
-                        ⚠️ Satuan menit/detik hanya untuk <strong>testing</strong>. Gunakan jam untuk produksi.
+                        ⚠️ Satuan menit/detik hanya untuk{" "}
+                        <strong>testing</strong>. Gunakan jam untuk produksi.
                       </p>
                     )}
                   </div>
@@ -2026,9 +2058,7 @@ const BpsSyncModal = ({
                         >
                           <span>⚡</span>
                           <span>
-                            {isLoadingWaStatus
-                              ? "Mengecek..."
-                              : "Cek Status"}
+                            {isLoadingWaStatus ? "Mengecek..." : "Cek Status"}
                           </span>
                         </button>
                       </div>
@@ -2047,7 +2077,9 @@ const BpsSyncModal = ({
                               type="button"
                               onClick={() => {
                                 setConfig({ ...config, wa_target: "" });
-                                toast.success("Nomor target penerima dikosongkan.");
+                                toast.success(
+                                  "Nomor target penerima dikosongkan.",
+                                );
                               }}
                               className="text-[11px] text-red-600 hover:text-red-700 font-semibold px-2 py-0.5 rounded-md hover:bg-red-50 transition-colors cursor-pointer flex items-center gap-1"
                               title="Kosongkan nomor target penerima"
@@ -2064,7 +2096,10 @@ const BpsSyncModal = ({
                               type="text"
                               value={config.wa_target || ""}
                               onChange={(e) =>
-                                setConfig({ ...config, wa_target: e.target.value })
+                                setConfig({
+                                  ...config,
+                                  wa_target: e.target.value,
+                                })
                               }
                               placeholder="08123456789, ID Saluran / Grup..."
                               className="w-full pl-3.5 pr-8 py-2 bg-white border border-blue-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-mono shadow-2xs text-gray-800 placeholder:text-gray-400"
@@ -2074,7 +2109,9 @@ const BpsSyncModal = ({
                                 type="button"
                                 onClick={() => {
                                   setConfig({ ...config, wa_target: "" });
-                                  toast.success("Nomor target penerima dikosongkan.");
+                                  toast.success(
+                                    "Nomor target penerima dikosongkan.",
+                                  );
                                 }}
                                 className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-red-600 transition-colors cursor-pointer"
                                 title="Hapus nomor target"
@@ -2115,7 +2152,9 @@ const BpsSyncModal = ({
                         {/* Target Type Identification Pill */}
                         {config.wa_target && (
                           <div className="mt-2 flex items-center gap-2 text-[11px]">
-                            <span className="text-gray-500 font-medium">Tipe:</span>
+                            <span className="text-gray-500 font-medium">
+                              Tipe:
+                            </span>
                             {config.wa_target.endsWith("@newsletter") ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-semibold border border-emerald-300">
                                 📢 Saluran Resmi (Channel)
@@ -2142,7 +2181,11 @@ const BpsSyncModal = ({
                             title="Backup semua data WhatsApp (chat, grup, channel)"
                           >
                             <span className="text-sm">💾</span>
-                            <span className="truncate">{isBackingUp ? "Mencadangkan..." : "Backup Data WA"}</span>
+                            <span className="truncate">
+                              {isBackingUp
+                                ? "Mencadangkan..."
+                                : "Backup Data WA"}
+                            </span>
                           </button>
 
                           <Link
@@ -2157,7 +2200,11 @@ const BpsSyncModal = ({
                       </div>
 
                       <p className="text-[10.5px] text-gray-500 mt-2.5 leading-relaxed">
-                        💡 <strong>Info:</strong> Mendukung pengiriman ke <strong>Nomor Pribadi</strong>, <strong>Grup</strong>, dan <strong>Saluran Resmi WhatsApp (Channels)</strong>. Pastikan bot Anda berstatus <strong>Admin</strong> bila mengirim ke Saluran.
+                        💡 <strong>Info:</strong> Mendukung pengiriman ke{" "}
+                        <strong>Nomor Pribadi</strong>, <strong>Grup</strong>,
+                        dan <strong>Saluran Resmi WhatsApp (Channels)</strong>.
+                        Pastikan bot Anda berstatus <strong>Admin</strong> bila
+                        mengirim ke Saluran.
                       </p>
                     </div>
                   </div>
@@ -2288,7 +2335,8 @@ const BpsSyncModal = ({
                           if (filtered.length === 0) {
                             return (
                               <div className="col-span-full text-center py-6 text-gray-500 text-xs">
-                                Tidak ada saluran atau grup yang cocok dengan pencarian.
+                                Tidak ada saluran atau grup yang cocok dengan
+                                pencarian.
                               </div>
                             );
                           }
@@ -2396,13 +2444,20 @@ const BpsSyncModal = ({
                         type="text"
                         value={config.wa_webhook_url || ""}
                         onChange={(e) =>
-                          setConfig({ ...config, wa_webhook_url: e.target.value })
+                          setConfig({
+                            ...config,
+                            wa_webhook_url: e.target.value,
+                          })
                         }
                         placeholder="http://localhost:3001/send"
                         className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 font-mono bg-white shadow-2xs"
                       />
                       <p className="text-[10px] text-gray-400">
-                        Default: <code className="text-gray-600">http://localhost:3001/send</code> (Server Baileys wa-gateway).
+                        Default:{" "}
+                        <code className="text-gray-600">
+                          http://localhost:3001/send
+                        </code>{" "}
+                        (Server Baileys wa-gateway).
                       </p>
                     </div>
 
@@ -2836,7 +2891,9 @@ const BpsSyncModal = ({
                           {/* Badge Short Link Chatbot */}
                           {alert.short_url && (
                             <div className="mt-2 flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-200/80 rounded-md px-2.5 py-1.5 w-fit">
-                              <span className="font-semibold text-[11px]">🔗 Short Link Chatbot:</span>
+                              <span className="font-semibold text-[11px]">
+                                🔗 Short Link Chatbot:
+                              </span>
                               <a
                                 href={alert.short_url}
                                 target="_blank"
@@ -2851,7 +2908,9 @@ const BpsSyncModal = ({
                           {/* Badge Laman Resmi Website BPS */}
                           {alert.bps_web_url && (
                             <div className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200/80 rounded-md px-2.5 py-1.5 w-fit">
-                              <span className="font-semibold text-[11px]">🌐 Laman Resmi Website BPS:</span>
+                              <span className="font-semibold text-[11px]">
+                                🌐 Laman Resmi Website BPS:
+                              </span>
                               <a
                                 href={alert.bps_web_url}
                                 target="_blank"
@@ -3001,7 +3060,8 @@ const BpsSyncModal = ({
                   <span>BPS Web API Key & Akses Data</span>
                 </p>
                 <p className="mt-1 leading-relaxed text-blue-800">
-                  Dapatkan API Key resmi secara gratis melalui portal resmi Badan Pusat Statistik:{" "}
+                  Dapatkan API Key resmi secara gratis melalui portal resmi
+                  Badan Pusat Statistik:{" "}
                   <a
                     href="https://webapi.bps.go.id/developer/"
                     target="_blank"
@@ -3087,7 +3147,12 @@ const BpsSyncModal = ({
                     className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono bg-gray-50 focus:bg-white shadow-2xs"
                   />
                   <p className="text-[10.5px] text-gray-400 mt-1">
-                    Domain portal resmi BPS untuk mengunduh dokumen publikasi, file rilis BRS, dan gambar sampul (default: <code className="text-gray-600">https://gorontalo.bps.go.id</code>).
+                    Domain portal resmi BPS untuk mengunduh dokumen publikasi,
+                    file rilis BRS, dan gambar sampul (default:{" "}
+                    <code className="text-gray-600">
+                      https://gorontalo.bps.go.id
+                    </code>
+                    ).
                   </p>
                 </div>
 
@@ -3118,9 +3183,13 @@ const BpsSyncModal = ({
                 <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-600 flex items-center gap-2">
                   <span>🕒</span>
                   <div>
-                    <span className="font-semibold text-gray-800">Terakhir Sinkron:</span>{" "}
+                    <span className="font-semibold text-gray-800">
+                      Terakhir Sinkron:
+                    </span>{" "}
                     {new Date(config.last_sync_at).toLocaleString("id-ID")}{" "}
-                    <span className="text-gray-400 font-mono">({config.last_sync_status || "IDLE"})</span>
+                    <span className="text-gray-400 font-mono">
+                      ({config.last_sync_status || "IDLE"})
+                    </span>
                   </div>
                 </div>
               )}
@@ -3540,7 +3609,8 @@ const BpsSyncModal = ({
                       <strong>Tautkan Perangkat</strong>.
                     </li>
                     <li>
-                      Arahkan kamera HP ke <strong>QR Code</strong> di bawah ini.
+                      Arahkan kamera HP ke <strong>QR Code</strong> di bawah
+                      ini.
                     </li>
                   </ol>
                 </div>
@@ -3724,10 +3794,7 @@ const DokumenTable = () => {
 
       setBpsSyncJobStatus((prev) => {
         // Jika job aktif kembali (RUNNING / STOPPING), buka kembali blokir dismissal
-        if (
-          bpsStatus.status === "RUNNING" ||
-          bpsStatus.status === "STOPPING"
-        ) {
+        if (bpsStatus.status === "RUNNING" || bpsStatus.status === "STOPPING") {
           dismissedJobsRef.current.bps = false;
         }
 
