@@ -6,67 +6,147 @@ import apiFetch from "../services/api";
 // --- High-Quality SVG Icons ---
 const WhatsAppIcon = ({ className = "w-5 h-5" }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12.031 2c-5.508 0-9.985 4.477-9.985 9.985 0 1.761.459 3.477 1.332 4.996L2 22l5.166-1.355c1.465.799 3.119 1.22 4.865 1.22h.005c5.507 0 9.984-4.477 9.984-9.985 0-2.668-1.039-5.176-2.925-7.062A9.92 9.92 0 0012.031 2zm0 18.312h-.004c-1.492 0-2.953-.401-4.227-1.159l-.303-.18-3.141.824.838-3.061-.198-.315a8.283 8.283 0 01-1.272-4.436c0-4.577 3.724-8.301 8.305-8.301 2.217 0 4.301.864 5.869 2.433a8.243 8.243 0 012.434 5.868c0 4.578-3.724 8.302-8.304 8.302zm4.551-6.216c-.249-.125-1.477-.729-1.706-.812-.228-.083-.395-.125-.561.125-.167.249-.645.812-.79 1-.146.187-.291.208-.541.083-.249-.125-1.054-.389-2.008-1.239-.742-.662-1.243-1.48-1.389-1.729-.145-.25-.016-.385.109-.509.112-.112.249-.291.374-.437.125-.145.166-.25.249-.416.083-.166.042-.312-.021-.437-.062-.125-.561-1.353-.769-1.853-.203-.487-.409-.42-.561-.428-.145-.008-.312-.01-.478-.01s-.437.062-.666.312c-.228.25-.873.854-.873 2.081 0 1.228.894 2.414 1.019 2.581.125.167 1.76 2.688 4.264 3.769.596.257 1.061.411 1.424.527.598.19 1.143.163 1.573.099.48-.072 1.477-.604 1.685-1.187.208-.583.208-1.083.146-1.187-.063-.105-.229-.167-.478-.292z"/>
+    <path d="M12.031 2c-5.508 0-9.985 4.477-9.985 9.985 0 1.761.459 3.477 1.332 4.996L2 22l5.166-1.355c1.465.799 3.119 1.22 4.865 1.22h.005c5.507 0 9.984-4.477 9.984-9.985 0-2.668-1.039-5.176-2.925-7.062A9.92 9.92 0 0012.031 2zm0 18.312h-.004c-1.492 0-2.953-.401-4.227-1.159l-.303-.18-3.141.824.838-3.061-.198-.315a8.283 8.283 0 01-1.272-4.436c0-4.577 3.724-8.301 8.305-8.301 2.217 0 4.301.864 5.869 2.433a8.243 8.243 0 012.434 5.868c0 4.578-3.724 8.302-8.304 8.302zm4.551-6.216c-.249-.125-1.477-.729-1.706-.812-.228-.083-.395-.125-.561.125-.167.249-.645.812-.79 1-.146.187-.291.208-.541.083-.249-.125-1.054-.389-2.008-1.239-.742-.662-1.243-1.48-1.389-1.729-.145-.25-.016-.385.109-.509.112-.112.249-.291.374-.437.125-.145.166-.25.249-.416.083-.166.042-.312-.021-.437-.062-.125-.561-1.353-.769-1.853-.203-.487-.409-.42-.561-.428-.145-.008-.312-.01-.478-.01s-.437.062-.666.312c-.228.25-.873.854-.873 2.081 0 1.228.894 2.414 1.019 2.581.125.167 1.76 2.688 4.264 3.769.596.257 1.061.411 1.424.527.598.19 1.143.163 1.573.099.48-.072 1.477-.604 1.685-1.187.208-.583.208-1.083.146-1.187-.063-.105-.229-.167-.478-.292z" />
   </svg>
 );
 
 const SearchIcon = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+    />
   </svg>
 );
 
 const SendIcon = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="currentColor" viewBox="0 0 24 24">
-    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
   </svg>
 );
 
 const CopyIcon = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+    />
   </svg>
 );
 
 const ExternalLinkIcon = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+    />
   </svg>
 );
 
 const MediaIcon = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+    />
   </svg>
 );
 
 const DocumentIcon = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+    />
   </svg>
 );
 
 const RefreshIcon = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+    />
   </svg>
 );
 
 const CheckDoubleIcon = ({ className = "w-3.5 h-3.5" }) => (
   <svg className={className} viewBox="0 0 16 11" fill="currentColor">
-    <path d="M11.5 0.5L6.5 6L4.5 4L3 5.5L6.5 9.5L13 2L11.5 0.5ZM15 2L8.5 9.5L8.2 9.2L7 10.5L8.5 12L16.5 3.5L15 2Z"/>
+    <path d="M11.5 0.5L6.5 6L4.5 4L3 5.5L6.5 9.5L13 2L11.5 0.5ZM15 2L8.5 9.5L8.2 9.2L7 10.5L8.5 12L16.5 3.5L15 2Z" />
   </svg>
 );
 
 const ArrowLeftIcon = ({ className = "w-5 h-5" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M10 19l-7-7m0 0l7-7m-7 7h18"
+    />
   </svg>
 );
 
 const InfoCircleIcon = ({ className = "w-5 h-5" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+    />
   </svg>
 );
 
@@ -231,7 +311,9 @@ export default function WhatsAppChatExplorer() {
           }
         }
       } else {
-        toast.error(res.error || "Gagal memuat percakapan dari WhatsApp Gateway");
+        toast.error(
+          res.error || "Gagal memuat percakapan dari WhatsApp Gateway",
+        );
       }
     } catch (err) {
       toast.error(`Koneksi gateway gagal: ${err.message}`);
@@ -244,7 +326,9 @@ export default function WhatsAppChatExplorer() {
   const fetchLiveChatDetail = async (chatId) => {
     setIsLoadingDetail(true);
     try {
-      const res = await apiFetch(`/documents/bps/whatsapp-explorer/chats/${encodeURIComponent(chatId)}`);
+      const res = await apiFetch(
+        `/documents/bps/whatsapp-explorer/chats/${encodeURIComponent(chatId)}`,
+      );
       if (res.success && res.chat) {
         setActiveChatDetail(res.chat);
       } else {
@@ -282,7 +366,9 @@ export default function WhatsAppChatExplorer() {
   const inspectBackup = async (filename) => {
     setIsLoadingChats(true);
     try {
-      const res = await apiFetch(`/documents/bps/whatsapp-explorer/backups/inspect?filename=${encodeURIComponent(filename)}`);
+      const res = await apiFetch(
+        `/documents/bps/whatsapp-explorer/backups/inspect?filename=${encodeURIComponent(filename)}`,
+      );
       if (res.success) {
         const mappedChats = (res.chats || []).map((c) => ({
           id: c.chat_id,
@@ -309,7 +395,9 @@ export default function WhatsAppChatExplorer() {
               is_direct: false,
               message_count: 0,
               last_message: {
-                text: g.desc || `Grup WhatsApp dengan ${g.participant_count || g.participants?.length || 0} anggota`,
+                text:
+                  g.desc ||
+                  `Grup WhatsApp dengan ${g.participant_count || g.participants?.length || 0} anggota`,
                 type: "text",
                 timestamp: g.creation,
                 fromMe: false,
@@ -364,7 +452,7 @@ export default function WhatsAppChatExplorer() {
     setIsLoadingDetail(true);
     try {
       const res = await apiFetch(
-        `/documents/bps/whatsapp-explorer/backups/chat?filename=${encodeURIComponent(filename)}&chatId=${encodeURIComponent(chatId)}`
+        `/documents/bps/whatsapp-explorer/backups/chat?filename=${encodeURIComponent(filename)}&chatId=${encodeURIComponent(chatId)}`,
       );
       if (res.success && res.chat) {
         setActiveChatDetail(res.chat);
@@ -428,8 +516,8 @@ export default function WhatsAppChatExplorer() {
                     fromMe: true,
                   },
                 }
-              : c
-          )
+              : c,
+          ),
         );
       } else {
         toast.error(res.error || "Gagal mengirim balasan WhatsApp");
@@ -457,14 +545,19 @@ export default function WhatsAppChatExplorer() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = (c.name || "").toLowerCase().includes(q);
-      const matchPhone = (c.phone || c.raw_phone || c.id || "").toLowerCase().includes(q);
-      const matchLastMsg = (c.last_message?.text || "").toLowerCase().includes(q);
+      const matchPhone = (c.phone || c.raw_phone || c.id || "")
+        .toLowerCase()
+        .includes(q);
+      const matchLastMsg = (c.last_message?.text || "")
+        .toLowerCase()
+        .includes(q);
       return matchName || matchPhone || matchLastMsg;
     }
     return true;
   });
 
-  const activeChat = chats.find((c) => c.id === activeChatId) || activeChatDetail;
+  const activeChat =
+    chats.find((c) => c.id === activeChatId) || activeChatDetail;
 
   // Format timestamp helper
   const formatTime = (ts) => {
@@ -473,7 +566,10 @@ export default function WhatsAppChatExplorer() {
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
     if (isToday) {
-      return date.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+      return date.toLocaleTimeString("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     }
     return date.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
   };
@@ -522,7 +618,8 @@ export default function WhatsAppChatExplorer() {
           </div>
           <p className="font-semibold text-gray-700">Belum Ada Riwayat Pesan</p>
           <p className="text-xs text-gray-400 mt-1 max-w-xs text-center">
-            Pesan yang masuk atau keluar dengan kontak ini akan otomatis tersinkronisasi di sini.
+            Pesan yang masuk atau keluar dengan kontak ini akan otomatis
+            tersinkronisasi di sini.
           </p>
         </div>
       );
@@ -575,7 +672,11 @@ export default function WhatsAppChatExplorer() {
                 {/* Sender Name in Group */}
                 {!isOut && activeChatDetail.is_group && (
                   <div className="text-[11px] font-bold mb-1 flex items-center justify-between gap-3">
-                    <span className={getParticipantColor(m.pushName || m.participant || "")}>
+                    <span
+                      className={getParticipantColor(
+                        m.pushName || m.participant || "",
+                      )}
+                    >
                       {m.pushName || "Peserta"}
                     </span>
                     {m.participant && (
@@ -593,8 +694,12 @@ export default function WhatsAppChatExplorer() {
                       <MediaIcon className="w-4 h-4" />
                     </div>
                     <div>
-                      <p className="font-semibold text-gray-800 text-xs">Foto / Gambar</p>
-                      <p className="text-[11px] text-gray-500 font-mono">{m.mediaInfo?.mimetype || "image/jpeg"}</p>
+                      <p className="font-semibold text-gray-800 text-xs">
+                        Foto / Gambar
+                      </p>
+                      <p className="text-[11px] text-gray-500 font-mono">
+                        {m.mediaInfo?.mimetype || "image/jpeg"}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -608,7 +713,9 @@ export default function WhatsAppChatExplorer() {
                       <p className="font-semibold text-blue-950 text-xs truncate">
                         {m.text || m.mediaInfo?.fileName || "Dokumen File"}
                       </p>
-                      <p className="text-[11px] text-blue-600 font-mono">{m.mediaInfo?.mimetype || "application/pdf"}</p>
+                      <p className="text-[11px] text-blue-600 font-mono">
+                        {m.mediaInfo?.mimetype || "application/pdf"}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -619,9 +726,13 @@ export default function WhatsAppChatExplorer() {
                       🎙️
                     </div>
                     <div>
-                      <p className="font-semibold text-purple-950 text-xs">Pesan Suara / Audio</p>
+                      <p className="font-semibold text-purple-950 text-xs">
+                        Pesan Suara / Audio
+                      </p>
                       {m.mediaInfo?.seconds && (
-                        <p className="text-[11px] text-purple-600 font-mono">{m.mediaInfo.seconds} detik</p>
+                        <p className="text-[11px] text-purple-600 font-mono">
+                          {m.mediaInfo.seconds} detik
+                        </p>
                       )}
                     </div>
                   </div>
@@ -632,17 +743,19 @@ export default function WhatsAppChatExplorer() {
                   <p className="whitespace-pre-wrap leading-relaxed break-words text-[13.5px] text-gray-800">
                     {renderTextWithLinks(m.text)}
                   </p>
-                ) : (!m.text && !m.mediaInfo ? (
+                ) : !m.text && !m.mediaInfo ? (
                   <p className="text-[12px] italic text-gray-500 flex items-center gap-1.5 py-0.5">
                     <span className="text-gray-400">🔒</span>
                     <span>Pesan terenkripsi end-to-end</span>
                   </p>
-                ) : null)}
+                ) : null}
 
                 {/* Timestamp & Status (Bottom right) */}
                 <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-gray-400 font-medium">
                   <span>{formatTime(m.timestamp)}</span>
-                  {isOut && <CheckDoubleIcon className="text-sky-500 w-3.5 h-3.5 inline-block" />}
+                  {isOut && (
+                    <CheckDoubleIcon className="text-sky-500 w-3.5 h-3.5 inline-block" />
+                  )}
                 </div>
               </div>
             </div>
@@ -670,7 +783,9 @@ export default function WhatsAppChatExplorer() {
               <WhatsAppIcon className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-gray-900 leading-tight truncate">WhatsApp SIGAP</h1>
+              <h1 className="text-sm font-bold text-gray-900 leading-tight truncate">
+                WhatsApp SIGAP
+              </h1>
               <p className="text-[11px] text-gray-500 font-medium flex items-center gap-1 truncate">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
                 <span>BPS Gorontalo</span>
@@ -711,12 +826,16 @@ export default function WhatsAppChatExplorer() {
 
             <button
               type="button"
-              onClick={() => (sourceMode === "live" ? fetchLiveChats() : fetchBackupList())}
+              onClick={() =>
+                sourceMode === "live" ? fetchLiveChats() : fetchBackupList()
+              }
               disabled={isLoadingChats}
               className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-200/80 rounded-full transition-colors cursor-pointer"
               title="Segarkan daftar obrolan"
             >
-              <RefreshIcon className={`w-4 h-4 ${isLoadingChats ? "animate-spin text-emerald-600" : ""}`} />
+              <RefreshIcon
+                className={`w-4 h-4 ${isLoadingChats ? "animate-spin text-emerald-600" : ""}`}
+              />
             </button>
           </div>
         </div>
@@ -724,7 +843,9 @@ export default function WhatsAppChatExplorer() {
         {/* If in Backup Mode, show ZIP selector bar */}
         {sourceMode === "backup" && (
           <div className="px-3.5 py-2.5 bg-blue-50/90 border-b border-blue-200/80 flex items-center justify-between gap-2 shrink-0">
-            <span className="text-[11px] font-bold text-blue-900 shrink-0">Berkas ZIP:</span>
+            <span className="text-[11px] font-bold text-blue-900 shrink-0">
+              Berkas ZIP:
+            </span>
             {backupFiles.length > 0 ? (
               <select
                 value={selectedBackupFilename}
@@ -738,7 +859,9 @@ export default function WhatsAppChatExplorer() {
                 ))}
               </select>
             ) : (
-              <span className="text-[11px] text-gray-500 italic">Tidak ada file backup</span>
+              <span className="text-[11px] text-gray-500 italic">
+                Tidak ada file backup
+              </span>
             )}
           </div>
         )}
@@ -783,9 +906,21 @@ export default function WhatsAppChatExplorer() {
           <div className="flex items-center gap-1.5 overflow-x-auto text-[11px] pb-0.5 no-scrollbar">
             {[
               { id: "ALL", label: "Semua", count: chats.length },
-              { id: "DIRECT", label: "Pribadi", count: chats.filter((c) => c.is_direct).length },
-              { id: "GROUP", label: "Grup", count: chats.filter((c) => c.is_group).length },
-              { id: "CHANNEL", label: "Saluran", count: chats.filter((c) => c.is_channel).length },
+              {
+                id: "DIRECT",
+                label: "Pribadi",
+                count: chats.filter((c) => c.is_direct).length,
+              },
+              {
+                id: "GROUP",
+                label: "Grup",
+                count: chats.filter((c) => c.is_group).length,
+              },
+              {
+                id: "CHANNEL",
+                label: "Saluran",
+                count: chats.filter((c) => c.is_channel).length,
+              },
             ].map((f) => (
               <button
                 key={f.id}
@@ -800,7 +935,9 @@ export default function WhatsAppChatExplorer() {
                 <span>{f.label}</span>
                 <span
                   className={`text-[9px] px-1.5 py-0.2 rounded-full ${
-                    chatTypeFilter === f.id ? "bg-white/20 text-white font-bold" : "bg-gray-200/90 text-gray-700 font-semibold"
+                    chatTypeFilter === f.id
+                      ? "bg-white/20 text-white font-bold"
+                      : "bg-gray-200/90 text-gray-700 font-semibold"
                   }`}
                 >
                   {f.count}
@@ -815,16 +952,22 @@ export default function WhatsAppChatExplorer() {
           {isLoadingChats ? (
             <div className="p-10 text-center text-gray-400 text-xs flex flex-col items-center">
               <RefreshIcon className="w-7 h-7 animate-spin text-[#00a884] mb-2.5" />
-              <p className="font-semibold text-gray-600">Memuat daftar obrolan...</p>
+              <p className="font-semibold text-gray-600">
+                Memuat daftar obrolan...
+              </p>
             </div>
           ) : filteredChats.length === 0 ? (
             <div className="p-10 text-center text-gray-400 text-xs space-y-1.5">
               <div className="w-12 h-12 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center mx-auto mb-2 text-xl">
                 💬
               </div>
-              <p className="font-semibold text-gray-700">Tidak ada obrolan ditemukan</p>
+              <p className="font-semibold text-gray-700">
+                Tidak ada obrolan ditemukan
+              </p>
               <p className="text-[11px] text-gray-400">
-                {searchQuery ? "Coba gunakan kata kunci pencarian lain" : "Belum ada riwayat pesan terekam"}
+                {searchQuery
+                  ? "Coba gunakan kata kunci pencarian lain"
+                  : "Belum ada riwayat pesan terekam"}
               </p>
             </div>
           ) : (
@@ -851,18 +994,24 @@ export default function WhatsAppChatExplorer() {
                         isGroup
                           ? "from-blue-500 to-indigo-600 text-white"
                           : isChannel
-                          ? "from-purple-500 to-indigo-700 text-white"
-                          : getAvatarBg(chat.name || chat.id)
+                            ? "from-purple-500 to-indigo-700 text-white"
+                            : getAvatarBg(chat.name || chat.id)
                       }`}
                     >
-                      {isGroup ? "👥" : isChannel ? "📢" : (chat.name || "U")[0]?.toUpperCase()}
+                      {isGroup
+                        ? "👥"
+                        : isChannel
+                          ? "📢"
+                          : (chat.name || "U")[0]?.toUpperCase()}
                     </div>
                   </div>
 
                   {/* Chat Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1 mb-1">
-                      <h3 className={`text-sm truncate ${isActive ? "font-bold text-gray-950" : "font-semibold text-gray-900"}`}>
+                      <h3
+                        className={`text-sm truncate ${isActive ? "font-bold text-gray-950" : "font-semibold text-gray-900"}`}
+                      >
                         {chat.name}
                       </h3>
                       <span className="text-[11px] text-gray-400 font-normal shrink-0">
@@ -876,7 +1025,10 @@ export default function WhatsAppChatExplorer() {
                           <CheckDoubleIcon className="w-3.5 h-3.5 text-sky-500 shrink-0" />
                         )}
                         <span className="truncate">
-                          {chat.last_message?.text || (chat.last_message?.type ? `[${chat.last_message.type}]` : "-")}
+                          {chat.last_message?.text ||
+                            (chat.last_message?.type
+                              ? `[${chat.last_message.type}]`
+                              : "-")}
                         </span>
                       </p>
 
@@ -896,7 +1048,11 @@ export default function WhatsAppChatExplorer() {
         {/* Sidebar Status Footer */}
         <div className="h-11 px-4 bg-[#f0f2f5] border-t border-gray-200 text-xs text-gray-600 flex items-center justify-between shrink-0">
           <span className="font-medium text-[11px] text-gray-500">
-            💬 <span className="font-bold text-gray-700">{stats?.total_messages || stats?.totalMessages || 0}</span> pesan tersimpan
+            💬{" "}
+            <span className="font-bold text-gray-700">
+              {stats?.total_messages || stats?.totalMessages || 0}
+            </span>{" "}
+            pesan tersimpan
           </span>
           <Link
             to="/manajemen-dokumen"
@@ -935,11 +1091,15 @@ export default function WhatsAppChatExplorer() {
                     activeChat.is_group
                       ? "from-blue-500 to-indigo-600 text-white"
                       : activeChat.is_channel
-                      ? "from-purple-500 to-indigo-700 text-white"
-                      : getAvatarBg(activeChat.name || activeChat.id)
+                        ? "from-purple-500 to-indigo-700 text-white"
+                        : getAvatarBg(activeChat.name || activeChat.id)
                   }`}
                 >
-                  {activeChat.is_group ? "👥" : activeChat.is_channel ? "📢" : (activeChat.name || "U")[0]?.toUpperCase()}
+                  {activeChat.is_group
+                    ? "👥"
+                    : activeChat.is_channel
+                      ? "📢"
+                      : (activeChat.name || "U")[0]?.toUpperCase()}
                 </div>
 
                 <div className="min-w-0">
@@ -952,11 +1112,15 @@ export default function WhatsAppChatExplorer() {
                         activeChat.is_group
                           ? "bg-blue-100 text-blue-800"
                           : activeChat.is_channel
-                          ? "bg-purple-100 text-purple-800"
-                          : "bg-emerald-100 text-emerald-800"
+                            ? "bg-purple-100 text-purple-800"
+                            : "bg-emerald-100 text-emerald-800"
                       }`}
                     >
-                      {activeChat.is_group ? "Grup WhatsApp" : activeChat.is_channel ? "Saluran" : "Kontak Pribadi"}
+                      {activeChat.is_group
+                        ? "Grup WhatsApp"
+                        : activeChat.is_channel
+                          ? "Saluran"
+                          : "Kontak Pribadi"}
                     </span>
                   </div>
 
@@ -970,7 +1134,12 @@ export default function WhatsAppChatExplorer() {
               <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => handleCopy(activeChat.raw_phone || activeChat.phone || activeChat.id, "Nomor HP")}
+                  onClick={() =>
+                    handleCopy(
+                      activeChat.raw_phone || activeChat.phone || activeChat.id,
+                      "Nomor HP",
+                    )
+                  }
                   className="px-2.5 md:px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
                   title="Salin nomor kontak"
                 >
@@ -1018,7 +1187,9 @@ export default function WhatsAppChatExplorer() {
               {isLoadingDetail ? (
                 <div className="flex flex-col items-center justify-center h-full min-h-[350px] text-gray-400 text-xs">
                   <RefreshIcon className="w-8 h-8 animate-spin text-[#00a884] mb-3" />
-                  <p className="text-sm font-semibold text-gray-700">Memuat riwayat percakapan...</p>
+                  <p className="text-sm font-semibold text-gray-700">
+                    Memuat riwayat percakapan...
+                  </p>
                 </div>
               ) : (
                 <>
@@ -1034,7 +1205,9 @@ export default function WhatsAppChatExplorer() {
                 <form onSubmit={handleSendReply} className="space-y-2">
                   {/* Canned Quick Templates */}
                   <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs text-gray-600 no-scrollbar">
-                    <span className="text-[11px] font-bold text-gray-400 shrink-0">Templat Cepat:</span>
+                    <span className="text-[11px] font-bold text-gray-400 shrink-0">
+                      Templat Cepat:
+                    </span>
                     {[
                       "Halo, ada yang bisa kami bantu terkait data statistik BPS?",
                       "Terima kasih atas pertanyaannya. Kami sedang memeriksa rilis data terkait.",
@@ -1087,9 +1260,12 @@ export default function WhatsAppChatExplorer() {
               ) : (
                 <div className="p-3 bg-white rounded-xl border border-blue-200 shadow-xs flex items-center justify-between gap-4 text-xs text-blue-900">
                   <div>
-                    <p className="font-bold text-sm">Mode Pratinjau Backup (Read-Only)</p>
+                    <p className="font-bold text-sm">
+                      Mode Pratinjau Backup (Read-Only)
+                    </p>
                     <p className="text-gray-600 mt-0.5">
-                      Anda sedang membaca arsip backup. Untuk membalas pesan ke nomor kontak ini, silakan alihkan ke mode <b>Live</b>.
+                      Anda sedang membaca arsip backup. Untuk membalas pesan ke
+                      nomor kontak ini, silakan alihkan ke mode <b>Live</b>.
                     </p>
                   </div>
                   <button
@@ -1108,13 +1284,19 @@ export default function WhatsAppChatExplorer() {
             <div className="w-20 h-20 rounded-full bg-white shadow-md flex items-center justify-center mb-4 ring-8 ring-emerald-500/10">
               <WhatsAppIcon className="w-12 h-12 text-[#00a884]" />
             </div>
-            <h2 className="text-xl font-bold text-gray-800 mb-1.5">WhatsApp Web Explorer SIGAP</h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-1.5">
+              WhatsApp Web Explorer SIGAP
+            </h2>
             <p className="text-sm text-gray-500 max-w-md leading-relaxed">
-              Pilih salah satu percakapan di kolom kiri untuk membaca riwayat chat, melihat berkas foto, dokumen, tautan, dan daftar peserta obrolan.
+              Pilih salah satu percakapan di kolom kiri untuk membaca riwayat
+              chat, melihat berkas foto, dokumen, tautan, dan daftar peserta
+              obrolan.
             </p>
             <div className="mt-6 flex items-center gap-1.5 text-xs text-gray-400 font-medium">
               <span>🔒</span>
-              <span>Terkoneksi dengan WhatsApp Gateway Resmi BPS Gorontalo</span>
+              <span>
+                Terkoneksi dengan WhatsApp Gateway Resmi BPS Gorontalo
+              </span>
             </div>
           </div>
         )}
@@ -1127,7 +1309,9 @@ export default function WhatsAppChatExplorer() {
         <div className="w-[300px] lg:w-[330px] shrink-0 flex flex-col bg-white border-l border-gray-200 h-full z-20 shadow-xl transition-all">
           {/* Header */}
           <div className="h-16 px-4 bg-[#f0f2f5] border-b border-gray-200 flex items-center justify-between shrink-0">
-            <h3 className="font-bold text-gray-900 text-sm">Info & Koleksi Obrolan</h3>
+            <h3 className="font-bold text-gray-900 text-sm">
+              Info & Koleksi Obrolan
+            </h3>
             <button
               type="button"
               onClick={() => setShowRightPanel(false)}
@@ -1145,24 +1329,41 @@ export default function WhatsAppChatExplorer() {
                 activeChatDetail.is_group
                   ? "from-blue-500 to-indigo-600 text-white"
                   : activeChatDetail.is_channel
-                  ? "from-purple-500 to-indigo-700 text-white"
-                  : getAvatarBg(activeChatDetail.name || activeChatDetail.id)
+                    ? "from-purple-500 to-indigo-700 text-white"
+                    : getAvatarBg(activeChatDetail.name || activeChatDetail.id)
               }`}
             >
-              {activeChatDetail.is_group ? "👥" : activeChatDetail.is_channel ? "📢" : (activeChatDetail.name || "U")[0]?.toUpperCase()}
+              {activeChatDetail.is_group
+                ? "👥"
+                : activeChatDetail.is_channel
+                  ? "📢"
+                  : (activeChatDetail.name || "U")[0]?.toUpperCase()}
             </div>
-            <h4 className="font-bold text-gray-900 text-sm truncate">{activeChatDetail.name}</h4>
-            <p className="text-xs text-gray-500 font-mono mt-0.5 truncate">{activeChatDetail.phone || activeChatDetail.id}</p>
+            <h4 className="font-bold text-gray-900 text-sm truncate">
+              {activeChatDetail.name}
+            </h4>
+            <p className="text-xs text-gray-500 font-mono mt-0.5 truncate">
+              {activeChatDetail.phone || activeChatDetail.id}
+            </p>
 
             <div className="flex items-center justify-center gap-1.5 mt-3 text-xs text-gray-600">
               <span className="bg-gray-100 px-2 py-0.5 rounded-full font-medium text-[11px]">
-                💬 {activeChatDetail.total_messages || activeChatDetail.messages?.length || 0}
+                💬{" "}
+                {activeChatDetail.total_messages ||
+                  activeChatDetail.messages?.length ||
+                  0}
               </span>
               <span className="bg-gray-100 px-2 py-0.5 rounded-full font-medium text-[11px]">
-                🖼️ {activeChatDetail.total_media || activeChatDetail.media?.length || 0}
+                🖼️{" "}
+                {activeChatDetail.total_media ||
+                  activeChatDetail.media?.length ||
+                  0}
               </span>
               <span className="bg-gray-100 px-2 py-0.5 rounded-full font-medium text-[11px]">
-                🔗 {activeChatDetail.total_links || activeChatDetail.links?.length || 0}
+                🔗{" "}
+                {activeChatDetail.total_links ||
+                  activeChatDetail.links?.length ||
+                  0}
               </span>
             </div>
           </div>
@@ -1211,8 +1412,11 @@ export default function WhatsAppChatExplorer() {
             {/* TAB 1: MEDIA */}
             {rightPanelTab === "media" && (
               <div className="space-y-2">
-                {!activeChatDetail.media || activeChatDetail.media.length === 0 ? (
-                  <p className="text-gray-400 text-xs text-center py-10">Belum ada foto atau berkas media.</p>
+                {!activeChatDetail.media ||
+                activeChatDetail.media.length === 0 ? (
+                  <p className="text-gray-400 text-xs text-center py-10">
+                    Belum ada foto atau berkas media.
+                  </p>
                 ) : (
                   activeChatDetail.media.map((med, mIdx) => (
                     <div
@@ -1220,15 +1424,23 @@ export default function WhatsAppChatExplorer() {
                       className="p-2.5 rounded-xl border border-gray-200 bg-white hover:border-[#00a884] transition-all flex items-start gap-2.5 shadow-2xs"
                     >
                       <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 text-sm">
-                        {med.type === "image" ? "📷" : med.type === "document" ? "📄" : "🎙️"}
+                        {med.type === "image"
+                          ? "📷"
+                          : med.type === "document"
+                            ? "📄"
+                            : "🎙️"}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-gray-800 truncate">
-                          {med.caption || med.mediaInfo?.fileName || `Berkas ${med.type}`}
+                          {med.caption ||
+                            med.mediaInfo?.fileName ||
+                            `Berkas ${med.type}`}
                         </p>
                         <div className="flex items-center justify-between text-[10.5px] text-gray-400 mt-1">
                           <span className="truncate">{med.sender}</span>
-                          <span className="shrink-0">{formatTime(med.timestamp)}</span>
+                          <span className="shrink-0">
+                            {formatTime(med.timestamp)}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1240,8 +1452,11 @@ export default function WhatsAppChatExplorer() {
             {/* TAB 2: LINKS */}
             {rightPanelTab === "links" && (
               <div className="space-y-2">
-                {!activeChatDetail.links || activeChatDetail.links.length === 0 ? (
-                  <p className="text-gray-400 text-xs text-center py-10">Belum ada tautan dibagikan.</p>
+                {!activeChatDetail.links ||
+                activeChatDetail.links.length === 0 ? (
+                  <p className="text-gray-400 text-xs text-center py-10">
+                    Belum ada tautan dibagikan.
+                  </p>
                 ) : (
                   activeChatDetail.links.map((lnk, lIdx) => (
                     <div
@@ -1259,7 +1474,9 @@ export default function WhatsAppChatExplorer() {
                       </a>
                       <div className="flex items-center justify-between text-[10.5px] text-gray-400 mt-1.5">
                         <span className="truncate">{lnk.sender}</span>
-                        <span className="shrink-0">{formatTime(lnk.timestamp)}</span>
+                        <span className="shrink-0">
+                          {formatTime(lnk.timestamp)}
+                        </span>
                       </div>
                     </div>
                   ))
@@ -1270,8 +1487,11 @@ export default function WhatsAppChatExplorer() {
             {/* TAB 3: PARTICIPANTS */}
             {rightPanelTab === "participants" && (
               <div className="space-y-2">
-                {!activeChatDetail.participants || activeChatDetail.participants.length === 0 ? (
-                  <p className="text-gray-400 text-xs text-center py-10">Tidak ada data anggota.</p>
+                {!activeChatDetail.participants ||
+                activeChatDetail.participants.length === 0 ? (
+                  <p className="text-gray-400 text-xs text-center py-10">
+                    Tidak ada data anggota.
+                  </p>
                 ) : (
                   activeChatDetail.participants.map((p, pIdx) => (
                     <div
@@ -1279,8 +1499,12 @@ export default function WhatsAppChatExplorer() {
                       className="p-2.5 rounded-xl border border-gray-200 bg-white hover:border-[#00a884] transition-all flex items-center justify-between gap-2.5 shadow-2xs"
                     >
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-gray-900 truncate">{p.name || p.phone}</p>
-                        <p className="text-[11px] text-gray-500 font-mono truncate">{p.phone}</p>
+                        <p className="text-xs font-bold text-gray-900 truncate">
+                          {p.name || p.phone}
+                        </p>
+                        <p className="text-[11px] text-gray-500 font-mono truncate">
+                          {p.phone}
+                        </p>
                         <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium mt-1 inline-block">
                           {p.message_count || 0} pesan
                         </span>
@@ -1288,7 +1512,9 @@ export default function WhatsAppChatExplorer() {
 
                       <button
                         type="button"
-                        onClick={() => handleCopy(p.raw_phone || p.phone, "Nomor Peserta")}
+                        onClick={() =>
+                          handleCopy(p.raw_phone || p.phone, "Nomor Peserta")
+                        }
                         className="p-1.5 text-gray-400 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors cursor-pointer"
                         title="Salin nomor peserta"
                       >
@@ -1313,8 +1539,12 @@ export default function WhatsAppChatExplorer() {
                   +
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">Mulai Obrolan WhatsApp Baru</h3>
-                  <p className="text-xs text-gray-500">Kirim pesan ke nomor kontak atau nomor baru</p>
+                  <h3 className="text-base font-bold text-gray-900">
+                    Mulai Obrolan WhatsApp Baru
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Kirim pesan ke nomor kontak atau nomor baru
+                  </p>
                 </div>
               </div>
               <button
