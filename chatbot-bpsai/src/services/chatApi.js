@@ -323,7 +323,7 @@ export const streamChat = async (
         try {
           const data = JSON.parse(jsonStr);
           if (onChunk) onChunk(data);
-        } catch (e) {
+        } catch {
           // ignore incomplete end
         }
       }

@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 
 const UserIcon = () => (
   <svg
-    className="w-4 h-4 text-gray-500 flex-shrink-0"
+    className="w-4 h-4 text-muted flex-shrink-0"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -19,7 +19,7 @@ const UserIcon = () => (
 
 const AiIcon = () => (
   <svg
-    className="w-4 h-4 text-blue-500 flex-shrink-0"
+    className="w-4 h-4 text-accent flex-shrink-0"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -69,23 +69,23 @@ const FeedbackItem = ({ type, time, comment, userPrompt, modelResponse }) => {
 
   return (
     <div
-      className={`border-l-4 ${styles.borderColor} p-4 bg-white shadow-sm rounded-r-lg`}
+      className={`border-l-4 ${styles.borderColor} p-4 bg-surface shadow-sm rounded-r-lg`}
     >
       <div className="space-y-4">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-semibold text-gray-500 uppercase">
+            <h4 className="text-xs font-semibold text-muted uppercase">
               Chat yang Direferensikan
             </h4>
-            <span className="text-xs text-gray-500">{time}</span>
+            <span className="text-xs text-muted">{time}</span>
           </div>
 
-          <div className="space-y-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
+          <div className="space-y-2 p-3 bg-subtle dark:bg-surface rounded-md border border-line dark:border-line">
             <div className="flex items-start gap-2">
               <UserIcon />
               <p
                 ref={promptRef}
-                className={`text-sm text-gray-800 dark:text-gray-200 ${
+                className={`text-sm text-ink dark:text-ink ${
                   !isExpanded ? "line-clamp-2" : ""
                 }`}
               >
@@ -108,12 +108,12 @@ const FeedbackItem = ({ type, time, comment, userPrompt, modelResponse }) => {
 
         {comment && (
           <div>
-            <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">
+            <h4 className="text-xs font-semibold text-muted uppercase mb-1">
               Komentar Feedback
             </h4>
             <p
               ref={commentRef}
-              className={`text-sm text-gray-600 dark:text-gray-400 italic ${
+              className={`text-sm text-muted dark:text-muted italic ${
                 !isExpanded ? "line-clamp-2" : ""
               }`}
             >
@@ -133,7 +133,7 @@ const FeedbackItem = ({ type, time, comment, userPrompt, modelResponse }) => {
         {showMoreButton && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+            className="text-xs font-semibold text-accent hover:text-accent"
           >
             {isExpanded ? "Sembunyikan" : "Lihat Selengkapnya"}
           </button>

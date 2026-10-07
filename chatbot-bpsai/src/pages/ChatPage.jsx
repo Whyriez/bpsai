@@ -8,13 +8,13 @@ import ChatInput from "../components/ChatInput";
 import FeedbackModal from "../components/FeedbackModal";
 import GoogleLoginModal from "../components/GoogleLoginModal";
 import ConfirmModal from "../components/ConfirmModal";
+import Icon from "../components/Icon";
 import { useAuth } from "../context/AuthContext";
 import {
   getHistory,
   streamChat,
   submitFeedback,
   getUserConversations,
-  deleteUserConversation,
   deleteConversationApi,
   renameConversationApi,
   deleteAccountApi,
@@ -37,12 +37,21 @@ function ChatPage() {
 
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [theme, setTheme] = useState("light");
-  
+  const [theme, setTheme] = useState(() =>
+    localStorage.getItem("sigap_theme") === "dark" ? "dark" : "light",
+  );
+  const [isCompactLayout, setIsCompactLayout] = useState(
+    () => window.matchMedia("(max-width: 899px)").matches,
+  );
+
   // State Sidebar & Modals
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => window.matchMedia("(min-width: 900px)").matches,
+  );
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
   const [isGoogleLoginOpen, setIsGoogleLoginOpen] = useState(false);
-  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] =
+    useState(false);
   const [conversations, setConversations] = useState([]);
 
   // State untuk pagination
@@ -82,7 +91,18 @@ function ChatPage() {
   // Efek untuk mengubah tema (dark mode)
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
+    localStorage.setItem("sigap_theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 899px)");
+    const updateLayout = (event) => {
+      setIsCompactLayout(event.matches);
+      setSidebarOpen(!event.matches);
+    };
+    media.addEventListener("change", updateLayout);
+    return () => media.removeEventListener("change", updateLayout);
+  }, []);
 
   // Load daftar percakapan jika user sudah login
   const loadConversations = useCallback(async () => {
@@ -107,7 +127,11 @@ function ChatPage() {
     const loadHistory = async () => {
       if (!conversationId) return;
       try {
-        const response = await getHistory(conversationId, 1, pagination.perPage);
+        const response = await getHistory(
+          conversationId,
+          1,
+          pagination.perPage,
+        );
         if (!response.messages || response.messages.length === 0) {
           setMessages([]);
           setPagination((prev) => ({
@@ -152,7 +176,7 @@ function ChatPage() {
       }
     };
     loadHistory();
-  }, [conversationId]);
+  }, [conversationId, pagination.perPage]);
 
   // Fungsi untuk load more messages
   const loadMoreMessages = useCallback(async () => {
@@ -164,7 +188,7 @@ function ChatPage() {
       const response = await getHistory(
         conversationId,
         nextPage,
-        pagination.perPage
+        pagination.perPage,
       );
 
       const newMessages = response.messages.flatMap((item) => [
@@ -225,149 +249,165 @@ function ChatPage() {
     });
   }, []);
 
-  const handleSendMessage = async (prompt) => {
-    if (isLoading) return;
+  const handleSendMessage = useCallback(
+    async (prompt) => {
+      if (isLoading) return;
 
-    // Cek batasan percakapan tamu (maksimal 2x percakapan)
-    if (!user && isGuestLimitReached) {
-      setIsGoogleLoginOpen(true);
-      setAlert({
-        show: true,
-        message: "Batas 2x percakapan untuk tamu telah tercapai. Silakan masuk via Google untuk menikmati chat tanpa batas (Unlimited)!",
-        type: "error",
-      });
-      return;
-    }
+      // Cek batasan percakapan tamu (maksimal 2x percakapan)
+      if (!user && isGuestLimitReached) {
+        setIsGoogleLoginOpen(true);
+        setAlert({
+          show: true,
+          message:
+            "Anda sudah menggunakan 2 pertanyaan sebagai tamu. Masuk dengan Google untuk melanjutkan.",
+          type: "error",
+        });
+        return;
+      }
 
-    // Jika pengguna tamu (non-login), tambahkan counter
-    if (!user) {
-      incrementGuestChatCount();
-    }
+      // Jika pengguna tamu (non-login), tambahkan counter
+      if (!user) {
+        incrementGuestChatCount();
+      }
 
-    abortControllerRef.current = new AbortController();
-    aiResponseAccumulator.current = "";
+      abortControllerRef.current = new AbortController();
+      aiResponseAccumulator.current = "";
 
-    const userMessage = {
-      id: crypto.randomUUID(),
-      text: prompt,
-      sender: "user",
-      timestamp: Date.now(),
-    };
-    const aiPlaceholder = {
-      id: crypto.randomUUID(),
-      text: "",
-      sender: "ai",
-      timestamp: Date.now() + 1,
-    };
+      const userMessage = {
+        id: crypto.randomUUID(),
+        text: prompt,
+        sender: "user",
+        timestamp: Date.now(),
+      };
+      const aiPlaceholder = {
+        id: crypto.randomUUID(),
+        text: "",
+        sender: "ai",
+        timestamp: Date.now() + 1,
+      };
 
-    setMessages((prev) => [...prev, userMessage, aiPlaceholder]);
-    setIsLoading(true);
-    setThinkingStatus({ isThinking: true, status: "", detail: "" });
+      setMessages((prev) => [...prev, userMessage, aiPlaceholder]);
+      setIsLoading(true);
+      setThinkingStatus({ isThinking: true, status: "", detail: "" });
 
-    try {
-      await streamChat(
-        {
-          prompt,
-          conversation_id: conversationId,
-          user_id: user?.id || null,
-        },
-        (chunkOrData) => {
-          try {
-            if (!chunkOrData) return;
+      try {
+        await streamChat(
+          {
+            prompt,
+            conversation_id: conversationId,
+            user_id: user?.id || null,
+          },
+          (chunkOrData) => {
+            try {
+              if (!chunkOrData) return;
 
-            // Kasus 1: chatApi mengirim parsed JSON object
-            if (typeof chunkOrData === "object") {
-              const data = chunkOrData;
-              if (data.thinking === true) {
-                setThinkingStatus({
-                  isThinking: true,
-                  status: data.status || "",
-                  detail: data.detail || "",
-                });
-              } else if (data.thinking === false) {
-                setThinkingStatus({
-                  isThinking: false,
-                  status: "",
-                  detail: "",
-                });
-              } else if (data.text) {
-                aiResponseAccumulator.current += data.text;
-                updateLastAiMessage();
+              // Kasus 1: chatApi mengirim parsed JSON object
+              if (typeof chunkOrData === "object") {
+                const data = chunkOrData;
+                if (data.thinking === true) {
+                  setThinkingStatus({
+                    isThinking: true,
+                    status: data.status || "",
+                    detail: data.detail || "",
+                  });
+                } else if (data.thinking === false) {
+                  setThinkingStatus({
+                    isThinking: false,
+                    status: "",
+                    detail: "",
+                  });
+                } else if (data.text) {
+                  aiResponseAccumulator.current += data.text;
+                  updateLastAiMessage();
+                }
+                return;
               }
-              return;
-            }
 
-            // Kasus 2: Fallback jika raw string
-            const lines = String(chunkOrData).split("\n");
-            lines.forEach((line) => {
-              const trimmed = line.trim();
-              if (trimmed.startsWith("data: ")) {
-                const jsonStr = trimmed.substring(6).trim();
-                if (jsonStr && jsonStr !== "[DONE]") {
-                  const data = JSON.parse(jsonStr);
-                  if (data.thinking === true) {
-                    setThinkingStatus({
-                      isThinking: true,
-                      status: data.status || "",
-                      detail: data.detail || "",
-                    });
-                  } else if (data.thinking === false) {
-                    setThinkingStatus({
-                      isThinking: false,
-                      status: "",
-                      detail: "",
-                    });
-                  } else if (data.text) {
-                    aiResponseAccumulator.current += data.text;
-                    updateLastAiMessage();
+              // Kasus 2: Fallback jika raw string
+              const lines = String(chunkOrData).split("\n");
+              lines.forEach((line) => {
+                const trimmed = line.trim();
+                if (trimmed.startsWith("data: ")) {
+                  const jsonStr = trimmed.substring(6).trim();
+                  if (jsonStr && jsonStr !== "[DONE]") {
+                    const data = JSON.parse(jsonStr);
+                    if (data.thinking === true) {
+                      setThinkingStatus({
+                        isThinking: true,
+                        status: data.status || "",
+                        detail: data.detail || "",
+                      });
+                    } else if (data.thinking === false) {
+                      setThinkingStatus({
+                        isThinking: false,
+                        status: "",
+                        detail: "",
+                      });
+                    } else if (data.text) {
+                      aiResponseAccumulator.current += data.text;
+                      updateLastAiMessage();
+                    }
                   }
                 }
-              }
-            });
-          } catch (e) {
-            console.warn("Error parsing stream chunk:", e);
-          }
-        },
-        (error) => {
-          if (
-            error.code === "GUEST_LIMIT_REACHED" ||
-            (error.message && error.message.includes("Batas 2x percakapan"))
-          ) {
-            setIsGoogleLoginOpen(true);
-            setAlert({
-              show: true,
-              message:
-                "Batas 2x percakapan tamu telah tercapai. Silakan masuk via Google untuk akses unlimited.",
-              type: "error",
-            });
-          }
-          aiResponseAccumulator.current = `Terjadi kesalahan: ${error.message}`;
-          updateLastAiMessage();
-          setThinkingStatus({ isThinking: false, status: "", detail: "" });
-        },
-        abortControllerRef.current.signal
-      );
+              });
+            } catch (e) {
+              console.warn("Error parsing stream chunk:", e);
+            }
+          },
+          (error) => {
+            if (
+              error.code === "GUEST_LIMIT_REACHED" ||
+              (error.message && error.message.includes("Batas 2x percakapan"))
+            ) {
+              setIsGoogleLoginOpen(true);
+              setAlert({
+                show: true,
+                message:
+                  "Batas pertanyaan tamu telah tercapai. Masuk dengan Google untuk melanjutkan.",
+                type: "error",
+              });
+            }
+            aiResponseAccumulator.current = `Terjadi kesalahan: ${error.message}`;
+            updateLastAiMessage();
+            setThinkingStatus({ isThinking: false, status: "", detail: "" });
+          },
+          abortControllerRef.current.signal,
+        );
 
-      // Refresh list conversations if user is logged in
-      if (user && user.id) {
-        setTimeout(loadConversations, 1000);
+        // Refresh list conversations if user is logged in
+        if (user && user.id) {
+          setTimeout(loadConversations, 1000);
+        }
+      } finally {
+        setIsLoading(false);
+        setThinkingStatus({ isThinking: false, status: "", detail: "" });
+        abortControllerRef.current = null;
       }
-    } finally {
-      setIsLoading(false);
-      setThinkingStatus({ isThinking: false, status: "", detail: "" });
-      abortControllerRef.current = null;
-    }
-  };
+    },
+    [
+      isLoading,
+      user,
+      isGuestLimitReached,
+      incrementGuestChatCount,
+      conversationId,
+      loadConversations,
+      updateLastAiMessage,
+    ],
+  );
 
   // Efek untuk memicu pertanyaan otomatis jika dialihkan dari Short Link Dokumen
   useEffect(() => {
-    if (location.state?.initialPrompt && !initialPromptProcessedRef.current && !isLoading) {
+    if (
+      location.state?.initialPrompt &&
+      !initialPromptProcessedRef.current &&
+      !isLoading
+    ) {
       initialPromptProcessedRef.current = true;
       const promptText = location.state.initialPrompt;
       window.history.replaceState({}, document.title);
       handleSendMessage(promptText);
     }
-  }, [location.state, isLoading]);
+  }, [location.state, isLoading, handleSendMessage]);
 
   const handleCancelGeneration = () => {
     if (abortControllerRef.current) {
@@ -375,7 +415,7 @@ function ChatPage() {
       setIsLoading(false);
       setThinkingStatus({ isThinking: false, status: "", detail: "" });
       setMessages((prev) =>
-        prev.filter((msg) => !(msg.sender === "ai" && msg.text === ""))
+        prev.filter((msg) => !(msg.sender === "ai" && msg.text === "")),
       );
     }
   };
@@ -383,14 +423,14 @@ function ChatPage() {
   const handleNewChat = () => {
     const newId = crypto.randomUUID();
     navigate(`/chat/${newId}`);
-    setSidebarOpen(false);
+    if (isCompactLayout) setSidebarOpen(false);
   };
 
   const handleDeleteConversation = async (targetConvId) => {
     try {
       await deleteConversationApi(targetConvId, user?.id);
       setConversations((prev) =>
-        prev.filter((c) => c.conversation_id !== targetConvId)
+        prev.filter((c) => c.conversation_id !== targetConvId),
       );
       setAlert({
         show: true,
@@ -416,7 +456,9 @@ function ChatPage() {
       const res = await renameConversationApi(targetConvId, newTitle, user?.id);
       if (res) {
         setConversations((prev) =>
-          prev.map((c) => (c.conversation_id === targetConvId ? { ...c, title: newTitle } : c))
+          prev.map((c) =>
+            c.conversation_id === targetConvId ? { ...c, title: newTitle } : c,
+          ),
         );
         setAlert({
           show: true,
@@ -437,14 +479,20 @@ function ChatPage() {
   const handleTogglePinConversation = async (targetConvId, isPinned) => {
     if (!targetConvId) return;
     setConversations((prev) =>
-      prev.map((c) => (c.conversation_id === targetConvId ? { ...c, is_pinned: isPinned } : c))
+      prev.map((c) =>
+        c.conversation_id === targetConvId ? { ...c, is_pinned: isPinned } : c,
+      ),
     );
     try {
       await togglePinConversationApi(targetConvId, isPinned, user?.id);
     } catch (err) {
       console.error("Gagal menyematkan percakapan:", err);
       setConversations((prev) =>
-        prev.map((c) => (c.conversation_id === targetConvId ? { ...c, is_pinned: !isPinned } : c))
+        prev.map((c) =>
+          c.conversation_id === targetConvId
+            ? { ...c, is_pinned: !isPinned }
+            : c,
+        ),
       );
     }
   };
@@ -502,8 +550,8 @@ function ChatPage() {
       });
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === messageId ? { ...msg, feedbackGiven: type } : msg
-        )
+          msg.id === messageId ? { ...msg, feedbackGiven: type } : msg,
+        ),
       );
     } catch (error) {
       console.error("Gagal mengirim feedback:", error);
@@ -518,27 +566,27 @@ function ChatPage() {
   };
 
   return (
-    <div className="bg-gray-50 dark:bg-gray-900 font-inter transition-colors duration-300">
+    <div className="chat-page">
       {alert.show && (
         <div
-          className={`fixed top-5 right-5 z-50 p-4 rounded-xl shadow-lg text-white transition-opacity duration-300 ${
-            alert.type === "success" ? "bg-green-600" : "bg-red-600"
-          } ${alert.show ? "opacity-100" : "opacity-0"}`}
+          className={`toast ${alert.type === "error" ? "is-error" : ""}`}
+          role={alert.type === "error" ? "alert" : "status"}
         >
+          <Icon name={alert.type === "error" ? "info" : "check"} size={17} />
           {alert.message}
         </div>
       )}
 
-      <div className="flex h-screen overflow-hidden">
+      <div className="app-shell">
         {/* Sidebar */}
         <Sidebar
           isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
+          onClose={closeSidebar}
           conversations={conversations}
           activeConversationId={conversationId}
           onSelectConversation={(id) => {
             navigate(`/chat/${id}`);
-            if (window.innerWidth < 768) {
+            if (window.innerWidth < 900) {
               setSidebarOpen(false);
             }
           }}
@@ -550,23 +598,30 @@ function ChatPage() {
           onOpenGoogleLogin={() => setIsGoogleLoginOpen(true)}
           onSelectTopic={(query) => {
             handleSendMessage(query);
-            if (window.innerWidth < 768) {
+            if (window.innerWidth < 900) {
               setSidebarOpen(false);
             }
           }}
-          onDeleteAccount={() => setIsDeleteAccountModalOpen(true)}
+          isLoading={isLoading}
         />
 
         {/* Main Section */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="app-main" inert={sidebarOpen && isCompactLayout}>
           <Header
             onThemeToggle={handleToggleTheme}
             theme={theme}
+            sidebarOpen={sidebarOpen}
+            title={
+              conversations.find(
+                (conversation) =>
+                  conversation.conversation_id === conversationId,
+              )?.title
+            }
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
             onOpenGoogleLogin={() => setIsGoogleLoginOpen(true)}
             onDeleteAccount={() => setIsDeleteAccountModalOpen(true)}
           />
-          <main className="flex-1 flex flex-col overflow-hidden">
+          <main className="chat-main">
             <ChatContainer
               messages={messages}
               isLoading={isLoading}
@@ -577,6 +632,7 @@ function ChatPage() {
               onSelectPrompt={handleSendMessage}
             />
             <ChatInput
+              key={conversationId}
               onSendMessage={handleSendMessage}
               isLoading={isLoading}
               onCancel={handleCancelGeneration}

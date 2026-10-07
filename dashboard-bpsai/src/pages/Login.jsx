@@ -1,172 +1,203 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  MoonIcon,
+  SunIcon,
+  UserIcon,
+  LockClosedIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  ArrowRightIcon,
+  DocumentTextIcon,
+  ChartBarIcon,
+  ChatBubbleLeftRightIcon,
+} from "@heroicons/react/24/outline";
 import routes from "../routes";
 import apiFetch from "../services/api";
-
-const EmailIcon = () => (
-  <svg
-    className="w-5 h-5 text-gray-400"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
-    />
-  </svg>
-);
-
-const LockIcon = () => (
-  <svg
-    className="w-5 h-5 text-gray-400"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-    />
-  </svg>
-);
+import useTheme from "../hooks/useTheme";
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [theme, toggleTheme] = useTheme();
   const navigate = useNavigate();
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prevState) => ({
-      ...prevState,
-      [name]: value,
+  const handleChange = (event) =>
+    setFormData((current) => ({
+      ...current,
+      [event.target.name]: event.target.value,
     }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setError(null);
-
+    setIsLoading(true);
     try {
       const response = await apiFetch("/auth/login", {
         method: "POST",
         body: JSON.stringify(formData),
       });
-
-      localStorage.setItem("access_token", response.access_token); 
-      localStorage.setItem('refresh_token', response.refresh_token);
+      localStorage.setItem("access_token", response.access_token);
+      if (response.refresh_token)
+        localStorage.setItem("refresh_token", response.refresh_token);
+      if (response.user)
+        localStorage.setItem("user", JSON.stringify(response.user));
       navigate(routes.dashboard);
     } catch (err) {
-      setError(err.message);
+      setError(
+        err.message ||
+          "Gagal masuk ke sistem. Silakan periksa kredensial Anda.",
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-xl shadow-lg dark:bg-gray-800">
-        <div>
-          <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white">
-            Selamat Datang Kembali
-          </h2>
-          <p className="mt-2 text-sm text-center text-gray-600 dark:text-gray-400">
-            Silakan masuk untuk melanjutkan
-          </p>
-        </div>
-        {error && (
-          <div className="p-3 text-sm text-red-700 bg-red-100 rounded-md">
-            {error}
-          </div>
-        )}
-        <form className="space-y-6" onSubmit={handleSubmit}>
-          <div className="relative">
-              <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 sr-only"
-              >
-                  Email / Username  {/* Ubah Label */}
-              </label>
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <EmailIcon />
-            </div>
-            <input
-              id="email"
-              name="email"
-              type="text"
-              autoComplete="username"
-              required
-              value={formData.email}
-              onChange={handleChange}
-              className="w-full py-3 pl-10 pr-4 text-gray-900 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
-              placeholder="Email atau Username BPS"
-            />
-          </div>
-
-          <div className="relative">
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 sr-only"
-            >
-              Password
-            </label>
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <LockIcon />
-            </div>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={formData.password}
-              onChange={handleChange}
-              className="w-full py-3 pl-10 pr-4 text-gray-900 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white"
-              placeholder="Password"
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <label
-                htmlFor="remember-me"
-                className="ml-2 block text-sm text-gray-900 dark:text-gray-300"
-              >
-                Ingat saya
-              </label>
-            </div>
-
-            <div className="text-sm">
-              <a
-                href="#"
-                className="font-medium text-blue-600 hover:text-blue-500"
-              >
-                Lupa password?
-              </a>
-            </div>
-          </div>
-
+    <div className="login-page">
+      <header className="login-header">
+        <div className="login-brand">
+          <img
+            src={`${import.meta.env.BASE_URL}assets/bpslogo.png`}
+            alt="Badan Pusat Statistik"
+          />
           <div>
-            <button
-              type="submit"
-              className="w-full px-4 py-3 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-            >
-              Masuk
-            </button>
+            <strong>SIGAP BPS</strong>
+            <span>BPS Provinsi Gorontalo</span>
           </div>
-        </form>
-      </div>
+        </div>
+        <button
+          className="ui-icon-button"
+          onClick={toggleTheme}
+          aria-label={
+            theme === "light" ? "Gunakan tema gelap" : "Gunakan tema terang"
+          }
+        >
+          {theme === "light" ? <MoonIcon /> : <SunIcon />}
+        </button>
+      </header>
+      <main className="login-main">
+        <section className="login-intro">
+          <p className="page-eyebrow">Panel administrasi SIGAP</p>
+          <h1>
+            Kelola layanan.
+            <br />
+            <span>Jaga kualitas data.</span>
+          </h1>
+          <p>
+            Satu ruang untuk mengelola pengetahuan dan memantau layanan
+            informasi statistik BPS Gorontalo.
+          </p>
+          <div className="login-features">
+            <div className="login-feature">
+              <DocumentTextIcon />
+              <div>
+                <strong>Dokumen & pengetahuan</strong>
+                <span>Kelola publikasi dan pemetaan topik statistik.</span>
+              </div>
+            </div>
+            <div className="login-feature">
+              <ChartBarIcon />
+              <div>
+                <strong>Pemantauan layanan</strong>
+                <span>Tinjau penggunaan, kinerja, dan umpan balik.</span>
+              </div>
+            </div>
+            <div className="login-feature">
+              <ChatBubbleLeftRightIcon />
+              <div>
+                <strong>Riwayat percakapan</strong>
+                <span>Telusuri interaksi pengguna untuk evaluasi layanan.</span>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section className="login-form-card" aria-labelledby="login-title">
+          <h2 id="login-title">Masuk ke administrasi</h2>
+          <p className="login-form-description">
+            Gunakan akun BPS Anda untuk mengakses panel SIGAP.
+          </p>
+          {error && (
+            <div className="login-error" role="alert">
+              {error}
+            </div>
+          )}
+          <form onSubmit={handleSubmit}>
+            <div className="login-field">
+              <label htmlFor="email">Username atau email BPS</label>
+              <div className="login-input">
+                <UserIcon />
+                <input
+                  id="email"
+                  name="email"
+                  type="text"
+                  autoComplete="username"
+                  required
+                  disabled={isLoading}
+                  value={formData.email}
+                  onChange={handleChange}
+                  placeholder="Username atau nama@bps.go.id"
+                />
+              </div>
+            </div>
+            <div className="login-field">
+              <label htmlFor="password">Kata sandi BPS</label>
+              <div className="login-input">
+                <LockClosedIcon />
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  disabled={isLoading}
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="Masukkan kata sandi"
+                />
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={() => setShowPassword((show) => !show)}
+                  aria-label={
+                    showPassword
+                      ? "Sembunyikan kata sandi"
+                      : "Tampilkan kata sandi"
+                  }
+                  aria-pressed={showPassword}
+                >
+                  {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
+                </button>
+              </div>
+            </div>
+            <button
+              className="ui-button login-submit"
+              type="submit"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <span className="spinner" />
+                  Memverifikasi akun…
+                </>
+              ) : (
+                <>
+                  Masuk ke dashboard
+                  <ArrowRightIcon />
+                </>
+              )}
+            </button>
+          </form>
+          <p className="login-account-note">
+            Akses panel ditujukan bagi administrator layanan SIGAP BPS Provinsi
+            Gorontalo.
+          </p>
+        </section>
+      </main>
+      <footer className="login-footer">
+        Badan Pusat Statistik Provinsi Gorontalo · Sistem Informasi Generatif
+        Asisten Pengetahuan
+      </footer>
     </div>
   );
 }

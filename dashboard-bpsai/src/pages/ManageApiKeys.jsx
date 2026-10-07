@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import apiFetch from "../services/api";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
 
 // --- Ikon-ikon SVG (dapat diekstrak ke file terpisah jika perlu) ---
 const EditIcon = () => (
@@ -68,24 +68,24 @@ const KeyIcon = () => (
 const SkeletonRow = () => (
   <tr className="animate-pulse">
     <td className="px-4 py-3">
-      <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+      <div className="h-4 bg-hover rounded w-3/4"></div>
     </td>
     <td className="px-4 py-3">
-      <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+      <div className="h-4 bg-hover rounded w-1/4"></div>
     </td>
     <td className="px-4 py-3">
-      <div className="h-6 bg-gray-200 rounded-full w-20"></div>
+      <div className="h-6 bg-hover rounded-full w-20"></div>
     </td>
     <td className="px-4 py-3">
-      <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+      <div className="h-4 bg-hover rounded w-1/4"></div>
     </td>
     <td className="px-4 py-3">
-      <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+      <div className="h-4 bg-hover rounded w-1/2"></div>
     </td>
     <td className="px-4 py-3">
       <div className="flex justify-center gap-2">
-        <div className="h-7 bg-gray-200 rounded w-7"></div>
-        <div className="h-7 bg-gray-200 rounded w-7"></div>
+        <div className="h-7 bg-hover rounded w-7"></div>
+        <div className="h-7 bg-hover rounded w-7"></div>
       </div>
     </td>
   </tr>
@@ -169,7 +169,7 @@ const ApiKeysManager = () => {
             </button>
             <button
               onClick={() => toast.dismiss(t.id)}
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-4 py-2 rounded-lg text-sm"
+              className="bg-hover hover:bg-gray-300 text-ink font-semibold px-4 py-2 rounded-lg text-sm"
             >
               Batal
             </button>
@@ -267,20 +267,19 @@ const ApiKeysManager = () => {
   };
 
   return (
-    <div className="p-4 md:p-6">
-      <Toaster position="top-center" reverseOrder={false} />
+    <div className="space-y-6">
 
       {/* --- Modal Tambah / Edit --- */}
       {(addModalOpen || editModal) && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-lg w-full">
-            <div className="flex justify-between items-center p-6 border-b">
-              <h3 className="text-lg font-semibold text-gray-800">
+          <div className="bg-surface rounded-lg max-w-lg w-full">
+            <div className="flex justify-between items-center p-6 border-b border-line">
+              <h3 className="text-lg font-semibold text-ink">
                 {addModalOpen ? "Tambah API Key Baru" : "Edit API Key"}
               </h3>
               <button
                 onClick={resetForm}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-faint hover:text-muted"
               >
                 <CloseIcon />
               </button>
@@ -290,7 +289,7 @@ const ApiKeysManager = () => {
               className="space-y-4 p-6"
             >
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-ink mb-1">
                   Nama Key *
                 </label>
                 <input
@@ -299,7 +298,7 @@ const ApiKeysManager = () => {
                   value={formData.key_name}
                   onChange={handleInputChange}
                   className={`w-full p-2 border rounded-lg ${
-                    formErrors.key_name ? "border-red-500" : "border-gray-300"
+                    formErrors.key_name ? "border-red-500" : "border-line-strong"
                   }`}
                   placeholder="Contoh: Kunci Utama"
                 />
@@ -312,7 +311,7 @@ const ApiKeysManager = () => {
 
               {addModalOpen && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink mb-1">
                     API Key Value *
                   </label>
                   <input
@@ -321,7 +320,7 @@ const ApiKeysManager = () => {
                     value={formData.api_key}
                     onChange={handleInputChange}
                     className={`w-full p-2 border rounded-lg ${
-                      formErrors.api_key ? "border-red-500" : "border-gray-300"
+                      formErrors.api_key ? "border-red-500" : "border-line-strong"
                     }`}
                     placeholder="Masukkan API Key dari Google AI Studio"
                   />
@@ -335,13 +334,13 @@ const ApiKeysManager = () => {
 
               {editModal && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink mb-1">
                     Value Preview
                   </label>
                   <input
                     type="text"
                     value={editModal.value_preview || "Tidak ada value di .env"}
-                    className="w-full p-2 border bg-gray-100 border-gray-300 rounded-lg"
+                    className="w-full p-2 border bg-subtle border-line-strong rounded-lg"
                     disabled
                   />
                 </div>
@@ -355,11 +354,11 @@ const ApiKeysManager = () => {
                     name="is_active"
                     checked={formData.is_active}
                     onChange={handleInputChange}
-                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    className="h-4 w-4 text-accent border-line-strong rounded focus:ring-blue-500"
                   />
                   <label
                     htmlFor="is_active"
-                    className="ml-2 block text-sm text-gray-900"
+                    className="ml-2 block text-sm text-ink"
                   >
                     Aktifkan Key
                   </label>
@@ -370,7 +369,7 @@ const ApiKeysManager = () => {
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100"
+                  className="px-4 py-2 border border-line-strong rounded-lg text-ink hover:bg-subtle"
                 >
                   Batal
                 </button>
@@ -392,18 +391,19 @@ const ApiKeysManager = () => {
       )}
 
       {/* --- Header --- */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+      <div className="page-intro">
         <div>
-          <h2 className="text-xl md:text-2xl font-bold text-gray-800">
+          <p className="page-eyebrow">Administrasi layanan</p>
+          <h1>
             Manajemen API Key Gemini
-          </h2>
-          <p className="text-gray-600 text-sm md:text-base">
+          </h1>
+          <p>
             Kelola semua kunci API yang digunakan dalam sistem.
           </p>
         </div>
         <button
           onClick={() => setAddModalOpen(true)}
-          className="bg-blue-900 text-white font-medium px-4 py-2 rounded-lg hover:bg-blue-800 transition-colors whitespace-nowrap"
+          className="ui-button"
         >
           + Tambah API Key
         </button>
@@ -432,10 +432,10 @@ const ApiKeysManager = () => {
       </div>
 
       {/* --- Tabel Data --- */}
-      <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
+      <div className="bg-surface p-4 md:p-6 rounded-xl shadow-sm border border-line">
         <div className="overflow-x-auto rounded-lg">
-          <table className="w-full text-sm text-left text-gray-600">
-            <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+          <table className="w-full text-sm text-left text-muted">
+            <thead className="text-xs text-ink uppercase bg-subtle">
               <tr>
                 <th scope="col" className="px-6 py-3 font-semibold">
                   Nama Key
@@ -465,7 +465,7 @@ const ApiKeysManager = () => {
                 [...Array(3)].map((_, i) => <SkeletonRow key={i} />)
               ) : keys.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center py-10 text-gray-500">
+                  <td colSpan="7" className="text-center py-10 text-muted">
                     Belum ada API Key yang ditambahkan.
                   </td>
                 </tr>
@@ -473,9 +473,9 @@ const ApiKeysManager = () => {
                 keys.map((key) => (
                   <tr
                     key={key.id}
-                    className="bg-white border-b border-gray-200 hover:bg-gray-50"
+                    className="bg-surface border-b border-line hover:bg-subtle"
                   >
-                    <td className="px-6 py-4 font-semibold text-gray-800">
+                    <td className="px-6 py-4 font-semibold text-ink">
                       {key.key_name}
                     </td>
                     <td className="px-6 py-4 font-mono text-xs">
@@ -534,11 +534,11 @@ const StatCard = ({ title, value, color }) => {
   const colorClasses = {
     green: "text-green-600",
     red: "text-red-600",
-    default: "text-blue-900",
+    default: "text-accent",
   };
   return (
-    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-      <p className="text-sm text-gray-600 font-medium">{title}</p>
+    <div className="bg-subtle p-4 rounded-lg border border-line">
+      <p className="text-sm text-muted font-medium">{title}</p>
       <p
         className={`text-2xl font-bold ${
           colorClasses[color] || colorClasses.default
@@ -572,7 +572,7 @@ const CountdownTimer = ({ timeUntilReset, onTimerEnd }) => {
   
     if (secondsLeft <= 0) {
       return (
-        <span className="text-xs font-mono text-blue-600">
+        <span className="text-xs font-mono text-accent">
             Cek status...
         </span>
       );
@@ -586,7 +586,7 @@ const CountdownTimer = ({ timeUntilReset, onTimerEnd }) => {
     const seconds = secondsLeft % 60;
   
     return (
-      <span className="text-xs font-mono text-gray-600" title={`Reset pada ${new Date(timeUntilReset.reset_time).toLocaleString('id-ID')}`}>
+      <span className="text-xs font-mono text-muted" title={`Reset pada ${new Date(timeUntilReset.reset_time).toLocaleString('id-ID')}`}>
         {formatTime(hours)}:{formatTime(minutes)}:{formatTime(seconds)}
       </span>
     );
@@ -608,7 +608,7 @@ const StatusBadge = ({ keyData, onTimerEnd }) => {
     if (keyData.is_active) {
       return (<span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">Aktif</span>);
     }
-    return (<span className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-200 rounded-full">Tidak Aktif</span>);
+    return (<span className="px-2 py-1 text-xs font-semibold text-ink bg-hover rounded-full">Tidak Aktif</span>);
 };
 
 export default function ManageApiKeys() {

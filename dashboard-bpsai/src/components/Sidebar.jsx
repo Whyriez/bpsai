@@ -1,186 +1,150 @@
-import React from "react";
+import { useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
+import {
+  ChartBarIcon,
+  PresentationChartLineIcon,
+  DocumentTextIcon,
+  ChatBubbleLeftRightIcon,
+  TagIcon,
+  ChatBubbleBottomCenterTextIcon,
+  KeyIcon,
+  UsersIcon,
+  Cog6ToothIcon,
+  BookOpenIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 
-// --- Komponen Ikon ---
+const groups = [
+  {
+    label: "Pemantauan",
+    items: [
+      { to: "/dashboard", label: "Beranda", icon: ChartBarIcon },
+      { to: "/analytics", label: "Analisis", icon: PresentationChartLineIcon },
+      {
+        to: "/feedback",
+        label: "Umpan balik",
+        icon: ChatBubbleBottomCenterTextIcon,
+      },
+    ],
+  },
+  {
+    label: "Konten & percakapan",
+    items: [
+      {
+        to: "/manajemen-dokumen",
+        label: "Data dokumen",
+        icon: DocumentTextIcon,
+      },
+      { to: "/thematic-mappings", label: "Pemetaan tematik", icon: TagIcon },
+      {
+        to: "/whatsapp-chat",
+        label: "Riwayat WhatsApp",
+        icon: ChatBubbleLeftRightIcon,
+      },
+    ],
+  },
+  {
+    label: "Administrasi",
+    items: [
+      { to: "/manage-api-keys", label: "Kunci API", icon: KeyIcon },
+      { to: "/manajemen-akun", label: "Manajemen admin", icon: UsersIcon },
+      { to: "/settings", label: "Pengaturan", icon: Cog6ToothIcon },
+    ],
+  },
+];
 
-const DashboardIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-    />
-  </svg>
-);
+export default function Sidebar({ isOpen, onClose, onNavigate }) {
+  const sidebarRef = useRef(null);
+  useEffect(() => {
+    if (!isOpen || !window.matchMedia("(max-width: 899px)").matches) return;
+    const previous = document.activeElement;
+    sidebarRef.current?.querySelector("button")?.focus();
+    const keydown = (event) => {
+      if (event.key === "Escape") onClose();
+      if (event.key !== "Tab") return;
+      const controls = sidebarRef.current?.querySelectorAll("button, a[href]");
+      const first = controls?.[0];
+      const last = controls?.[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      }
+      if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", keydown);
+    return () => {
+      document.removeEventListener("keydown", keydown);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [isOpen, onClose]);
 
-const AnalyticsIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
-    />
-  </svg>
-);
-
-const DocumentIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-    />
-  </svg>
-);
-
-const FeedbackIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
-    />
-  </svg>
-);
-
-const SettingsIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-    />
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-    />
-  </svg>
-);
-
-const KeyIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-    />
-  </svg>
-);
-
-const TagNavIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-    />
-  </svg>
-);
-
-const UsersIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-    />
-  </svg>
-);
-
-const WhatsAppNavIcon = () => (
-  <svg fill="currentColor" viewBox="0 0 24 24">
-    <path d="M12.031 2c-5.508 0-9.985 4.477-9.985 9.985 0 1.761.459 3.477 1.332 4.996L2 22l5.166-1.355c1.465.799 3.119 1.22 4.865 1.22h.005c5.507 0 9.984-4.477 9.984-9.985 0-2.668-1.039-5.176-2.925-7.062A9.92 9.92 0 0012.031 2zm0 18.312h-.004c-1.492 0-2.953-.401-4.227-1.159l-.303-.18-3.141.824.838-3.061-.198-.315a8.283 8.283 0 01-1.272-4.436c0-4.577 3.724-8.301 8.305-8.301 2.217 0 4.301.864 5.869 2.433a8.243 8.243 0 012.434 5.868c0 4.578-3.724 8.302-8.304 8.302z" />
-  </svg>
-);
-
-const NavItem = ({ to, children, onClick, icon }) => (
-  <NavLink
-    to={to}
-    onClick={onClick}
-    className={({ isActive }) =>
-      `sidebar-item flex items-center space-x-3 text-left px-4 py-3 rounded-lg transition-all ${
-        isActive
-          ? "bg-blue-700 text-white"
-          : "text-blue-100 hover:text-white hover:bg-white/10"
-      }`
-    }
-  >
-    <div className="w-5 h-5">{icon}</div>
-    <span className="font-medium">{children}</span>
-  </NavLink>
-);
-
-export default function Sidebar({ isOpen, onClose }) {
   return (
     <>
-      <div
-        className={`fixed inset-0 bg-black/50 z-40 transition-opacity md:hidden ${
-          isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
-        onClick={onClose}
-        aria-hidden="true"
-      ></div>
-
+      {isOpen && (
+        <div
+          className="admin-sidebar-backdrop"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
       <aside
-        className={`fixed inset-y-0 left-0 w-64 bg-gradient-to-b from-blue-900 to-blue-800 shadow-xl p-4 z-50 transform transition-transform duration-300 ease-in-out
-          md:static md:translate-x-0 
-          ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
+        ref={sidebarRef}
+        id="admin-sidebar"
+        className={`admin-sidebar ${isOpen ? "is-open" : ""}`}
+        inert={!isOpen}
+        aria-label="Navigasi administrasi"
       >
-        <nav className="space-y-2">
-          <NavItem to="/dashboard" onClick={onClose} icon={<DashboardIcon />}>
-            Beranda
-          </NavItem>
-          <NavItem
-            to="/manajemen-dokumen"
+        <div className="admin-brand">
+          <img
+            src={`${import.meta.env.BASE_URL}assets/bpslogo.png`}
+            alt="Badan Pusat Statistik"
+            width="37"
+            height="37"
+          />
+          <div>
+            <strong>
+              SIGAP<span>BPS</span>
+            </strong>
+            <p>Panel administrasi</p>
+          </div>
+          <button
+            className="ui-icon-button sidebar-close"
             onClick={onClose}
-            icon={<DocumentIcon />}
+            aria-label="Tutup navigasi"
           >
-            Data Dokumen
-          </NavItem>
-          <NavItem
-            to="/whatsapp-chat"
-            onClick={onClose}
-            icon={<WhatsAppNavIcon />}
-          >
-            Riwayat WhatsApp
-          </NavItem>
-          <NavItem
-            to="/thematic-mappings"
-            onClick={onClose}
-            icon={<TagNavIcon />}
-          >
-            Pemetaan Tematik
-          </NavItem>
-          <NavItem to="/analytics" onClick={onClose} icon={<AnalyticsIcon />}>
-            Analisis
-          </NavItem>
-          <NavItem to="/feedback" onClick={onClose} icon={<FeedbackIcon />}>
-            Umpan Balik
-          </NavItem>
-          <NavItem to="/manage-api-keys" onClick={onClose} icon={<KeyIcon />}>
-            Data API Key
-          </NavItem>
-          <NavItem
-            to="/manajemen-akun"
-            onClick={onClose}
-            icon={<UsersIcon />}
-          >
-            Manajemen Admin
-          </NavItem>
-          <NavItem to="/settings" onClick={onClose} icon={<SettingsIcon />}>
-            Pengaturan
-          </NavItem>
+            <XMarkIcon />
+          </button>
+        </div>
+        <nav className="admin-navigation">
+          {groups.map((group) => (
+            <section key={group.label}>
+              <h2>{group.label}</h2>
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    `admin-nav-link ${isActive ? "is-active" : ""}`
+                  }
+                >
+                  <item.icon />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </section>
+          ))}
         </nav>
+        <footer className="admin-sidebar-footer">
+          <BookOpenIcon />
+          <div>
+            <strong>BPS Provinsi Gorontalo</strong>
+            <span>Sistem Informasi Generatif Asisten Pengetahuan</span>
+          </div>
+        </footer>
       </aside>
     </>
   );

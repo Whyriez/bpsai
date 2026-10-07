@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import apiFetch from "../services/api";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
 
 // --- Komponen Ikon SVG ---
 const SearchIcon = () => (
-  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <svg className="w-5 h-5 text-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
   </svg>
 );
@@ -55,7 +55,7 @@ const RefreshIcon = () => (
 );
 
 const ShieldCheckIcon = () => (
-  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -66,7 +66,7 @@ const ShieldCheckIcon = () => (
 );
 
 const KeyIcon = () => (
-  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -120,7 +120,7 @@ export default function ManajemenAkun() {
   const [sortBy, setSortBy] = useState("created_at");
   const [order, setOrder] = useState("desc");
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [perPage] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -318,27 +318,24 @@ export default function ManajemenAkun() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
-      <Toaster position="top-right" />
 
       {/* HEADER UTAMA */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-xs border border-gray-100">
+      <div className="page-intro">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-            <span className="p-2 bg-blue-50 text-blue-700 rounded-xl">
-              <ShieldCheckIcon />
-            </span>
+          <p className="page-eyebrow">Administrasi layanan</p>
+          <h1>
             Manajemen Administrator
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p>
             Kelola daftar akun Administrator yang memiliki wewenang penuh mengelola Dashboard SIGAP BPS.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="page-intro-actions">
           <button
             onClick={() => fetchData(true)}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-all disabled:opacity-50"
+            className="ui-button ui-button-outline"
             title="Muat Ulang Data"
           >
             <span className={refreshing ? "animate-spin" : ""}>
@@ -349,7 +346,7 @@ export default function ManajemenAkun() {
 
           <button
             onClick={handleOpenAddModal}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-xs transition-all hover:shadow-md"
+            className="ui-button"
           >
             <PlusIcon />
             <span>Tambah Admin Baru</span>
@@ -360,21 +357,21 @@ export default function ManajemenAkun() {
       {/* METRIC STATS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Card 1: Total Admin */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs flex items-center justify-between hover:border-blue-200 transition-colors">
+        <div className="bg-surface p-5 rounded-2xl border border-line shadow-xs flex items-center justify-between hover:border-blue-200 transition-colors">
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Administrator</p>
-            <h3 className="text-2xl font-bold text-gray-900 mt-1">{stats.total_admins || 0}</h3>
-            <span className="text-xs text-blue-600 mt-0.5 inline-block">Hak akses penuh dashboard</span>
+            <p className="text-xs font-semibold text-muted uppercase tracking-wider">Total Administrator</p>
+            <h3 className="text-2xl font-bold text-ink mt-1">{stats.total_admins || 0}</h3>
+            <span className="text-xs text-accent mt-0.5 inline-block">Hak akses penuh dashboard</span>
           </div>
-          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
+          <div className="w-12 h-12 bg-accent-soft text-accent rounded-2xl flex items-center justify-center">
             <ShieldCheckIcon />
           </div>
         </div>
 
         {/* Card 2: Email BPS Resmi */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs flex items-center justify-between hover:border-emerald-200 transition-colors">
+        <div className="bg-surface p-5 rounded-2xl border border-line shadow-xs flex items-center justify-between hover:border-emerald-200 transition-colors">
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Akun Email BPS</p>
+            <p className="text-xs font-semibold text-muted uppercase tracking-wider">Akun Email BPS</p>
             <h3 className="text-2xl font-bold text-emerald-700 mt-1">{bpsAdminCount}</h3>
             <span className="text-xs text-emerald-600 mt-0.5 inline-block">Verifikasi IMAP mail.bps.go.id</span>
           </div>
@@ -384,20 +381,20 @@ export default function ManajemenAkun() {
         </div>
 
         {/* Card 3: Otentikasi Sistem */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs flex items-center justify-between hover:border-indigo-200 transition-colors">
+        <div className="bg-surface p-5 rounded-2xl border border-line shadow-xs flex items-center justify-between hover:border-indigo-200 transition-colors">
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Metode Login Admin</p>
-            <h3 className="text-lg font-bold text-indigo-700 mt-1">IMAP Server BPS</h3>
-            <span className="text-xs text-gray-400 mt-0.5 inline-block">Password terpusat BPS</span>
+            <p className="text-xs font-semibold text-muted uppercase tracking-wider">Metode Login Admin</p>
+            <h3 className="text-lg font-bold text-accent mt-1">IMAP Server BPS</h3>
+            <span className="text-xs text-faint mt-0.5 inline-block">Password terpusat BPS</span>
           </div>
-          <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+          <div className="w-12 h-12 bg-accent-soft text-accent rounded-2xl flex items-center justify-center">
             <KeyIcon />
           </div>
         </div>
       </div>
 
       {/* FILTER & SEARCH CARD */}
-      <div className="bg-white p-4 rounded-2xl shadow-xs border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-surface p-4 rounded-2xl shadow-xs border border-line flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Search Bar */}
         <div className="relative flex-1">
           <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -408,12 +405,12 @@ export default function ManajemenAkun() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari administrator berdasarkan nama, username, atau email..."
-            className="w-full pl-10 pr-4 py-2 bg-gray-50 hover:bg-gray-100/70 focus:bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            className="w-full pl-10 pr-4 py-2 bg-subtle hover:bg-subtle/70 focus:bg-surface border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
           />
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-faint hover:text-muted"
             >
               <CloseIcon />
             </button>
@@ -421,8 +418,8 @@ export default function ManajemenAkun() {
         </div>
 
         {/* Sort selector */}
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <span className="text-xs font-semibold text-gray-500">Urutkan:</span>
+        <div className="flex items-center gap-2 text-sm text-muted">
+          <span className="text-xs font-semibold text-muted">Urutkan:</span>
           <select
             value={`${sortBy}-${order}`}
             onChange={(e) => {
@@ -430,7 +427,7 @@ export default function ManajemenAkun() {
               setSortBy(sb);
               setOrder(ord);
             }}
-            className="bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="bg-subtle border border-line text-ink text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="created_at-desc">Terbaru Ditambahkan</option>
             <option value="created_at-asc">Terlama Ditambahkan</option>
@@ -441,10 +438,10 @@ export default function ManajemenAkun() {
       </div>
 
       {/* TABEL DATA ADMINISTRATOR */}
-      <div className="bg-white rounded-2xl shadow-xs border border-gray-100 overflow-hidden">
+      <div className="bg-surface rounded-2xl shadow-xs border border-line overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-gray-600">
-            <thead className="bg-gray-50/80 text-xs uppercase text-gray-500 border-b border-gray-100 tracking-wider">
+          <table className="w-full text-left text-sm text-muted">
+            <thead className="bg-subtle/80 text-xs uppercase text-muted border-b border-line tracking-wider">
               <tr>
                 <th className="px-6 py-4 font-semibold">Administrator</th>
                 <th className="px-6 py-4 font-semibold">Email Resmi</th>
@@ -453,35 +450,35 @@ export default function ManajemenAkun() {
                 <th className="px-6 py-4 font-semibold text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {loading ? (
                 // SKELETON LOADING ROWS
                 [...Array(4)].map((_, i) => (
                   <tr key={i} className="animate-pulse">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
+                        <div className="w-10 h-10 bg-hover rounded-full"></div>
                         <div className="space-y-1.5">
-                          <div className="w-28 h-3.5 bg-gray-200 rounded"></div>
-                          <div className="w-20 h-3 bg-gray-100 rounded"></div>
+                          <div className="w-28 h-3.5 bg-hover rounded"></div>
+                          <div className="w-20 h-3 bg-subtle rounded"></div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4"><div className="w-36 h-3.5 bg-gray-200 rounded"></div></td>
-                    <td className="px-6 py-4"><div className="w-24 h-5 bg-gray-200 rounded-full"></div></td>
-                    <td className="px-6 py-4"><div className="w-28 h-3.5 bg-gray-200 rounded"></div></td>
-                    <td className="px-6 py-4"><div className="w-16 h-7 bg-gray-200 rounded mx-auto"></div></td>
+                    <td className="px-6 py-4"><div className="w-36 h-3.5 bg-hover rounded"></div></td>
+                    <td className="px-6 py-4"><div className="w-24 h-5 bg-hover rounded-full"></div></td>
+                    <td className="px-6 py-4"><div className="w-28 h-3.5 bg-hover rounded"></div></td>
+                    <td className="px-6 py-4"><div className="w-16 h-7 bg-hover rounded mx-auto"></div></td>
                   </tr>
                 ))
               ) : admins.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={5} className="px-6 py-12 text-center text-faint">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <div className="p-3 bg-gray-50 rounded-full text-gray-300">
+                      <div className="p-3 bg-subtle rounded-full text-gray-300">
                         <ShieldCheckIcon />
                       </div>
-                      <p className="font-medium text-gray-600">Tidak ada administrator yang cocok dengan pencarian.</p>
-                      <p className="text-xs text-gray-400">Coba ubah kata kunci pencarian Anda.</p>
+                      <p className="font-medium text-muted">Tidak ada administrator yang cocok dengan pencarian.</p>
+                      <p className="text-xs text-faint">Coba ubah kata kunci pencarian Anda.</p>
                     </div>
                   </td>
                 </tr>
@@ -492,7 +489,7 @@ export default function ManajemenAkun() {
                   return (
                     <tr
                       key={admin.id}
-                      className="hover:bg-blue-50/30 transition-colors group"
+                      className="hover:bg-accent-soft/30 transition-colors group"
                     >
                       {/* Avatar & Admin Details */}
                       <td className="px-6 py-4">
@@ -501,40 +498,40 @@ export default function ManajemenAkun() {
                             <img
                               src={admin.picture}
                               alt={admin.name || admin.username}
-                              className="w-10 h-10 rounded-full object-cover border border-gray-200"
+                              className="w-10 h-10 rounded-full object-cover border border-line"
                               onError={(e) => {
                                 e.target.style.display = "none";
                               }}
                             />
                           ) : (
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
+                            <div className="w-10 h-10 rounded-full bg-brand text-white flex items-center justify-center font-bold text-sm shadow-2xs">
                               {initial}
                             </div>
                           )}
                           <div>
-                            <div className="font-semibold text-gray-900">
+                            <div className="font-semibold text-ink">
                               {admin.name || admin.username}
                             </div>
-                            <div className="text-xs text-gray-400 font-mono">@{admin.username}</div>
+                            <div className="text-xs text-faint font-mono">@{admin.username}</div>
                           </div>
                         </div>
                       </td>
 
                       {/* Email */}
-                      <td className="px-6 py-4 text-gray-700 font-mono text-xs">
+                      <td className="px-6 py-4 text-ink font-mono text-xs">
                         {admin.email}
                       </td>
 
                       {/* Role Badge */}
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200/80 rounded-full shadow-2xs">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-accent-soft text-accent border border-blue-200/80 rounded-full shadow-2xs">
                           <ShieldCheckIcon />
                           <span>Full Admin Dashboard</span>
                         </span>
                       </td>
 
                       {/* Created At */}
-                      <td className="px-6 py-4 text-xs text-gray-500">
+                      <td className="px-6 py-4 text-xs text-muted">
                         {formatIndoDate(admin.created_at)}
                       </td>
 
@@ -543,14 +540,14 @@ export default function ManajemenAkun() {
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => handleOpenEditModal(admin)}
-                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="p-1.5 text-muted hover:text-accent hover:bg-accent-soft rounded-lg transition-colors"
                             title="Edit Data Admin"
                           >
                             <EditIcon />
                           </button>
                           <button
                             onClick={() => setDeleteAdmin(admin)}
-                            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Hapus Hak Akses Admin"
                           >
                             <TrashIcon />
@@ -566,27 +563,27 @@ export default function ManajemenAkun() {
         </div>
 
         {/* PAGINATION BAR */}
-        <div className="px-6 py-4 bg-gray-50/60 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500">
+        <div className="px-6 py-4 bg-subtle/60 border-t border-line flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted">
           <div>
-            Menampilkan <span className="font-semibold text-gray-700">{admins.length}</span> dari{" "}
-            <span className="font-semibold text-gray-700">{totalCount}</span> administrator
+            Menampilkan <span className="font-semibold text-ink">{admins.length}</span> dari{" "}
+            <span className="font-semibold text-ink">{totalCount}</span> administrator
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={() => setPage((p) => Math.max(p - 1, 1))}
               disabled={page <= 1 || loading}
-              className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 bg-surface border border-line rounded-lg font-medium text-ink hover:bg-subtle disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Sebelumnya
             </button>
-            <span className="px-2 font-medium text-gray-700">
+            <span className="px-2 font-medium text-ink">
               Halaman {page} dari {totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
               disabled={page >= totalPages || loading}
-              className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 bg-surface border border-line rounded-lg font-medium text-ink hover:bg-subtle disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Selanjutnya
             </button>
@@ -599,20 +596,20 @@ export default function ManajemenAkun() {
       {/* ========================================================= */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-gray-100 transform transition-all">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-6 shadow-xl border border-line transform transition-all">
+            <div className="flex items-center justify-between pb-4 border-b border-line">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                <div className="p-2 bg-accent-soft text-accent rounded-xl">
                   <PlusIcon />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Tambah Administrator Baru</h3>
-                  <p className="text-xs text-gray-500">Berikan wewenang akses Administrator ke Dashboard SIGAP BPS.</p>
+                  <h3 className="text-lg font-bold text-ink">Tambah Administrator Baru</h3>
+                  <p className="text-xs text-muted">Berikan wewenang akses Administrator ke Dashboard SIGAP BPS.</p>
                 </div>
               </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100"
+                className="text-faint hover:text-muted p-1.5 rounded-lg hover:bg-subtle"
               >
                 <CloseIcon />
               </button>
@@ -621,7 +618,7 @@ export default function ManajemenAkun() {
             <form onSubmit={handleSubmitAdd} className="space-y-4 mt-4">
               {/* Email Field */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">
                   Email Resmi BPS <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -630,21 +627,21 @@ export default function ManajemenAkun() {
                   placeholder="contoh: nama.pegawai@bps.go.id"
                   value={formData.email}
                   onChange={handleEmailChange}
-                  className={`w-full px-3.5 py-2.5 bg-gray-50 border ${
-                    formErrors.email ? "border-red-400 bg-red-50/20" : "border-gray-200"
-                  } rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all`}
+                  className={`w-full px-3.5 py-2.5 bg-subtle border ${
+                    formErrors.email ? "border-red-400 bg-red-50/20" : "border-line"
+                  } rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-surface transition-all`}
                 />
                 {formErrors.email && (
                   <p className="text-xs text-red-500 mt-1">{formErrors.email}</p>
                 )}
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="text-[11px] text-faint mt-1">
                   Gunakan email resmi BPS. Saat login, sistem memverifikasi password langsung ke server <code>mail.bps.go.id</code>.
                 </p>
               </div>
 
               {/* Username Field */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">
                   Username <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -659,9 +656,9 @@ export default function ManajemenAkun() {
                       usernameTouched: true,
                     }))
                   }
-                  className={`w-full px-3.5 py-2.5 bg-gray-50 border ${
-                    formErrors.username ? "border-red-400 bg-red-50/20" : "border-gray-200"
-                  } rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-mono`}
+                  className={`w-full px-3.5 py-2.5 bg-subtle border ${
+                    formErrors.username ? "border-red-400 bg-red-50/20" : "border-line"
+                  } rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-surface transition-all font-mono`}
                 />
                 {formErrors.username && (
                   <p className="text-xs text-red-500 mt-1">{formErrors.username}</p>
@@ -670,7 +667,7 @@ export default function ManajemenAkun() {
 
               {/* Name Field */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">
                   Nama Lengkap & Gelar (Opsional)
                 </label>
                 <input
@@ -680,16 +677,16 @@ export default function ManajemenAkun() {
                   onChange={(e) =>
                     setFormData((prev) => ({ ...prev, name: e.target.value, nameTouched: true }))
                   }
-                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                  className="w-full px-3.5 py-2.5 bg-subtle border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-surface transition-all"
                 />
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-line">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-ink hover:bg-subtle rounded-xl transition-colors"
                 >
                   Batal
                 </button>
@@ -714,20 +711,20 @@ export default function ManajemenAkun() {
       {/* ========================================================= */}
       {editAdmin && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-gray-100 transform transition-all">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-6 shadow-xl border border-line transform transition-all">
+            <div className="flex items-center justify-between pb-4 border-b border-line">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                <div className="p-2 bg-accent-soft text-accent rounded-xl">
                   <EditIcon />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Edit Data Administrator</h3>
-                  <p className="text-xs text-gray-500">Perbarui profil administrator @{editAdmin.username}</p>
+                  <h3 className="text-lg font-bold text-ink">Edit Data Administrator</h3>
+                  <p className="text-xs text-muted">Perbarui profil administrator @{editAdmin.username}</p>
                 </div>
               </div>
               <button
                 onClick={() => setEditAdmin(null)}
-                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100"
+                className="text-faint hover:text-muted p-1.5 rounded-lg hover:bg-subtle"
               >
                 <CloseIcon />
               </button>
@@ -736,20 +733,20 @@ export default function ManajemenAkun() {
             <form onSubmit={handleSubmitEdit} className="space-y-4 mt-4">
               {/* Nama Lengkap */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">
                   Nama Lengkap
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                  className="w-full px-3.5 py-2.5 bg-subtle border border-line rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-surface transition-all"
                 />
               </div>
 
               {/* Username */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">
                   Username <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -762,9 +759,9 @@ export default function ManajemenAkun() {
                       username: e.target.value.toLowerCase().replace(/[^a-zA-Z0-9._]/g, ""),
                     }))
                   }
-                  className={`w-full px-3.5 py-2.5 bg-gray-50 border ${
-                    formErrors.username ? "border-red-400 bg-red-50/20" : "border-gray-200"
-                  } rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-mono`}
+                  className={`w-full px-3.5 py-2.5 bg-subtle border ${
+                    formErrors.username ? "border-red-400 bg-red-50/20" : "border-line"
+                  } rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-surface transition-all font-mono`}
                 />
                 {formErrors.username && (
                   <p className="text-xs text-red-500 mt-1">{formErrors.username}</p>
@@ -773,7 +770,7 @@ export default function ManajemenAkun() {
 
               {/* Email */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">
                   Email Resmi BPS <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -781,9 +778,9 @@ export default function ManajemenAkun() {
                   required
                   value={formData.email}
                   onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-                  className={`w-full px-3.5 py-2.5 bg-gray-50 border ${
-                    formErrors.email ? "border-red-400 bg-red-50/20" : "border-gray-200"
-                  } rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all`}
+                  className={`w-full px-3.5 py-2.5 bg-subtle border ${
+                    formErrors.email ? "border-red-400 bg-red-50/20" : "border-line"
+                  } rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-surface transition-all`}
                 />
                 {formErrors.email && (
                   <p className="text-xs text-red-500 mt-1">{formErrors.email}</p>
@@ -791,11 +788,11 @@ export default function ManajemenAkun() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-line">
                 <button
                   type="button"
                   onClick={() => setEditAdmin(null)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-ink hover:bg-subtle rounded-xl transition-colors"
                 >
                   Batal
                 </button>
@@ -820,22 +817,22 @@ export default function ManajemenAkun() {
       {/* ========================================================= */}
       {deleteAdmin && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-100">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-6 shadow-xl border border-line">
             <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4">
               <TrashIcon />
             </div>
 
-            <h3 className="text-lg font-bold text-gray-900 text-center">Hapus Administrator?</h3>
-            <p className="text-sm text-gray-500 text-center mt-2">
+            <h3 className="text-lg font-bold text-ink text-center">Hapus Administrator?</h3>
+            <p className="text-sm text-muted text-center mt-2">
               Apakah Anda yakin ingin mencabut hak akses Administrator untuk{" "}
-              <strong className="text-gray-800">@{deleteAdmin.username}</strong> ({deleteAdmin.email})? Akun ini tidak akan bisa lagi mengakses Dashboard Admin.
+              <strong className="text-ink">@{deleteAdmin.username}</strong> ({deleteAdmin.email})? Akun ini tidak akan bisa lagi mengakses Dashboard Admin.
             </p>
 
             <div className="flex items-center justify-center gap-3 mt-6">
               <button
                 type="button"
                 onClick={() => setDeleteAdmin(null)}
-                className="px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl transition-colors w-full"
+                className="px-4 py-2.5 text-sm font-medium text-ink hover:bg-subtle rounded-xl transition-colors w-full"
               >
                 Batal
               </button>

@@ -48,6 +48,7 @@ def create_app():
     }
     # app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'a-super-secret-key')
     app.config["JWT_SECRET_KEY"] = os.getenv('JWT_SECRET_KEY')
+    app.config["JWT_DECODE_ALGORITHMS"] = ["HS256", "RS256"]
 
     app.config['CACHE_TYPE'] = 'SimpleCache'
     app.config['CACHE_DEFAULT_TIMEOUT'] = 3600
@@ -76,7 +77,7 @@ def create_app():
             'type': 'apiKey',
             'name': 'Authorization',
             'in': 'header',
-            'description': 'Masukkan token JWT Anda dengan format: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."'
+            'description': 'Masukkan token JWT Central Auth (RS256) atau internal dengan format: "Bearer eyJhbGciOiJSUzI1NiIs..."'
         }
     }
     
@@ -86,6 +87,41 @@ def create_app():
     # Inisialisasi ekstensi
     db.init_app(app)
     jwt = JWTManager(app)
+
+    # Integrasi Verifikasi Kunci RS256 via JWKS Central Auth Gateway
+    from .central_auth_service import get_signing_key_for_flask_jwt
+    import sys
+    from . import central_auth_service as _cas
+    sys.modules['app.services.central_auth_service'] = _cas
+
+    @jwt.decode_key_loader
+    def custom_jwt_decode_key_loader(jwt_headers, jwt_payload):
+        return get_signing_key_for_flask_jwt(jwt_headers, jwt_payload)
+
+    @jwt.expired_token_loader
+    def custom_expired_token_callback(jwt_header, jwt_payload):
+        from flask import jsonify
+        return jsonify({
+            'msg': 'Token autentikasi sudah kedaluwarsa. Silakan login kembali.',
+            'error': 'token_expired'
+        }), 401
+
+    @jwt.invalid_token_loader
+    def custom_invalid_token_callback(error_string):
+        from flask import jsonify
+        return jsonify({
+            'msg': f'Token autentikasi tidak valid: {error_string}',
+            'error': 'invalid_token'
+        }), 401
+
+    @jwt.unauthorized_loader
+    def custom_unauthorized_callback(error_string):
+        from flask import jsonify
+        return jsonify({
+            'msg': 'Token otorisasi diperlukan (Bearer token).',
+            'error': 'authorization_required'
+        }), 401
+
     nltk.download('stopwords')
 
     # Route untuk Dashboard

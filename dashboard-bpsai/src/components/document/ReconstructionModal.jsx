@@ -274,12 +274,12 @@ const TextEditorModal = ({ isOpen, onClose, value, onChange, title }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col">
-        <div className="flex justify-between items-center p-6 border-b border-gray-200">
-          <h3 className="text-xl font-bold text-gray-800">{title}</h3>
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col">
+        <div className="flex justify-between items-center p-6 border-b border-line">
+          <h3 className="text-xl font-bold text-ink">{title}</h3>
           <button
             onClick={handleCancel}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-faint hover:text-muted"
           >
             <CloseIcon />
           </button>
@@ -289,16 +289,16 @@ const TextEditorModal = ({ isOpen, onClose, value, onChange, title }) => {
           <textarea
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            className="w-full h-full p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base resize-none"
+            className="w-full h-full p-4 border border-line-strong rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base resize-none"
             placeholder="Edit teks di sini..."
             autoFocus
           />
         </div>
 
-        <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
+        <div className="flex justify-end gap-3 p-6 border-t border-line">
           <button
             onClick={handleCancel}
-            className="px-6 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="px-6 py-2 text-muted border border-line-strong rounded-lg hover:bg-subtle"
           >
             Batal
           </button>
@@ -478,14 +478,14 @@ const AdvancedTableEditor = ({ headers, rows, onTableChange }) => {
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="p-2 bg-gray-100 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700"
+      className="p-2 bg-subtle rounded-md hover:bg-hover disabled:opacity-50 disabled:cursor-not-allowed text-ink"
     >
       {children}
     </button>
   );
 
   return (
-    <div className="w-full h-full flex flex-col bg-gray-50">
+    <div className="w-full h-full flex flex-col bg-subtle">
       <TextEditorModal
         isOpen={isTextEditorOpen}
         onClose={() => setIsTextEditorOpen(false)}
@@ -495,7 +495,7 @@ const AdvancedTableEditor = ({ headers, rows, onTableChange }) => {
       />
 
       {/* Toolbar Baru yang Lebih Rapi */}
-      <div className="flex-shrink-0 flex items-center justify-between gap-4 p-3 border-b border-gray-200 bg-white">
+      <div className="flex-shrink-0 flex items-center justify-between gap-4 p-3 border-b border-line bg-surface">
         <div className="flex items-center gap-2">
           <ToolbarButton
             onClick={() => addColumn(headers.length - 1)}
@@ -523,7 +523,7 @@ const AdvancedTableEditor = ({ headers, rows, onTableChange }) => {
             <MergeIcon />
           </ToolbarButton>
         </div>
-        <div className="text-sm text-gray-500 flex-grow text-right">
+        <div className="text-sm text-muted flex-grow text-right">
           {selectedCells.length > 0
             ? `${selectedCells.length} sel terpilih`
             : "Tips: Gunakan Ctrl+Klik untuk memilih banyak sel"}
@@ -533,19 +533,19 @@ const AdvancedTableEditor = ({ headers, rows, onTableChange }) => {
       {/* Tabel Editor */}
       <div className="flex-1 overflow-auto">
         <table className="w-full text-sm border-collapse">
-          <thead className="bg-gray-100/70 backdrop-blur-sm">
+          <thead className="bg-subtle/70 backdrop-blur-sm">
             <tr>
-              <th className="p-2 border-b border-r border-gray-200 sticky top-0 left-0 z-20 bg-gray-200 w-12 shadow-sm">
+              <th className="p-2 border-b border-r border-line sticky top-0 left-0 z-20 bg-hover w-12 shadow-sm">
                 #
               </th>
               {headers.map((header, colIndex) => (
                 <th
                   key={colIndex}
-                  className="p-0 border-b border-r border-gray-200 sticky top-0 z-10 bg-gray-100 min-w-[150px] group shadow-sm"
+                  className="p-0 border-b border-r border-line sticky top-0 z-10 bg-subtle min-w-[150px] group shadow-sm"
                 >
                   <div className="flex items-center justify-between">
                     <div
-                      className={`flex-1 p-3 text-left font-semibold cursor-pointer hover:bg-blue-50 ${
+                      className={`flex-1 p-3 text-left font-semibold cursor-pointer hover:bg-accent-soft ${
                         isCellSelected(-1, colIndex)
                           ? "bg-blue-200 ring-2 ring-blue-500"
                           : ""
@@ -561,18 +561,18 @@ const AdvancedTableEditor = ({ headers, rows, onTableChange }) => {
                     <div className="relative p-2">
                       <button
                         onClick={() => setOpenDropdown(`col-${colIndex}`)}
-                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-800"
+                        className="opacity-0 group-hover:opacity-100 text-muted hover:text-ink"
                       >
                         <MoreIcon />
                       </button>
                       {openDropdown === `col-${colIndex}` && (
                         <div
                           ref={ref}
-                          className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-30 border"
+                          className="absolute right-0 mt-2 w-48 bg-surface rounded-md shadow-lg z-30 border"
                         >
                           <a
                             onClick={() => addColumn(colIndex)}
-                            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+                            className="flex items-center gap-2 px-4 py-2 text-sm text-ink hover:bg-subtle cursor-pointer"
                           >
                             <AddIcon /> Sisipkan Kolom
                           </a>
@@ -592,27 +592,27 @@ const AdvancedTableEditor = ({ headers, rows, onTableChange }) => {
           </thead>
           <tbody>
             {rows.map((row, rowIndex) => (
-              <tr key={rowIndex} className="group hover:bg-gray-50/50">
-                <td className="p-0 border-b border-r border-gray-200 text-center sticky left-0 z-10 bg-white group-hover:bg-gray-50 w-12 shadow-sm">
+              <tr key={rowIndex} className="group hover:bg-subtle/50">
+                <td className="p-0 border-b border-r border-line text-center sticky left-0 z-10 bg-surface group-hover:bg-subtle w-12 shadow-sm">
                   <div className="flex items-center justify-center h-full relative">
-                    <span className="text-gray-400 font-mono">
+                    <span className="text-faint font-mono">
                       {rowIndex + 1}
                     </span>
                     <div className="absolute right-1">
                       <button
                         onClick={() => setOpenDropdown(`row-${rowIndex}`)}
-                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-800 p-1 rounded-full"
+                        className="opacity-0 group-hover:opacity-100 text-muted hover:text-ink p-1 rounded-full"
                       >
                         <MoreIcon />
                       </button>
                       {openDropdown === `row-${rowIndex}` && (
                         <div
                           ref={ref}
-                          className="absolute left-full ml-2 -mt-4 w-48 bg-white rounded-md shadow-lg z-30 border"
+                          className="absolute left-full ml-2 -mt-4 w-48 bg-surface rounded-md shadow-lg z-30 border"
                         >
                           <a
                             onClick={() => addRow(rowIndex)}
-                            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+                            className="flex items-center gap-2 px-4 py-2 text-sm text-ink hover:bg-subtle cursor-pointer"
                           >
                             <AddIcon /> Sisipkan Baris
                           </a>
@@ -630,12 +630,12 @@ const AdvancedTableEditor = ({ headers, rows, onTableChange }) => {
                 {row.map((cell, colIndex) => (
                   <td
                     key={colIndex}
-                    className={`border-b border-r border-gray-200 ${
-                      isCellSelected(rowIndex, colIndex) ? "bg-blue-100" : ""
+                    className={`border-b border-r border-line ${
+                      isCellSelected(rowIndex, colIndex) ? "bg-accent-soft" : ""
                     }`}
                   >
                     <div
-                      className={`p-3 min-h-[40px] cursor-pointer hover:bg-blue-50 ${
+                      className={`p-3 min-h-[40px] cursor-pointer hover:bg-accent-soft ${
                         isCellSelected(rowIndex, colIndex)
                           ? "ring-2 ring-blue-500"
                           : ""
@@ -682,7 +682,7 @@ const getFullImagePath = (path) => {
         const url = new URL(API_BASE_URL);
         // Menggabungkan origin (http://host:port) dengan path yang sudah ada.
         return `${url.origin}${path}`;
-      } catch (e) {
+      } catch {
         // Fallback jika API_BASE_URL tidak valid
         return path;
       }
@@ -766,33 +766,33 @@ const getFullImagePath = (path) => {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-4">
-        <label className="font-semibold text-gray-700 text-lg">
+        <label className="font-semibold text-ink text-lg">
           Pratinjau Gambar
         </label>
-        <div className="flex items-center gap-2 bg-gray-100 border rounded-lg p-2">
+        <div className="flex items-center gap-2 bg-subtle border rounded-lg p-2">
           {/* ... tombol zoom tidak berubah ... */}
           <button
             onClick={handleZoomOut}
             title="Zoom Out"
-            className="p-2 hover:bg-gray-200 rounded-md"
+            className="p-2 hover:bg-hover rounded-md"
           >
             <ZoomOutIcon />
           </button>
           <button
             onClick={handleResetZoom}
             title="Reset Zoom"
-            className="p-2 hover:bg-gray-200 rounded-md"
+            className="p-2 hover:bg-hover rounded-md"
           >
             <ResetZoomIcon />
           </button>
           <button
             onClick={handleZoomIn}
             title="Zoom In"
-            className="p-2 hover:bg-gray-200 rounded-md"
+            className="p-2 hover:bg-hover rounded-md"
           >
             <ZoomInIcon />
           </button>
-          <span className="text-sm font-semibold text-gray-600 w-12 text-center">
+          <span className="text-sm font-semibold text-muted w-12 text-center">
             {(zoomLevel * 100).toFixed(0)}%
           </span>
         </div>
@@ -800,7 +800,7 @@ const getFullImagePath = (path) => {
       
       <div 
         ref={containerRef}
-        className="border-2 border-gray-200 rounded-lg bg-gray-50 flex-1 overflow-hidden relative"
+        className="border-2 border-line rounded-lg bg-subtle flex-1 overflow-hidden relative"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -928,8 +928,8 @@ export default function ReconstructionModal({
       onClick={onClick}
       className={`px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
         isActive
-          ? "border-blue-600 text-blue-600"
-          : "border-transparent text-gray-500 hover:text-gray-700"
+          ? "border-blue-600 text-accent"
+          : "border-transparent text-muted hover:text-ink"
       }`}
     >
       {children}
@@ -938,16 +938,16 @@ export default function ReconstructionModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl h-[95vh] flex flex-col">
-        <div className="flex justify-between items-center p-6 border-b border-gray-200">
-          <h3 className="text-xl font-bold text-gray-800">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-7xl h-[95vh] flex flex-col">
+        <div className="flex justify-between items-center p-6 border-b border-line">
+          <h3 className="text-xl font-bold text-ink">
             {isLoading
               ? "Memuat Data..."
               : `Rekonstruksi Tabel - Halaman ${chunkData?.page_number}`}
           </h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100"
+            className="text-faint hover:text-muted p-2 rounded-full hover:bg-subtle"
           >
             <CloseIcon />
           </button>
@@ -989,7 +989,7 @@ export default function ReconstructionModal({
                   flex flex-col h-1/2 lg:h-full transition-all duration-300
                 `}
               >
-                <div className="flex-shrink-0 flex justify-between items-center border-b border-gray-200">
+                <div className="flex-shrink-0 flex justify-between items-center border-b border-line">
                   <div className="flex">
                     <TabButton
                       isActive={activeTab === "original"}
@@ -1027,7 +1027,7 @@ export default function ReconstructionModal({
                           ? "Tampilkan Pratinjau Gambar"
                           : "Perbesar Editor"
                       }
-                      className="p-2 text-gray-500 hover:bg-gray-100 rounded-md"
+                      className="p-2 text-muted hover:bg-subtle rounded-md"
                     >
                       {isEditorExpanded ? <CollapseIcon /> : <ExpandIcon />}
                     </button>
@@ -1039,13 +1039,13 @@ export default function ReconstructionModal({
                      <>
                       {/* Jika Tipe TABLE, tampilkan editor canggih */}
                       {isTable && (
-                        <div className="w-full h-full overflow-auto space-y-6 p-2 bg-gray-50 border rounded-lg">
+                        <div className="w-full h-full overflow-auto space-y-6 p-2 bg-subtle border rounded-lg">
                           {contentBlocks.map((block, index) => (
                             <div key={index}>
                               {block.type === 'table' && (
                                 <div>
-                                    <label className="text-xs font-semibold text-gray-500 uppercase ml-2">Tabel #{contentBlocks.filter(b => b.type === 'table').indexOf(block) + 1}</label>
-                                    <div className="h-[400px] border rounded-lg overflow-hidden bg-white shadow-sm">
+                                    <label className="text-xs font-semibold text-muted uppercase ml-2">Tabel #{contentBlocks.filter(b => b.type === 'table').indexOf(block) + 1}</label>
+                                    <div className="h-[400px] border rounded-lg overflow-hidden bg-surface shadow-sm">
                                         <AdvancedTableEditor
                                             headers={block.data.headers}
                                             rows={block.data.rows}
@@ -1069,19 +1069,19 @@ export default function ReconstructionModal({
                         <textarea
                           value={editedContent}
                           onChange={(e) => setEditedContent(e.target.value)}
-                          className="w-full h-full p-6 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none leading-relaxed"
+                          className="w-full h-full p-6 border-2 border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none leading-relaxed"
                           placeholder="Konten markdown akan muncul di sini..."
                         />
                       )}
                      </>
                   )}
                   {activeTab === "original" && (
-                    <pre className="w-full h-full p-6 border-2 border-gray-200 bg-gray-50 rounded-lg overflow-auto text-sm text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
+                    <pre className="w-full h-full p-6 border-2 border-line bg-subtle rounded-lg overflow-auto text-sm text-ink whitespace-pre-wrap break-words leading-relaxed">
                       {chunkData.chunk_content}
                     </pre>
                   )}
                   {activeTab === "preview" && (
-                    <div className="w-full h-full p-4 border-2 border-gray-200 rounded-lg overflow-auto bg-white prose max-w-none">
+                    <div className="w-full h-full p-4 border-2 border-line rounded-lg overflow-auto bg-surface prose max-w-none">
                       {contentBlocks.map((block, index) => {
                         if (block.type === 'text') {
                           return <p key={index} className="whitespace-pre-wrap">{block.content}</p>;
@@ -1090,7 +1090,7 @@ export default function ReconstructionModal({
                           return (
                             <table key={index} className="w-full text-sm border-collapse my-4">
                               <thead>
-                                <tr className="bg-gray-100">
+                                <tr className="bg-subtle">
                                   {block.data.headers.map((h, i) => <th key={i} className="p-2 border font-semibold">{h}</th>)}
                                 </tr>
                               </thead>
@@ -1112,7 +1112,7 @@ export default function ReconstructionModal({
                     <textarea
                       value={editedContent}
                       onChange={(e) => setEditedContent(e.target.value)}
-                      className="w-full h-full p-6 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none leading-relaxed"
+                      className="w-full h-full p-6 border-2 border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none leading-relaxed"
                       placeholder="Konten markdown akan muncul di sini..."
                     />
                   )}
@@ -1121,8 +1121,8 @@ export default function ReconstructionModal({
             </div>
 
             {/* Footer Modal */}
-            <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-t border-gray-200 bg-gray-50 rounded-b-2xl gap-4">
-              <p className="text-sm text-gray-600 text-center sm:text-left flex-1">
+            <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-t border-line bg-subtle rounded-b-2xl gap-4">
+              <p className="text-sm text-muted text-center sm:text-left flex-1">
                 {activeTab === "editor"
                   ? "Gunakan editor untuk memanipulasi tabel. Klik '...' untuk aksi lebih lanjut."
                   : "Gunakan AI untuk rekonstruksi otomatis, lalu edit dan simpan hasilnya."}

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, useParams } from "react-router-dom";
 import apiFetch, { API_BASE_URL } from "../services/api";
 import ReconstructionModal from "../components/document/ReconstructionModal";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
 
 // --- Komponen Ikon ---
 const BackIcon = () => (
@@ -26,35 +26,35 @@ const EditIcon = () => (
 
 
 const SkeletonCard = () => (
-  <div className="border border-gray-200 rounded-lg p-4 animate-pulse">
-    <div className="bg-gray-200 rounded-md w-full h-40 mb-4"></div>
-    <div className="flex justify-between items-center mb-4"><div className="h-4 bg-gray-200 rounded w-1/4"></div><div className="h-5 bg-gray-200 rounded-full w-24"></div></div>
-    <div className="h-9 bg-gray-200 rounded-lg w-full"></div>
+  <div className="border border-line rounded-lg p-4 animate-pulse">
+    <div className="bg-hover rounded-md w-full h-40 mb-4"></div>
+    <div className="flex justify-between items-center mb-4"><div className="h-4 bg-hover rounded w-1/4"></div><div className="h-5 bg-hover rounded-full w-24"></div></div>
+    <div className="h-9 bg-hover rounded-lg w-full"></div>
   </div>
 );
 
 // PERUBAHAN 1: Skeleton untuk tampilan list teks yang baru
 const SkeletonText = () => (
-    <div className="border border-gray-200 rounded-lg p-4 animate-pulse w-full flex justify-between items-center">
+    <div className="border border-line rounded-lg p-4 animate-pulse w-full flex justify-between items-center">
         <div className="space-y-2">
-            <div className="h-5 bg-gray-200 rounded w-32"></div>
-            <div className="h-4 bg-gray-200 rounded w-24"></div>
+            <div className="h-5 bg-hover rounded w-32"></div>
+            <div className="h-4 bg-hover rounded w-24"></div>
         </div>
-        <div className="h-9 bg-gray-200 rounded-lg w-40"></div>
+        <div className="h-9 bg-hover rounded-lg w-40"></div>
     </div>
 )
 
 const BatchProgress = ({ jobStatus, onStart, onStop }) => {
   if (!jobStatus) {
-    return (<div className="w-full md:w-auto animate-pulse"><div className="h-10 bg-gray-200 rounded-lg w-64"></div></div>);
+    return (<div className="w-full md:w-auto animate-pulse"><div className="h-10 bg-hover rounded-lg w-64"></div></div>);
   }
   const { status, progress, processed_items, total_items, last_error } = jobStatus;
   if (status === "RUNNING" || status === "STOPPING") {
     return (
-      <div className="w-full md:w-80 border border-gray-200 p-3 rounded-lg bg-white">
-        <div className="flex justify-between items-center mb-2"><span className="text-sm font-semibold text-gray-700">{status === "STOPPING" ? "Menghentikan Proses..." : "Sedang Memproses..."}</span><span className="text-sm font-bold text-blue-600">{progress}%</span></div>
-        <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2"><div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${progress}%` }}></div></div>
-        <div className="flex justify-between items-center"><span className="text-xs text-gray-500">{processed_items} / {total_items} halaman selesai</span><button onClick={onStop} disabled={status === "STOPPING"} className="text-xs text-red-600 hover:underline disabled:opacity-50">Hentikan</button></div>
+      <div className="w-full md:w-80 border border-line p-3 rounded-lg bg-surface">
+        <div className="flex justify-between items-center mb-2"><span className="text-sm font-semibold text-ink">{status === "STOPPING" ? "Menghentikan Proses..." : "Sedang Memproses..."}</span><span className="text-sm font-bold text-accent">{progress}%</span></div>
+        <div className="w-full bg-hover rounded-full h-2.5 mb-2"><div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${progress}%` }}></div></div>
+        <div className="flex justify-between items-center"><span className="text-xs text-muted">{processed_items} / {total_items} halaman selesai</span><button onClick={onStop} disabled={status === "STOPPING"} className="text-xs text-red-600 hover:underline disabled:opacity-50">Hentikan</button></div>
       </div>
     );
   }
@@ -74,7 +74,7 @@ export default function DetailDokumen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(6);
+  const [, setPerPage] = useState(6);
   const [filterType, setFilterType] = useState("table"); 
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -124,7 +124,7 @@ export default function DetailDokumen() {
     }
   }, [documentId, fetchDetails]);
 
-  useEffect(() => { fetchJobStatus(); }, []);
+  useEffect(() => { fetchJobStatus(); }, [fetchJobStatus]);
   useEffect(() => {
     if (batchJobStatus?.status === "RUNNING" || batchJobStatus?.status === "STOPPING") {
       pollingRef.current = setInterval(fetchJobStatus, 3000);
@@ -209,21 +209,21 @@ export default function DetailDokumen() {
     }
 
     if (!data || data.pages.length === 0) {
-      return <div className="col-span-full text-center py-10 text-gray-500">Tidak ada data {filterType === 'table' ? 'tabel' : 'teks'} yang ditemukan.</div>;
+      return <div className="col-span-full text-center py-10 text-muted">Tidak ada data {filterType === 'table' ? 'tabel' : 'teks'} yang ditemukan.</div>;
     }
     
     if (filterType === 'table') {
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {data.pages.map((chunk) => (
-            <div key={chunk.chunk_id} className="border border-gray-200 bg-white rounded-lg shadow-sm flex flex-col">
-              <div className="p-4 border-b border-gray-200">
-                {chunk.image_path ? <img src={`${API_BASE_URL}${chunk.image_path}`} alt={`Halaman ${chunk.page_number}`} className="rounded-md w-full h-auto object-contain bg-gray-50 border"/>
-                 : <div className="flex items-center justify-center h-40 bg-gray-100 text-gray-400 rounded-md">Gambar tidak tersedia</div> }
+            <div key={chunk.chunk_id} className="border border-line bg-surface rounded-lg shadow-sm flex flex-col">
+              <div className="p-4 border-b border-line">
+                {chunk.image_path ? <img src={`${API_BASE_URL}${chunk.image_path}`} alt={`Halaman ${chunk.page_number}`} className="rounded-md w-full h-auto object-contain bg-subtle border"/>
+                 : <div className="flex items-center justify-center h-40 bg-subtle text-faint rounded-md">Gambar tidak tersedia</div> }
               </div>
               <div className="p-4 flex-grow flex flex-col">
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="font-bold text-gray-800">Halaman {chunk.page_number}</h3>
+                  <h3 className="font-bold text-ink">Halaman {chunk.page_number}</h3>
                   <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${chunk.status === "Sudah Direkonstruksi" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>{chunk.status}</span>
                 </div>
                 <div className="mt-auto">
@@ -240,14 +240,14 @@ export default function DetailDokumen() {
         return (
             <div className="space-y-3">
                 {data.pages.map((chunk) => (
-                    <div key={chunk.chunk_id} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 flex justify-between items-center">
+                    <div key={chunk.chunk_id} className="bg-surface border border-line rounded-lg shadow-sm p-4 flex justify-between items-center">
                         <div>
-                            <h3 className="font-bold text-gray-800">Halaman {chunk.page_number}</h3>
+                            <h3 className="font-bold text-ink">Halaman {chunk.page_number}</h3>
                             <span className={`mt-1 px-2 py-0.5 inline-block text-xs font-semibold rounded-full ${chunk.status === "Sudah Direkonstruksi" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>{chunk.status}</span>
                         </div>
                         <button 
                             onClick={() => openModal(chunk.chunk_id)} 
-                            className="flex-shrink-0 flex items-center justify-center gap-2 bg-white text-gray-700 font-semibold px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors text-sm shadow-sm"
+                            className="flex-shrink-0 flex items-center justify-center gap-2 bg-surface text-ink font-semibold px-4 py-2 rounded-lg border border-line-strong hover:bg-subtle transition-colors text-sm shadow-sm"
                         >
                             <EditIcon />
                             <span>Lihat & Rekonstruksi</span>
@@ -265,32 +265,31 @@ export default function DetailDokumen() {
 
   return (
     <div className="p-4 md:p-6">
-      <Toaster position="top-center" reverseOrder={false} />
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
         <div>
-          <NavLink to="/manajemen-dokumen" className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm mb-2"><BackIcon />Kembali ke Daftar Dokumen</NavLink>
-          <h2 className="text-xl md:text-2xl font-bold text-gray-800 break-words" title={filename}>Detail Dokumen: {filename}</h2>
-          <p className="text-gray-600 text-sm md:text-base">Pilih jenis data untuk dilihat dan direkonstruksi.</p>
+          <NavLink to="/manajemen-dokumen" className="inline-flex items-center gap-2 text-accent hover:underline text-sm mb-2"><BackIcon />Kembali ke Daftar Dokumen</NavLink>
+          <h2 className="text-xl md:text-2xl font-bold text-ink break-words" title={filename}>Detail Dokumen: {filename}</h2>
+          <p className="text-muted text-sm md:text-base">Pilih jenis data untuk dilihat dan direkonstruksi.</p>
         </div>
         {filterType === 'table' && <BatchProgress jobStatus={batchJobStatus} onStart={handleStartBatch} onStop={handleStopBatch}/>}
       </div>
 
-      <div className="flex items-center border-b border-gray-200 mb-6">
-        <button onClick={() => handleFilterChange('table')} className={`px-4 py-2 text-sm font-semibold transition-colors ${filterType === 'table' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>Data Tabel</button>
-        <button onClick={() => handleFilterChange('text')} className={`px-4 py-2 text-sm font-semibold transition-colors ${filterType === 'text' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>Data Teks</button>
+      <div className="flex items-center border-b border-line mb-6">
+        <button onClick={() => handleFilterChange('table')} className={`px-4 py-2 text-sm font-semibold transition-colors ${filterType === 'table' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-muted hover:text-gray-800'}`}>Data Tabel</button>
+        <button onClick={() => handleFilterChange('text')} className={`px-4 py-2 text-sm font-semibold transition-colors ${filterType === 'text' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-muted hover:text-gray-800'}`}>Data Teks</button>
       </div>
 
       {renderContent()}
 
       {!loading && data && data.pagination && data.pagination.total_items > 0 && (
-        <div className="flex flex-col md:flex-row justify-between items-center pt-4 border-t border-gray-200 mt-6 gap-4">
-          <span className="text-sm text-gray-600">
+        <div className="flex flex-col md:flex-row justify-between items-center pt-4 border-t border-line mt-6 gap-4">
+          <span className="text-sm text-muted">
             Menampilkan <span className="font-semibold">{(data.pagination.current_page - 1) * data.pagination.per_page + 1}</span> - <span className="font-semibold">{Math.min(data.pagination.current_page * data.pagination.per_page, data.pagination.total_items)}</span> dari <span className="font-semibold">{data.pagination.total_items}</span> item
           </span>
           <div className="inline-flex items-center space-x-2">
-            <button onClick={() => setPage(data.pagination.current_page - 1)} disabled={!data.pagination.has_prev} className="px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Sebelumnya</button>
-            <span className="text-sm font-semibold text-gray-700">Halaman {data.pagination.current_page} dari {data.pagination.total_pages}</span>
-            <button onClick={() => setPage(data.pagination.current_page + 1)} disabled={!data.pagination.has_next} className="px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Berikutnya</button>
+            <button onClick={() => setPage(data.pagination.current_page - 1)} disabled={!data.pagination.has_prev} className="px-3 py-2 border border-line-strong rounded-lg bg-surface hover:bg-subtle disabled:opacity-50 disabled:cursor-not-allowed">Sebelumnya</button>
+            <span className="text-sm font-semibold text-ink">Halaman {data.pagination.current_page} dari {data.pagination.total_pages}</span>
+            <button onClick={() => setPage(data.pagination.current_page + 1)} disabled={!data.pagination.has_next} className="px-3 py-2 border border-line-strong rounded-lg bg-surface hover:bg-subtle disabled:opacity-50 disabled:cursor-not-allowed">Berikutnya</button>
           </div>
         </div>
       )}

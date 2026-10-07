@@ -1,125 +1,148 @@
-import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import routes from "../routes";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  Bars3BottomLeftIcon,
+  MoonIcon,
+  SunIcon,
+  ChevronDownIcon,
+  ArrowRightOnRectangleIcon,
+  Cog6ToothIcon,
+} from "@heroicons/react/24/outline";
 
-export default function Header({ onMenuClick }) {
+const pageLabels = {
+  "/dashboard": "Beranda",
+  "/analytics": "Analisis",
+  "/feedback": "Umpan balik",
+  "/manajemen-dokumen": "Data dokumen",
+  "/thematic-mappings": "Pemetaan tematik",
+  "/whatsapp-chat": "Riwayat WhatsApp",
+  "/manage-api-keys": "Kunci API",
+  "/manajemen-akun": "Manajemen admin",
+  "/settings": "Pengaturan",
+  "/developer": "Tentang pengembang",
+};
+
+export default function Header({
+  onMenuClick,
+  sidebarOpen,
+  theme,
+  onThemeToggle,
+}) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const buttonRef = useRef(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user") || "null");
+    } catch {
+      return null;
+    }
+  })();
+  const name = user?.name || user?.username || "Administrator";
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  const title = pageLabels[location.pathname] || "Detail dokumen";
 
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+    if (!isDropdownOpen) return;
+    const dismiss = (event) => {
+      if (!dropdownRef.current?.contains(event.target))
         setIsDropdownOpen(false);
-      }
-    }
-    // Tambahkan event listener saat komponen dimuat
-    document.addEventListener("mousedown", handleClickOutside);
-    // Hapus event listener saat komponen dibongkar
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [dropdownRef]);
+    const escape = (event) => {
+      if (event.key === "Escape") {
+        setIsDropdownOpen(false);
+        buttonRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [isDropdownOpen]);
 
-  const handleLogout = () => {
+  const logout = () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
-    navigate(routes.login);
-    setIsDropdownOpen(false);
-  };
-
-  const handleProfile = () => {
-    console.log("Profile clicked");
-    setIsDropdownOpen(false);
+    localStorage.removeItem("user");
+    navigate("/login");
   };
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
-      <div className="flex items-center justify-between px-4 md:px-6 py-2">
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={onMenuClick}
-            className="md:hidden p-2 text-gray-600 hover:text-blue-900 rounded-lg"
-            aria-label="Open sidebar"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6h16M4 12h16m-7 6h7"
-              />
-            </svg>
-          </button>
-
-          <div className="flex items-center space-x-3">
-            <div className="w-15 h-15 bg-gradient-to-br  rounded-lg flex items-center justify-center">
-              <img
-                src="/assets/bpslogo.png"
-                alt="Logo SIGAP BPS Gorontalo"
-                className="h-full w-full object-contain"
-              />
-            </div>
-            <div>
-              <h1 className="text-lg md:text-xl font-semibold text-gray-900">
-                SIGAP BPS
-              </h1>
-              <p className="hidden md:block text-sm text-gray-500">
-                Sistem Informasi Generatif Asisten Pengetahuan BPS Provinsi
-                Gorontalo
-              </p>
-            </div>
-          </div>
+    <header className="admin-header">
+      <div className="admin-header-context">
+        <button
+          className="ui-icon-button"
+          onClick={onMenuClick}
+          aria-label={
+            sidebarOpen ? "Tutup panel navigasi" : "Buka panel navigasi"
+          }
+          aria-expanded={sidebarOpen}
+          aria-controls="admin-sidebar"
+        >
+          <Bars3BottomLeftIcon />
+        </button>
+        <span className="admin-header-divider" />
+        <div className="admin-breadcrumb">
+          <span>Administrasi</span>
+          <span>/</span>
+          <strong>{title}</strong>
         </div>
-
-        <div className="relative" ref={dropdownRef}>
-          {/* Tombol yang memicu dropdown */}
+      </div>
+      <div className="admin-header-actions">
+        <button
+          className="ui-icon-button"
+          onClick={onThemeToggle}
+          aria-label={
+            theme === "light" ? "Gunakan tema gelap" : "Gunakan tema terang"
+          }
+          title={
+            theme === "light" ? "Gunakan tema gelap" : "Gunakan tema terang"
+          }
+        >
+          {theme === "light" ? <MoonIcon /> : <SunIcon />}
+        </button>
+        <div className="admin-profile" ref={dropdownRef}>
           <button
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center space-x-2 p-2 text-gray-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+            className="admin-profile-button"
+            ref={buttonRef}
+            onClick={() => setIsDropdownOpen((open) => !open)}
+            aria-label="Menu akun"
+            aria-expanded={isDropdownOpen}
+            aria-controls="admin-account-menu"
           >
-            <span className="font-semibold text-sm">Admin</span>
-            {/* Ikon panah kecil */}
-            <svg
-              className={`w-4 h-4 transition-transform ${
-                isDropdownOpen ? "rotate-180" : ""
-              }`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M19 9l-7 7-7-7"
-              ></path>
-            </svg>
+            <span className="admin-initials">{initials}</span>
+            <span className="admin-profile-name">{name}</span>
+            <ChevronDownIcon />
           </button>
-
-          {/* Menu dropdown yang muncul/hilang */}
           {isDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 border border-gray-200 z-50">
-              <a
-                href="#profile"
-                onClick={handleProfile}
-                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            <div className="admin-profile-menu" id="admin-account-menu">
+              <div>
+                <strong>{name}</strong>
+                <span>{user?.email || "Administrator SIGAP"}</span>
+              </div>
+              <button
+                onClick={() => {
+                  navigate("/settings");
+                  setIsDropdownOpen(false);
+                }}
               >
-                Profile
-              </a>
-              <a
-                href="#logout"
-                onClick={handleLogout}
-                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-              >
-                Logout
-              </a>
+                <Cog6ToothIcon />
+                Pengaturan
+              </button>
+              <button onClick={logout}>
+                <ArrowRightOnRectangleIcon />
+                Keluar
+              </button>
             </div>
           )}
         </div>

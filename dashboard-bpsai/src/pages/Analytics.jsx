@@ -21,33 +21,25 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
 );
 
 // --- KOMPONEN KECIL & SKELETON ---
 
-const KeywordTag = ({ keyword, count, color }) => {
-  const colorClasses = {
-    blue: "bg-blue-50 text-blue-700",
-    green: "bg-green-50 text-green-700",
-    yellow: "bg-yellow-50 text-yellow-700",
-    purple: "bg-purple-50 text-purple-700",
-    red: "bg-red-50 text-red-700",
-    indigo: "bg-indigo-50 text-indigo-700",
-  };
+const KeywordTag = ({ keyword, count }) => {
   return (
-    <div className={`${colorClasses[color]} px-3 py-2 rounded-lg text-center`}>
+    <div className="bg-subtle text-ink px-3 py-3 rounded-lg text-center">
       <div className="font-semibold capitalize">{keyword}</div>
-      <div className="text-xs">{count} queries</div>
+      <div className="text-xs text-muted mt-1">{count} pertanyaan</div>
     </div>
   );
 };
 
 const SkeletonCard = ({ className = "" }) => (
   <div
-    className={`bg-white p-6 rounded-xl shadow-sm border border-gray-200 animate-pulse ${className}`}
+    className={`bg-surface p-6 rounded-xl shadow-sm border border-line animate-pulse ${className}`}
   >
-    <div className="h-5 bg-gray-200 rounded w-1/3 mb-4"></div>
+    <div className="h-5 bg-hover rounded w-1/3 mb-4"></div>
     <div className="space-y-3">
       <div className="h-4 bg-gray-300 rounded w-full"></div>
       <div className="h-4 bg-gray-300 rounded w-5/6"></div>
@@ -130,39 +122,45 @@ export default function Analytics() {
     };
   }, [analyticsData]);
 
-  const keywordColors = ["blue", "green", "yellow", "purple", "red", "indigo"];
-
-
   const formatAverageTime = (ms) => {
     if (ms === undefined || ms === null) {
       return "-";
     }
     if (ms < 1000) {
-      return `${ms}ms`; 
+      return `${ms}ms`;
     }
     return `${(ms / 1000).toFixed(2)} detik`;
   };
-  
+
+  if (error)
+    return (
+      <div className="space-y-5">
+        <div className="page-intro">
+          <div>
+            <p className="page-eyebrow">Pemantauan layanan</p>
+            <h1>Analisis layanan</h1>
+            <p>Wawasan penggunaan dan kinerja chatbot.</p>
+          </div>
+        </div>
+        <div className="status-panel is-error" role="alert">
+          Data analisis belum dapat dimuat. {error}
+        </div>
+      </div>
+    );
+
   return (
     <div id="analytics" className="section fade-in space-y-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          Analisis Lanjutan
-        </h2>
-        <p className="text-gray-600">
-          Wawasan mendalam tentang perilaku pengguna dan kinerja chatbot
-        </p>
+      <div className="page-intro">
+        <div>
+          <p className="page-eyebrow">Pemantauan layanan</p>
+          <h1>Analisis Lanjutan</h1>
+          <p>Wawasan mendalam tentang perilaku pengguna dan kinerja chatbot</p>
+        </div>
       </div>
 
-      {error && (
-        <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg">
-          Failed to load analytics data: {error}
-        </div>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className="bg-surface p-6 rounded-xl shadow-sm border border-line">
+          <h3 className="text-lg font-semibold text-ink mb-4">
             Tren Penggunaan
           </h3>
           <div className="h-64">
@@ -173,22 +171,20 @@ export default function Analytics() {
         {loading ? (
           <SkeletonCard />
         ) : (
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="bg-surface p-6 rounded-xl shadow-sm border border-line">
+            <h3 className="text-lg font-semibold text-ink mb-4">
               Analisis Waktu Respons
             </h3>
             <div className="text-center mb-4">
-              <div className="text-3xl font-bold text-blue-600">
+              <div className="text-3xl font-bold text-accent">
                 {formatAverageTime(analyticsData.responseTime.average)}
               </div>
-              <div className="text-sm text-gray-600">
-                Waktu Respons Rata-rata
-              </div>
+              <div className="text-sm text-muted">Waktu Respons Rata-rata</div>
             </div>
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">&lt; 2 detik</span>
-                <div className="flex-1 mx-3 bg-gray-200 rounded-full h-2">
+                <span className="text-sm text-muted">&lt; 2 detik</span>
+                <div className="flex-1 mx-3 bg-hover rounded-full h-2">
                   <div
                     className="bg-green-500 h-2 rounded-full"
                     style={{
@@ -196,13 +192,13 @@ export default function Analytics() {
                     }}
                   ></div>
                 </div>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-muted">
                   {analyticsData.responseTime.distribution.fast}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">2 - 5 detik</span>
-                <div className="flex-1 mx-3 bg-gray-200 rounded-full h-2">
+                <span className="text-sm text-muted">2 - 5 detik</span>
+                <div className="flex-1 mx-3 bg-hover rounded-full h-2">
                   <div
                     className="bg-blue-500 h-2 rounded-full"
                     style={{
@@ -210,13 +206,13 @@ export default function Analytics() {
                     }}
                   ></div>
                 </div>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-muted">
                   {analyticsData.responseTime.distribution.medium}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">&gt; 5 detik</span>
-                <div className="flex-1 mx-3 bg-gray-200 rounded-full h-2">
+                <span className="text-sm text-muted">&gt; 5 detik</span>
+                <div className="flex-1 mx-3 bg-hover rounded-full h-2">
                   <div
                     className="bg-yellow-500 h-2 rounded-full"
                     style={{
@@ -224,7 +220,7 @@ export default function Analytics() {
                     }}
                   ></div>
                 </div>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-muted">
                   {analyticsData.responseTime.distribution.slow}%
                 </span>
               </div>
@@ -236,17 +232,16 @@ export default function Analytics() {
       {loading ? (
         <SkeletonCard className="h-36" />
       ) : (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className="bg-surface p-6 rounded-xl shadow-sm border border-line mb-6">
+          <h3 className="text-lg font-semibold text-ink mb-4">
             Kata Kunci dan Topik Teratas
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {analyticsData.topKeywords.map((item, index) => (
+            {analyticsData.topKeywords.map((item) => (
               <KeywordTag
                 key={item.keyword}
                 keyword={item.keyword}
                 count={item.count}
-                color={keywordColors[index % keywordColors.length]}
               />
             ))}
           </div>
@@ -262,28 +257,24 @@ export default function Analytics() {
           </>
         ) : (
           <>
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h4 className="font-semibold text-gray-900 mb-3">
+            <div className="bg-surface p-6 rounded-xl shadow-sm border border-line">
+              <h4 className="font-semibold text-ink mb-3">
                 Tingkat Keberhasilan Pengambilan Kembali
               </h4>
               <div className="text-center">
                 <div className="text-4xl font-bold text-green-600 mb-2">
                   {analyticsData.retrievalSuccessRate}%
                 </div>
-                <div className="text-sm text-gray-600">
-                  Data berhasil diambil
-                </div>
+                <div className="text-sm text-muted">Data berhasil diambil</div>
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h4 className="font-semibold text-gray-900 mb-3">Cakupan Data</h4>
+            <div className="bg-surface p-6 rounded-xl shadow-sm border border-line">
+              <h4 className="font-semibold text-ink mb-3">Cakupan Data</h4>
               <div className="space-y-2">
                 {analyticsData.dataCoverage.map((item) => (
                   <div key={item.year} className="flex justify-between">
-                    <span className="text-sm text-gray-600">
-                      {item.year} Data
-                    </span>
+                    <span className="text-sm text-muted">{item.year} Data</span>
                     <span className="text-sm font-medium">
                       {item.coverage}%
                     </span>
@@ -292,28 +283,24 @@ export default function Analytics() {
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h4 className="font-semibold text-gray-900 mb-3">
-                Kinerja Layanan
-              </h4>
+            <div className="bg-surface p-6 rounded-xl shadow-sm border border-line">
+              <h4 className="font-semibold text-ink mb-3">Kinerja Layanan</h4>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Waktu aktif</span>
+                  <span className="text-sm text-muted">Waktu aktif</span>
                   <span className="text-sm font-medium text-green-600">
                     {analyticsData.servicePerformance.uptime}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Ketepatan</span>
-                  <span className="text-sm font-medium text-blue-600">
+                  <span className="text-sm text-muted">Ketepatan</span>
+                  <span className="text-sm font-medium text-accent">
                     {analyticsData.servicePerformance.accuracy}%
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">
-                    Kepuasan Pengguna
-                  </span>
-                  <span className="text-sm font-medium text-purple-600">
+                  <span className="text-sm text-muted">Kepuasan Pengguna</span>
+                  <span className="text-sm font-medium text-accent">
                     {analyticsData.servicePerformance.userSatisfaction}/5
                   </span>
                 </div>

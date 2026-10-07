@@ -1,31 +1,23 @@
-import React from "react";
-import { Line, Bar, Doughnut } from "react-chartjs-2";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Tooltip,
-  Legend
-} from "chart.js";
-
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend);
+import "../../lib/chartTheme";
 
 export const ChartSkeleton = () => (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 animate-pulse">
-        <div className="h-5 bg-gray-200 rounded w-1/3 mb-4"></div>
-        <div className="h-48 bg-gray-300 rounded"></div>
-    </div>
+  <div className="chart-panel animate-pulse" aria-label="Memuat grafik">
+    <div className="h-4 bg-hover rounded w-1/2 mb-6" />
+    <div className="h-[245px] bg-subtle rounded" />
+  </div>
 );
 
-export default function ChartCard({ title, children }) {
+export default function ChartCard({ title, children, isRound = false }) {
   return (
-    <div className="chart-container p-6 rounded-xl shadow-sm bg-white border border-gray-200">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
-      {children}
-    </div>
+    <section className="chart-panel">
+      <h3>{title}</h3>
+      <div
+        className={`chart-panel-plot ${isRound ? "is-round" : ""}`}
+        role="img"
+        aria-label={title}
+      >
+        {children}
+      </div>
+    </section>
   );
 }

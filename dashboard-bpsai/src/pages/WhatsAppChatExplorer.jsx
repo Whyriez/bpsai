@@ -152,31 +152,27 @@ const InfoCircleIcon = ({ className = "w-5 h-5" }) => (
 
 // Consistent avatar colors based on string
 const getAvatarBg = (str = "") => {
-  const gradients = [
-    "from-emerald-500 to-teal-700 text-white",
-    "from-blue-500 to-indigo-700 text-white",
-    "from-violet-500 to-purple-700 text-white",
-    "from-teal-500 to-cyan-700 text-white",
-    "from-sky-500 to-blue-700 text-white",
-    "from-amber-500 to-orange-700 text-white",
-    "from-rose-500 to-pink-700 text-white",
-    "from-emerald-600 to-green-800 text-white",
+  const colors = [
+    "bg-brand text-white",
+    "bg-indigo-600 text-white",
+    "bg-emerald-600 text-white",
+    "bg-slate-600 text-white",
   ];
   let hash = 0;
   for (let i = 0; i < str.length; i++) hash += str.charCodeAt(i);
-  return gradients[Math.abs(hash) % gradients.length];
+  return colors[Math.abs(hash) % colors.length];
 };
 
 // Distinct participant name colors in group chats
 const getParticipantColor = (str = "") => {
   const colors = [
     "text-emerald-700",
-    "text-blue-700",
+    "text-accent",
     "text-amber-700",
-    "text-purple-700",
+    "text-accent",
     "text-rose-700",
     "text-teal-700",
-    "text-indigo-700",
+    "text-accent",
     "text-orange-700",
   ];
   let hash = 0;
@@ -597,7 +593,7 @@ export default function WhatsAppChatExplorer() {
             href={part}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 font-medium underline hover:text-blue-800 break-all inline-flex items-center gap-0.5"
+            className="text-accent font-medium underline hover:text-accent break-all inline-flex items-center gap-0.5"
             onClick={(e) => e.stopPropagation()}
           >
             <span>{part}</span>
@@ -612,12 +608,12 @@ export default function WhatsAppChatExplorer() {
   const renderMessageGroups = () => {
     if (!activeChatDetail?.messages || activeChatDetail.messages.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center h-full min-h-[350px] text-gray-400 text-sm">
+        <div className="flex flex-col items-center justify-center h-full min-h-[350px] text-faint text-sm">
           <div className="w-16 h-16 rounded-full bg-emerald-100/60 flex items-center justify-center mb-3 shadow-inner">
             <WhatsAppIcon className="w-8 h-8 text-emerald-600 opacity-80" />
           </div>
-          <p className="font-semibold text-gray-700">Belum Ada Riwayat Pesan</p>
-          <p className="text-xs text-gray-400 mt-1 max-w-xs text-center">
+          <p className="font-semibold text-ink">Belum Ada Riwayat Pesan</p>
+          <p className="text-xs text-faint mt-1 max-w-xs text-center">
             Pesan yang masuk atau keluar dengan kontak ini akan otomatis
             tersinkronisasi di sini.
           </p>
@@ -649,7 +645,7 @@ export default function WhatsAppChatExplorer() {
       <div key={`grp-${gIdx}`} className="space-y-2">
         {/* Date Divider (WhatsApp Web Style) */}
         <div className="flex justify-center my-3.5 sticky top-2 z-10">
-          <span className="bg-white/95 backdrop-blur-md shadow-xs border border-gray-200/70 text-gray-600 text-[11px] font-semibold px-3 py-1 rounded-lg uppercase tracking-wider">
+          <span className="bg-surface/95 backdrop-blur-md shadow-xs border border-line/70 text-muted text-[11px] font-semibold px-3 py-1 rounded-lg uppercase tracking-wider">
             {grp.date}
           </span>
         </div>
@@ -665,8 +661,8 @@ export default function WhatsAppChatExplorer() {
               <div
                 className={`max-w-[85%] md:max-w-[70%] lg:max-w-[62%] px-3.5 py-2 text-sm shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] relative transition-all ${
                   isOut
-                    ? "bg-[#d9fdd3] text-gray-900 rounded-2xl rounded-tr-xs border border-emerald-200/40"
-                    : "bg-white text-gray-900 rounded-2xl rounded-tl-xs border border-gray-200/60"
+                    ? "bg-accent-soft text-ink rounded-2xl rounded-tr-xs border border-emerald-200/40"
+                    : "bg-surface text-ink rounded-2xl rounded-tl-xs border border-line/60"
                 }`}
               >
                 {/* Sender Name in Group */}
@@ -680,7 +676,7 @@ export default function WhatsAppChatExplorer() {
                       {m.pushName || "Peserta"}
                     </span>
                     {m.participant && (
-                      <span className="text-[10px] text-gray-400 font-mono font-normal">
+                      <span className="text-[10px] text-faint font-mono font-normal">
                         {m.participant.split("@")[0]}
                       </span>
                     )}
@@ -694,10 +690,10 @@ export default function WhatsAppChatExplorer() {
                       <MediaIcon className="w-4 h-4" />
                     </div>
                     <div>
-                      <p className="font-semibold text-gray-800 text-xs">
+                      <p className="font-semibold text-ink text-xs">
                         Foto / Gambar
                       </p>
-                      <p className="text-[11px] text-gray-500 font-mono">
+                      <p className="text-[11px] text-muted font-mono">
                         {m.mediaInfo?.mimetype || "image/jpeg"}
                       </p>
                     </div>
@@ -705,15 +701,15 @@ export default function WhatsAppChatExplorer() {
                 )}
 
                 {m.type === "document" && (
-                  <div className="mb-2 p-2.5 bg-blue-50/90 rounded-xl border border-blue-200 flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                  <div className="mb-2 p-2.5 bg-accent-soft/90 rounded-xl border border-blue-200 flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-accent-soft text-accent flex items-center justify-center shrink-0">
                       <DocumentIcon className="w-4 h-4" />
                     </div>
                     <div className="overflow-hidden">
                       <p className="font-semibold text-blue-950 text-xs truncate">
                         {m.text || m.mediaInfo?.fileName || "Dokumen File"}
                       </p>
-                      <p className="text-[11px] text-blue-600 font-mono">
+                      <p className="text-[11px] text-accent font-mono">
                         {m.mediaInfo?.mimetype || "application/pdf"}
                       </p>
                     </div>
@@ -721,8 +717,8 @@ export default function WhatsAppChatExplorer() {
                 )}
 
                 {m.type === "audio" && (
-                  <div className="mb-2 p-2.5 bg-purple-50/90 rounded-xl border border-purple-200 flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 text-sm">
+                  <div className="mb-2 p-2.5 bg-accent-soft/90 rounded-xl border border-purple-200 flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-accent-soft text-accent flex items-center justify-center shrink-0 text-sm">
                       🎙️
                     </div>
                     <div>
@@ -730,7 +726,7 @@ export default function WhatsAppChatExplorer() {
                         Pesan Suara / Audio
                       </p>
                       {m.mediaInfo?.seconds && (
-                        <p className="text-[11px] text-purple-600 font-mono">
+                        <p className="text-[11px] text-accent font-mono">
                           {m.mediaInfo.seconds} detik
                         </p>
                       )}
@@ -740,18 +736,18 @@ export default function WhatsAppChatExplorer() {
 
                 {/* Text Content with Clickable URLs */}
                 {m.text && m.type !== "document" ? (
-                  <p className="whitespace-pre-wrap leading-relaxed break-words text-[13.5px] text-gray-800">
+                  <p className="whitespace-pre-wrap leading-relaxed break-words text-[13.5px] text-ink">
                     {renderTextWithLinks(m.text)}
                   </p>
                 ) : !m.text && !m.mediaInfo ? (
-                  <p className="text-[12px] italic text-gray-500 flex items-center gap-1.5 py-0.5">
-                    <span className="text-gray-400">🔒</span>
+                  <p className="text-[12px] italic text-muted flex items-center gap-1.5 py-0.5">
+                    <span className="text-faint">🔒</span>
                     <span>Pesan terenkripsi end-to-end</span>
                   </p>
                 ) : null}
 
                 {/* Timestamp & Status (Bottom right) */}
-                <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-gray-400 font-medium">
+                <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-faint font-medium">
                   <span>{formatTime(m.timestamp)}</span>
                   {isOut && (
                     <CheckDoubleIcon className="text-sky-500 w-3.5 h-3.5 inline-block" />
@@ -767,26 +763,26 @@ export default function WhatsAppChatExplorer() {
 
   return (
     // Outer Container: 100% fit in to parent viewport, zero outer scroll!
-    <div className="w-full h-full flex overflow-hidden bg-[#efeae2] select-none text-gray-800">
+    <div className="w-full h-full flex overflow-hidden bg-canvas  text-ink">
       {/* ======================================================== */}
       {/* COLUMN 1: LEFT SIDEBAR (CHATS LIST) — Proportional Width */}
       {/* ======================================================== */}
       <div
         className={`${
           activeChatId ? "hidden md:flex" : "flex"
-        } w-full md:w-[320px] lg:w-[360px] xl:w-[380px] shrink-0 flex-col bg-white border-r border-gray-200 h-full z-10`}
+        } w-full md:w-[320px] lg:w-[360px] xl:w-[380px] shrink-0 flex-col bg-surface border-r border-line h-full z-10`}
       >
         {/* Sidebar Header (WhatsApp Web Style) */}
-        <div className="h-16 px-4 bg-[#f0f2f5] border-b border-gray-200 flex items-center justify-between gap-3 shrink-0">
+        <div className="h-16 px-4 bg-subtle border-b border-line flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#00a884] to-emerald-400 flex items-center justify-center text-white shadow-xs shrink-0 ring-2 ring-emerald-500/20">
+            <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-white shadow-xs shrink-0 ring-2 ring-emerald-500/20">
               <WhatsAppIcon className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-gray-900 leading-tight truncate">
+              <h1 className="text-sm font-bold text-ink leading-tight truncate">
                 WhatsApp SIGAP
               </h1>
-              <p className="text-[11px] text-gray-500 font-medium flex items-center gap-1 truncate">
+              <p className="text-[11px] text-muted font-medium flex items-center gap-1 truncate">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
                 <span>BPS Gorontalo</span>
               </p>
@@ -795,14 +791,14 @@ export default function WhatsAppChatExplorer() {
 
           {/* Mode Switcher & Actions */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <div className="bg-gray-200/90 p-0.5 rounded-lg flex text-[11px] font-semibold">
+            <div className="bg-hover/90 p-0.5 rounded-lg flex text-[11px] font-semibold">
               <button
                 type="button"
                 onClick={() => setSourceMode("live")}
                 className={`px-2.5 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
                   sourceMode === "live"
-                    ? "bg-white text-emerald-700 shadow-xs font-bold"
-                    : "text-gray-600 hover:text-gray-900"
+                    ? "bg-surface text-emerald-700 shadow-xs font-bold"
+                    : "text-muted hover:text-ink"
                 }`}
                 title="Penyimpanan pesan real-time dari WhatsApp Gateway"
               >
@@ -814,12 +810,11 @@ export default function WhatsAppChatExplorer() {
                 onClick={() => setSourceMode("backup")}
                 className={`px-2.5 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
                   sourceMode === "backup"
-                    ? "bg-white text-blue-700 shadow-xs font-bold"
-                    : "text-gray-600 hover:text-gray-900"
+                    ? "bg-surface text-accent shadow-xs font-bold"
+                    : "text-muted hover:text-ink"
                 }`}
                 title="Telusuri arsip berkas backup ZIP"
               >
-                <span>📦</span>
                 <span>ZIP</span>
               </button>
             </div>
@@ -830,7 +825,7 @@ export default function WhatsAppChatExplorer() {
                 sourceMode === "live" ? fetchLiveChats() : fetchBackupList()
               }
               disabled={isLoadingChats}
-              className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-200/80 rounded-full transition-colors cursor-pointer"
+              className="p-1.5 text-muted hover:text-ink hover:bg-hover/80 rounded-full transition-colors cursor-pointer"
               title="Segarkan daftar obrolan"
             >
               <RefreshIcon
@@ -842,15 +837,15 @@ export default function WhatsAppChatExplorer() {
 
         {/* If in Backup Mode, show ZIP selector bar */}
         {sourceMode === "backup" && (
-          <div className="px-3.5 py-2.5 bg-blue-50/90 border-b border-blue-200/80 flex items-center justify-between gap-2 shrink-0">
-            <span className="text-[11px] font-bold text-blue-900 shrink-0">
+          <div className="px-3.5 py-2.5 bg-accent-soft/90 border-b border-blue-200/80 flex items-center justify-between gap-2 shrink-0">
+            <span className="text-[11px] font-bold text-accent shrink-0">
               Berkas ZIP:
             </span>
             {backupFiles.length > 0 ? (
               <select
                 value={selectedBackupFilename}
                 onChange={(e) => setSelectedBackupFilename(e.target.value)}
-                className="w-full text-xs bg-white border border-blue-300 rounded-lg px-2.5 py-1 font-mono text-gray-700 truncate shadow-2xs focus:ring-1 focus:ring-blue-500 focus:outline-hidden"
+                className="w-full text-xs bg-surface border border-blue-300 rounded-lg px-2.5 py-1 font-mono text-ink truncate shadow-2xs focus:ring-1 focus:ring-blue-500 focus:outline-hidden"
               >
                 {backupFiles.map((b) => (
                   <option key={b.filename} value={b.filename}>
@@ -859,7 +854,7 @@ export default function WhatsAppChatExplorer() {
                 ))}
               </select>
             ) : (
-              <span className="text-[11px] text-gray-500 italic">
+              <span className="text-[11px] text-muted italic">
                 Tidak ada file backup
               </span>
             )}
@@ -867,7 +862,7 @@ export default function WhatsAppChatExplorer() {
         )}
 
         {/* Search Bar & Action Header */}
-        <div className="p-3 bg-white border-b border-gray-100 space-y-2.5 shrink-0">
+        <div className="p-3 bg-surface border-b border-line space-y-2.5 shrink-0">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <input
@@ -875,14 +870,14 @@ export default function WhatsAppChatExplorer() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Cari obrolan atau nomor HP..."
-                className="w-full pl-9 pr-7 py-2 text-xs bg-[#f0f2f5] border border-transparent rounded-lg text-gray-900 placeholder-gray-500 focus:outline-hidden focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                className="w-full pl-9 pr-7 py-2 text-xs bg-subtle border border-transparent rounded-lg text-ink placeholder-gray-500 focus:outline-hidden focus:bg-surface focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
               />
-              <SearchIcon className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+              <SearchIcon className="w-4 h-4 text-faint absolute left-3 top-2.5" />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                  className="absolute right-2.5 top-2 text-faint hover:text-muted text-xs font-bold"
                 >
                   ✕
                 </button>
@@ -893,7 +888,7 @@ export default function WhatsAppChatExplorer() {
               <button
                 type="button"
                 onClick={() => setShowNewChatModal(true)}
-                className="px-3 py-2 bg-[#00a884] hover:bg-[#008f6f] text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
+                className="px-3 py-2 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
                 title="Mulai percakapan baru ke nomor tujuan"
               >
                 <span className="text-sm leading-none">+</span>
@@ -928,16 +923,16 @@ export default function WhatsAppChatExplorer() {
                 onClick={() => setChatTypeFilter(f.id)}
                 className={`px-3 py-1 rounded-full font-medium transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                   chatTypeFilter === f.id
-                    ? "bg-[#00a884] text-white shadow-xs font-semibold"
-                    : "bg-[#f0f2f5] text-gray-600 hover:bg-gray-200/80 hover:text-gray-900"
+                    ? "bg-brand text-white shadow-xs font-semibold"
+                    : "bg-subtle text-muted hover:bg-hover/80 hover:text-ink"
                 }`}
               >
                 <span>{f.label}</span>
                 <span
                   className={`text-[9px] px-1.5 py-0.2 rounded-full ${
                     chatTypeFilter === f.id
-                      ? "bg-white/20 text-white font-bold"
-                      : "bg-gray-200/90 text-gray-700 font-semibold"
+                      ? "bg-surface/20 text-white font-bold"
+                      : "bg-hover/90 text-ink font-semibold"
                   }`}
                 >
                   {f.count}
@@ -948,23 +943,23 @@ export default function WhatsAppChatExplorer() {
         </div>
 
         {/* Chats List (Scrollable) */}
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-100 bg-white">
+        <div className="flex-1 overflow-y-auto divide-y divide-line bg-surface">
           {isLoadingChats ? (
-            <div className="p-10 text-center text-gray-400 text-xs flex flex-col items-center">
+            <div className="p-10 text-center text-faint text-xs flex flex-col items-center">
               <RefreshIcon className="w-7 h-7 animate-spin text-[#00a884] mb-2.5" />
-              <p className="font-semibold text-gray-600">
+              <p className="font-semibold text-muted">
                 Memuat daftar obrolan...
               </p>
             </div>
           ) : filteredChats.length === 0 ? (
-            <div className="p-10 text-center text-gray-400 text-xs space-y-1.5">
-              <div className="w-12 h-12 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center mx-auto mb-2 text-xl">
+            <div className="p-10 text-center text-faint text-xs space-y-1.5">
+              <div className="w-12 h-12 rounded-full bg-subtle text-faint flex items-center justify-center mx-auto mb-2 text-xl">
                 💬
               </div>
-              <p className="font-semibold text-gray-700">
+              <p className="font-semibold text-ink">
                 Tidak ada obrolan ditemukan
               </p>
-              <p className="text-[11px] text-gray-400">
+              <p className="text-[11px] text-faint">
                 {searchQuery
                   ? "Coba gunakan kata kunci pencarian lain"
                   : "Belum ada riwayat pesan terekam"}
@@ -983,25 +978,25 @@ export default function WhatsAppChatExplorer() {
                   onClick={() => setActiveChatId(chat.id)}
                   className={`w-full text-left px-3.5 py-3 flex items-center gap-3 transition-colors cursor-pointer border-l-4 ${
                     isActive
-                      ? "bg-[#f0f2f5] border-[#00a884]"
-                      : "hover:bg-[#f5f6f6] border-transparent"
+                      ? "bg-subtle border-accent"
+                      : "hover:bg-subtle border-transparent"
                   }`}
                 >
                   {/* WhatsApp Style Avatar */}
                   <div className="relative shrink-0">
                     <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-base shadow-xs bg-gradient-to-tr ${
+                      className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-base shadow-xs ${
                         isGroup
-                          ? "from-blue-500 to-indigo-600 text-white"
+                          ? "bg-brand text-white"
                           : isChannel
-                            ? "from-purple-500 to-indigo-700 text-white"
+                            ? "bg-indigo-600 text-white"
                             : getAvatarBg(chat.name || chat.id)
                       }`}
                     >
                       {isGroup
-                        ? "👥"
+                        ? "G"
                         : isChannel
-                          ? "📢"
+                          ? "K"
                           : (chat.name || "U")[0]?.toUpperCase()}
                     </div>
                   </div>
@@ -1010,17 +1005,17 @@ export default function WhatsAppChatExplorer() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1 mb-1">
                       <h3
-                        className={`text-sm truncate ${isActive ? "font-bold text-gray-950" : "font-semibold text-gray-900"}`}
+                        className={`text-sm truncate ${isActive ? "font-bold text-ink" : "font-semibold text-ink"}`}
                       >
                         {chat.name}
                       </h3>
-                      <span className="text-[11px] text-gray-400 font-normal shrink-0">
+                      <span className="text-[11px] text-faint font-normal shrink-0">
                         {formatTime(chat.last_message?.timestamp)}
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs text-gray-500 truncate flex-1 flex items-center gap-1">
+                      <p className="text-xs text-muted truncate flex-1 flex items-center gap-1">
                         {chat.last_message?.fromMe && (
                           <CheckDoubleIcon className="w-3.5 h-3.5 text-sky-500 shrink-0" />
                         )}
@@ -1033,7 +1028,7 @@ export default function WhatsAppChatExplorer() {
                       </p>
 
                       {chat.message_count > 0 && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-subtle text-muted border border-line">
                           {chat.message_count}
                         </span>
                       )}
@@ -1046,10 +1041,9 @@ export default function WhatsAppChatExplorer() {
         </div>
 
         {/* Sidebar Status Footer */}
-        <div className="h-11 px-4 bg-[#f0f2f5] border-t border-gray-200 text-xs text-gray-600 flex items-center justify-between shrink-0">
-          <span className="font-medium text-[11px] text-gray-500">
-            💬{" "}
-            <span className="font-bold text-gray-700">
+        <div className="h-11 px-4 bg-subtle border-t border-line text-xs text-muted flex items-center justify-between shrink-0">
+          <span className="font-medium text-[11px] text-muted">
+            <span className="font-bold text-ink">
               {stats?.total_messages || stats?.totalMessages || 0}
             </span>{" "}
             pesan tersimpan
@@ -1058,7 +1052,7 @@ export default function WhatsAppChatExplorer() {
             to="/manajemen-dokumen"
             className="text-[11px] text-emerald-700 font-semibold hover:underline flex items-center gap-1"
           >
-            <span>⚙️ Pengaturan WA</span>
+            <span>Pengaturan WA</span>
           </Link>
         </div>
       </div>
@@ -1069,50 +1063,50 @@ export default function WhatsAppChatExplorer() {
       <div
         className={`${
           activeChatId ? "flex" : "hidden md:flex"
-        } flex-1 min-w-0 flex-col h-full bg-[#efeae2] relative overflow-hidden`}
+        } flex-1 min-w-0 flex-col h-full bg-canvas relative overflow-hidden`}
       >
         {activeChat ? (
           <>
             {/* Active Chat Header */}
-            <div className="h-16 px-4 md:px-6 bg-[#f0f2f5] border-b border-gray-200 flex items-center justify-between gap-3 shrink-0 z-10 shadow-xs">
+            <div className="h-16 px-4 md:px-6 bg-subtle border-b border-line flex items-center justify-between gap-3 shrink-0 z-10 shadow-xs">
               <div className="flex items-center gap-3 min-w-0">
                 {/* Back button on mobile */}
                 <button
                   type="button"
                   onClick={() => setActiveChatId(null)}
-                  className="md:hidden p-1.5 -ml-1 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-200 cursor-pointer"
+                  className="md:hidden p-1.5 -ml-1 text-muted hover:text-ink rounded-full hover:bg-hover cursor-pointer"
                   title="Kembali ke daftar obrolan"
                 >
                   <ArrowLeftIcon className="w-5 h-5" />
                 </button>
 
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shadow-xs shrink-0 bg-gradient-to-tr ${
+                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shadow-xs shrink-0 ${
                     activeChat.is_group
-                      ? "from-blue-500 to-indigo-600 text-white"
+                      ? "bg-brand text-white"
                       : activeChat.is_channel
-                        ? "from-purple-500 to-indigo-700 text-white"
+                        ? "bg-indigo-600 text-white"
                         : getAvatarBg(activeChat.name || activeChat.id)
                   }`}
                 >
                   {activeChat.is_group
-                    ? "👥"
+                    ? "G"
                     : activeChat.is_channel
-                      ? "📢"
+                      ? "K"
                       : (activeChat.name || "U")[0]?.toUpperCase()}
                 </div>
 
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h2 className="font-bold text-gray-900 text-sm md:text-base truncate leading-snug">
+                    <h2 className="font-bold text-ink text-sm md:text-base truncate leading-snug">
                       {activeChat.name}
                     </h2>
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
                         activeChat.is_group
-                          ? "bg-blue-100 text-blue-800"
+                          ? "bg-accent-soft text-accent"
                           : activeChat.is_channel
-                            ? "bg-purple-100 text-purple-800"
+                            ? "bg-accent-soft text-accent"
                             : "bg-emerald-100 text-emerald-800"
                       }`}
                     >
@@ -1124,7 +1118,7 @@ export default function WhatsAppChatExplorer() {
                     </span>
                   </div>
 
-                  <p className="text-xs text-gray-500 font-mono truncate">
+                  <p className="text-xs text-muted font-mono truncate">
                     {activeChat.phone || activeChat.id}
                   </p>
                 </div>
@@ -1140,10 +1134,10 @@ export default function WhatsAppChatExplorer() {
                       "Nomor HP",
                     )
                   }
-                  className="px-2.5 md:px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-2.5 md:px-3 py-1.5 text-xs font-semibold text-ink bg-surface hover:bg-subtle border border-line-strong rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
                   title="Salin nomor kontak"
                 >
-                  <CopyIcon className="w-3.5 h-3.5 text-gray-500" />
+                  <CopyIcon className="w-3.5 h-3.5 text-muted" />
                   <span className="hidden sm:inline">Salin Nomor</span>
                 </button>
 
@@ -1165,8 +1159,8 @@ export default function WhatsAppChatExplorer() {
                   onClick={() => setShowRightPanel(!showRightPanel)}
                   className={`px-2.5 md:px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
                     showRightPanel
-                      ? "bg-[#00a884] text-white border-[#00a884] shadow-xs"
-                      : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100 shadow-2xs"
+                      ? "bg-brand text-white border-accent shadow-xs"
+                      : "bg-surface text-ink border-line-strong hover:bg-subtle shadow-2xs"
                   }`}
                   title="Tampilkan panel media, tautan, dan anggota"
                 >
@@ -1180,14 +1174,14 @@ export default function WhatsAppChatExplorer() {
             <div
               className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3"
               style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23000000' fill-opacity='0.035' fill-rule='evenodd'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E")`,
+                backgroundImage: "none",
                 backgroundSize: "40px 40px",
               }}
             >
               {isLoadingDetail ? (
-                <div className="flex flex-col items-center justify-center h-full min-h-[350px] text-gray-400 text-xs">
+                <div className="flex flex-col items-center justify-center h-full min-h-[350px] text-faint text-xs">
                   <RefreshIcon className="w-8 h-8 animate-spin text-[#00a884] mb-3" />
-                  <p className="text-sm font-semibold text-gray-700">
+                  <p className="text-sm font-semibold text-ink">
                     Memuat riwayat percakapan...
                   </p>
                 </div>
@@ -1200,12 +1194,12 @@ export default function WhatsAppChatExplorer() {
             </div>
 
             {/* Bottom Chat Input Bar */}
-            <div className="p-3 md:px-6 bg-[#f0f2f5] border-t border-gray-200 shrink-0">
+            <div className="p-3 md:px-6 bg-subtle border-t border-line shrink-0">
               {sourceMode === "live" ? (
                 <form onSubmit={handleSendReply} className="space-y-2">
                   {/* Canned Quick Templates */}
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs text-gray-600 no-scrollbar">
-                    <span className="text-[11px] font-bold text-gray-400 shrink-0">
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs text-muted no-scrollbar">
+                    <span className="text-[11px] font-bold text-faint shrink-0">
                       Templat Cepat:
                     </span>
                     {[
@@ -1217,7 +1211,7 @@ export default function WhatsAppChatExplorer() {
                         key={idx}
                         type="button"
                         onClick={() => setReplyText(tmpl)}
-                        className="px-3 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-800 text-gray-700 border border-gray-300 whitespace-nowrap cursor-pointer transition-colors shadow-2xs font-medium"
+                        className="px-3 py-1 rounded-full bg-surface hover:bg-emerald-50 hover:text-emerald-800 text-ink border border-line-strong whitespace-nowrap cursor-pointer transition-colors shadow-2xs font-medium"
                       >
                         {tmpl.slice(0, 38)}...
                       </button>
@@ -1226,7 +1220,7 @@ export default function WhatsAppChatExplorer() {
 
                   {/* Input & Circular Send Button */}
                   <div className="flex items-end gap-2.5">
-                    <div className="flex-1 bg-white rounded-2xl border border-gray-300 shadow-2xs focus-within:ring-2 focus-within:ring-[#00a884] focus-within:border-transparent transition-all">
+                    <div className="flex-1 bg-surface rounded-2xl border border-line-strong shadow-2xs focus-within:ring-2 focus-within:ring-[#00a884] focus-within:border-transparent transition-all">
                       <textarea
                         rows={1}
                         value={replyText}
@@ -1238,7 +1232,7 @@ export default function WhatsAppChatExplorer() {
                           }
                         }}
                         placeholder={`Ketik pesan balasan untuk ${activeChat.name} (Tekan Enter untuk kirim)...`}
-                        className="w-full px-4 py-2.5 text-sm bg-transparent border-none resize-none focus:outline-hidden text-gray-900 placeholder-gray-500"
+                        className="w-full px-4 py-2.5 text-sm bg-transparent border-none resize-none focus:outline-hidden text-ink placeholder-gray-500"
                         style={{ minHeight: "44px", maxHeight: "120px" }}
                       />
                     </div>
@@ -1246,7 +1240,7 @@ export default function WhatsAppChatExplorer() {
                     <button
                       type="submit"
                       disabled={!replyText.trim() || isSendingReply}
-                      className="w-11 h-11 bg-[#00a884] hover:bg-[#008f6f] disabled:opacity-50 text-white rounded-full flex items-center justify-center shadow-md transition-transform hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                      className="w-11 h-11 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-full flex items-center justify-center shadow-md transition-transform cursor-pointer shrink-0"
                       title="Kirim pesan melalui WhatsApp Gateway"
                     >
                       {isSendingReply ? (
@@ -1258,12 +1252,12 @@ export default function WhatsAppChatExplorer() {
                   </div>
                 </form>
               ) : (
-                <div className="p-3 bg-white rounded-xl border border-blue-200 shadow-xs flex items-center justify-between gap-4 text-xs text-blue-900">
+                <div className="p-3 bg-surface rounded-xl border border-blue-200 shadow-xs flex items-center justify-between gap-4 text-xs text-accent">
                   <div>
                     <p className="font-bold text-sm">
                       Mode Pratinjau Backup (Read-Only)
                     </p>
-                    <p className="text-gray-600 mt-0.5">
+                    <p className="text-muted mt-0.5">
                       Anda sedang membaca arsip backup. Untuk membalas pesan ke
                       nomor kontak ini, silakan alihkan ke mode <b>Live</b>.
                     </p>
@@ -1271,7 +1265,7 @@ export default function WhatsAppChatExplorer() {
                   <button
                     type="button"
                     onClick={() => setSourceMode("live")}
-                    className="px-4 py-2 bg-[#00a884] text-white font-bold rounded-lg shadow-xs hover:bg-[#008f6f] transition-all shrink-0 cursor-pointer"
+                    className="px-4 py-2 bg-brand text-white font-bold rounded-lg shadow-xs hover:bg-brand-hover transition-all shrink-0 cursor-pointer"
                   >
                     Buka Mode Live
                   </button>
@@ -1280,19 +1274,19 @@ export default function WhatsAppChatExplorer() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-400">
-            <div className="w-20 h-20 rounded-full bg-white shadow-md flex items-center justify-center mb-4 ring-8 ring-emerald-500/10">
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-faint">
+            <div className="w-20 h-20 rounded-full bg-surface shadow-md flex items-center justify-center mb-4 ring-8 ring-emerald-500/10">
               <WhatsAppIcon className="w-12 h-12 text-[#00a884]" />
             </div>
-            <h2 className="text-xl font-bold text-gray-800 mb-1.5">
+            <h2 className="text-xl font-bold text-ink mb-1.5">
               WhatsApp Web Explorer SIGAP
             </h2>
-            <p className="text-sm text-gray-500 max-w-md leading-relaxed">
+            <p className="text-sm text-muted max-w-md leading-relaxed">
               Pilih salah satu percakapan di kolom kiri untuk membaca riwayat
               chat, melihat berkas foto, dokumen, tautan, dan daftar peserta
               obrolan.
             </p>
-            <div className="mt-6 flex items-center gap-1.5 text-xs text-gray-400 font-medium">
+            <div className="mt-6 flex items-center gap-1.5 text-xs text-faint font-medium">
               <span>🔒</span>
               <span>
                 Terkoneksi dengan WhatsApp Gateway Resmi BPS Gorontalo
@@ -1306,16 +1300,16 @@ export default function WhatsAppChatExplorer() {
       {/* COLUMN 3: RIGHT PANEL (MEDIA, LINKS, PARTICIPANTS)       */}
       {/* ======================================================== */}
       {showRightPanel && activeChatDetail && (
-        <div className="w-[300px] lg:w-[330px] shrink-0 flex flex-col bg-white border-l border-gray-200 h-full z-20 shadow-xl transition-all">
+        <div className="w-[300px] lg:w-[330px] shrink-0 flex flex-col bg-surface border-l border-line h-full z-20 shadow-xl transition-all">
           {/* Header */}
-          <div className="h-16 px-4 bg-[#f0f2f5] border-b border-gray-200 flex items-center justify-between shrink-0">
-            <h3 className="font-bold text-gray-900 text-sm">
+          <div className="h-16 px-4 bg-subtle border-b border-line flex items-center justify-between shrink-0">
+            <h3 className="font-bold text-ink text-sm">
               Info & Koleksi Obrolan
             </h3>
             <button
               type="button"
               onClick={() => setShowRightPanel(false)}
-              className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-200 rounded-full transition-colors cursor-pointer"
+              className="p-1.5 text-muted hover:text-ink hover:bg-hover rounded-full transition-colors cursor-pointer"
               title="Tutup panel info"
             >
               ✕
@@ -1323,43 +1317,43 @@ export default function WhatsAppChatExplorer() {
           </div>
 
           {/* Contact Card Summary */}
-          <div className="p-5 text-center border-b border-gray-100 bg-white shrink-0">
+          <div className="p-5 text-center border-b border-line bg-surface shrink-0">
             <div
-              className={`w-16 h-16 rounded-full font-bold text-xl flex items-center justify-center mx-auto mb-2.5 shadow-md bg-gradient-to-tr ${
+              className={`w-16 h-16 rounded-full font-bold text-xl flex items-center justify-center mx-auto mb-2.5 shadow-md ${
                 activeChatDetail.is_group
-                  ? "from-blue-500 to-indigo-600 text-white"
+                  ? "bg-brand text-white"
                   : activeChatDetail.is_channel
-                    ? "from-purple-500 to-indigo-700 text-white"
+                    ? "bg-indigo-600 text-white"
                     : getAvatarBg(activeChatDetail.name || activeChatDetail.id)
               }`}
             >
               {activeChatDetail.is_group
-                ? "👥"
+                ? "G"
                 : activeChatDetail.is_channel
-                  ? "📢"
+                  ? "K"
                   : (activeChatDetail.name || "U")[0]?.toUpperCase()}
             </div>
-            <h4 className="font-bold text-gray-900 text-sm truncate">
+            <h4 className="font-bold text-ink text-sm truncate">
               {activeChatDetail.name}
             </h4>
-            <p className="text-xs text-gray-500 font-mono mt-0.5 truncate">
+            <p className="text-xs text-muted font-mono mt-0.5 truncate">
               {activeChatDetail.phone || activeChatDetail.id}
             </p>
 
-            <div className="flex items-center justify-center gap-1.5 mt-3 text-xs text-gray-600">
-              <span className="bg-gray-100 px-2 py-0.5 rounded-full font-medium text-[11px]">
+            <div className="flex items-center justify-center gap-1.5 mt-3 text-xs text-muted">
+              <span className="bg-subtle px-2 py-0.5 rounded-full font-medium text-[11px]">
                 💬{" "}
                 {activeChatDetail.total_messages ||
                   activeChatDetail.messages?.length ||
                   0}
               </span>
-              <span className="bg-gray-100 px-2 py-0.5 rounded-full font-medium text-[11px]">
+              <span className="bg-subtle px-2 py-0.5 rounded-full font-medium text-[11px]">
                 🖼️{" "}
                 {activeChatDetail.total_media ||
                   activeChatDetail.media?.length ||
                   0}
               </span>
-              <span className="bg-gray-100 px-2 py-0.5 rounded-full font-medium text-[11px]">
+              <span className="bg-subtle px-2 py-0.5 rounded-full font-medium text-[11px]">
                 🔗{" "}
                 {activeChatDetail.total_links ||
                   activeChatDetail.links?.length ||
@@ -1369,14 +1363,14 @@ export default function WhatsAppChatExplorer() {
           </div>
 
           {/* Sub-Tabs: Media, Links, Participants */}
-          <div className="flex items-center border-b border-gray-200 text-xs font-semibold bg-[#f0f2f5] shrink-0">
+          <div className="flex items-center border-b border-line text-xs font-semibold bg-subtle shrink-0">
             <button
               type="button"
               onClick={() => setRightPanelTab("media")}
               className={`flex-1 py-2 text-center transition-all cursor-pointer border-b-2 ${
                 rightPanelTab === "media"
-                  ? "border-[#00a884] text-[#00a884] bg-white font-bold"
-                  : "border-transparent text-gray-500 hover:text-gray-900"
+                  ? "border-accent text-[#00a884] bg-surface font-bold"
+                  : "border-transparent text-muted hover:text-ink"
               }`}
             >
               Media ({activeChatDetail.media?.length || 0})
@@ -1386,8 +1380,8 @@ export default function WhatsAppChatExplorer() {
               onClick={() => setRightPanelTab("links")}
               className={`flex-1 py-2 text-center transition-all cursor-pointer border-b-2 ${
                 rightPanelTab === "links"
-                  ? "border-[#00a884] text-[#00a884] bg-white font-bold"
-                  : "border-transparent text-gray-500 hover:text-gray-900"
+                  ? "border-accent text-[#00a884] bg-surface font-bold"
+                  : "border-transparent text-muted hover:text-ink"
               }`}
             >
               Tautan ({activeChatDetail.links?.length || 0})
@@ -1398,8 +1392,8 @@ export default function WhatsAppChatExplorer() {
                 onClick={() => setRightPanelTab("participants")}
                 className={`flex-1 py-2 text-center transition-all cursor-pointer border-b-2 ${
                   rightPanelTab === "participants"
-                    ? "border-[#00a884] text-[#00a884] bg-white font-bold"
-                    : "border-transparent text-gray-500 hover:text-gray-900"
+                    ? "border-accent text-[#00a884] bg-surface font-bold"
+                    : "border-transparent text-muted hover:text-ink"
                 }`}
               >
                 Anggota ({activeChatDetail.participants?.length || 0})
@@ -1408,20 +1402,20 @@ export default function WhatsAppChatExplorer() {
           </div>
 
           {/* Tab Contents */}
-          <div className="flex-1 overflow-y-auto p-3.5 bg-gray-50/60">
+          <div className="flex-1 overflow-y-auto p-3.5 bg-subtle/60">
             {/* TAB 1: MEDIA */}
             {rightPanelTab === "media" && (
               <div className="space-y-2">
                 {!activeChatDetail.media ||
                 activeChatDetail.media.length === 0 ? (
-                  <p className="text-gray-400 text-xs text-center py-10">
+                  <p className="text-faint text-xs text-center py-10">
                     Belum ada foto atau berkas media.
                   </p>
                 ) : (
                   activeChatDetail.media.map((med, mIdx) => (
                     <div
                       key={med.id || mIdx}
-                      className="p-2.5 rounded-xl border border-gray-200 bg-white hover:border-[#00a884] transition-all flex items-start gap-2.5 shadow-2xs"
+                      className="p-2.5 rounded-xl border border-line bg-surface hover:border-accent transition-all flex items-start gap-2.5 shadow-2xs"
                     >
                       <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 text-sm">
                         {med.type === "image"
@@ -1431,12 +1425,12 @@ export default function WhatsAppChatExplorer() {
                             : "🎙️"}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 truncate">
+                        <p className="text-xs font-semibold text-ink truncate">
                           {med.caption ||
                             med.mediaInfo?.fileName ||
                             `Berkas ${med.type}`}
                         </p>
-                        <div className="flex items-center justify-between text-[10.5px] text-gray-400 mt-1">
+                        <div className="flex items-center justify-between text-[10.5px] text-faint mt-1">
                           <span className="truncate">{med.sender}</span>
                           <span className="shrink-0">
                             {formatTime(med.timestamp)}
@@ -1454,25 +1448,25 @@ export default function WhatsAppChatExplorer() {
               <div className="space-y-2">
                 {!activeChatDetail.links ||
                 activeChatDetail.links.length === 0 ? (
-                  <p className="text-gray-400 text-xs text-center py-10">
+                  <p className="text-faint text-xs text-center py-10">
                     Belum ada tautan dibagikan.
                   </p>
                 ) : (
                   activeChatDetail.links.map((lnk, lIdx) => (
                     <div
                       key={lIdx}
-                      className="p-2.5 rounded-xl border border-gray-200 hover:border-blue-400 bg-white transition-all shadow-2xs"
+                      className="p-2.5 rounded-xl border border-line hover:border-blue-400 bg-surface transition-all shadow-2xs"
                     >
                       <a
                         href={lnk.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 break-all inline-flex items-center gap-1"
+                        className="text-xs font-semibold text-accent hover:text-accent break-all inline-flex items-center gap-1"
                       >
                         <span>{lnk.url}</span>
                         <ExternalLinkIcon className="w-3.5 h-3.5 shrink-0" />
                       </a>
-                      <div className="flex items-center justify-between text-[10.5px] text-gray-400 mt-1.5">
+                      <div className="flex items-center justify-between text-[10.5px] text-faint mt-1.5">
                         <span className="truncate">{lnk.sender}</span>
                         <span className="shrink-0">
                           {formatTime(lnk.timestamp)}
@@ -1489,23 +1483,23 @@ export default function WhatsAppChatExplorer() {
               <div className="space-y-2">
                 {!activeChatDetail.participants ||
                 activeChatDetail.participants.length === 0 ? (
-                  <p className="text-gray-400 text-xs text-center py-10">
+                  <p className="text-faint text-xs text-center py-10">
                     Tidak ada data anggota.
                   </p>
                 ) : (
                   activeChatDetail.participants.map((p, pIdx) => (
                     <div
                       key={p.jid || pIdx}
-                      className="p-2.5 rounded-xl border border-gray-200 bg-white hover:border-[#00a884] transition-all flex items-center justify-between gap-2.5 shadow-2xs"
+                      className="p-2.5 rounded-xl border border-line bg-surface hover:border-accent transition-all flex items-center justify-between gap-2.5 shadow-2xs"
                     >
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-gray-900 truncate">
+                        <p className="text-xs font-bold text-ink truncate">
                           {p.name || p.phone}
                         </p>
-                        <p className="text-[11px] text-gray-500 font-mono truncate">
+                        <p className="text-[11px] text-muted font-mono truncate">
                           {p.phone}
                         </p>
-                        <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium mt-1 inline-block">
+                        <span className="text-[10px] bg-subtle text-muted px-2 py-0.5 rounded-full font-medium mt-1 inline-block">
                           {p.message_count || 0} pesan
                         </span>
                       </div>
@@ -1515,7 +1509,7 @@ export default function WhatsAppChatExplorer() {
                         onClick={() =>
                           handleCopy(p.raw_phone || p.phone, "Nomor Peserta")
                         }
-                        className="p-1.5 text-gray-400 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors cursor-pointer"
+                        className="p-1.5 text-faint hover:text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors cursor-pointer"
                         title="Salin nomor peserta"
                       >
                         <CopyIcon className="w-4 h-4" />
@@ -1532,17 +1526,17 @@ export default function WhatsAppChatExplorer() {
       {/* New Chat Modal */}
       {showNewChatModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-md w-full p-6 border border-line animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-full bg-[#00a884] text-white flex items-center justify-center font-bold text-lg shadow-sm">
+                <div className="w-10 h-10 rounded-full bg-brand text-white flex items-center justify-center font-bold text-lg shadow-sm">
                   +
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">
+                  <h3 className="text-base font-bold text-ink">
                     Mulai Obrolan WhatsApp Baru
                   </h3>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted">
                     Kirim pesan ke nomor kontak atau nomor baru
                   </p>
                 </div>
@@ -1550,7 +1544,7 @@ export default function WhatsAppChatExplorer() {
               <button
                 type="button"
                 onClick={() => setShowNewChatModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-sm p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
+                className="text-faint hover:text-muted text-sm p-1.5 rounded-lg hover:bg-subtle cursor-pointer"
               >
                 ✕
               </button>
@@ -1558,7 +1552,7 @@ export default function WhatsAppChatExplorer() {
 
             <form onSubmit={handleStartNewChat} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
+                <label className="block text-xs font-bold text-ink mb-1">
                   Nomor WhatsApp Tujuan <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -1567,16 +1561,16 @@ export default function WhatsAppChatExplorer() {
                   value={newChatPhone}
                   onChange={(e) => setNewChatPhone(e.target.value)}
                   placeholder="Contoh: 08123456789 atau 628123456789"
-                  className="w-full px-3.5 py-2 text-sm bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#00a884] focus:outline-hidden font-mono"
+                  className="w-full px-3.5 py-2 text-sm bg-subtle border border-line-strong rounded-xl focus:bg-surface focus:ring-2 focus:ring-[#00a884] focus:outline-hidden font-mono"
                   autoFocus
                 />
-                <p className="text-[11px] text-gray-500 mt-1">
+                <p className="text-[11px] text-muted mt-1">
                   Format angka biasa diawali 08... atau 62...
                 </p>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
+                <label className="block text-xs font-bold text-ink mb-1">
                   Nama Kontak (Opsional)
                 </label>
                 <input
@@ -1584,7 +1578,7 @@ export default function WhatsAppChatExplorer() {
                   value={newChatName}
                   onChange={(e) => setNewChatName(e.target.value)}
                   placeholder="Contoh: Budi Santoso / Dinas Kominfo"
-                  className="w-full px-3.5 py-2 text-sm bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#00a884] focus:outline-hidden"
+                  className="w-full px-3.5 py-2 text-sm bg-subtle border border-line-strong rounded-xl focus:bg-surface focus:ring-2 focus:ring-[#00a884] focus:outline-hidden"
                 />
               </div>
 
@@ -1592,13 +1586,13 @@ export default function WhatsAppChatExplorer() {
                 <button
                   type="button"
                   onClick={() => setShowNewChatModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-muted hover:bg-subtle rounded-xl transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-[#00a884] hover:bg-[#008f6f] rounded-xl shadow-md transition-all cursor-pointer"
+                  className="px-5 py-2 text-xs font-bold text-white bg-brand hover:bg-brand-hover rounded-xl shadow-md transition-all cursor-pointer"
                 >
                   Buka Obrolan
                 </button>

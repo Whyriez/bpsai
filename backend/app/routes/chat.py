@@ -419,13 +419,18 @@ def stream():
     session_id = data.get('conversation_id') or data.get('session_id')
     user_id = data.get('user_id')
 
-    # Verifikasi token JWT jika ada di header Authorization
+    # Verifikasi token JWT jika ada di header Authorization (RS256 atau HS256)
     try:
-        from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
-        verify_jwt_in_request(optional=True)
-        jwt_user_id = get_jwt_identity()
-        if jwt_user_id:
-            user_id = int(jwt_user_id)
+        from app.central_auth_service import get_current_authenticated_user
+        auth_user = get_current_authenticated_user()
+        if auth_user:
+            user_id = auth_user.id
+        elif not user_id:
+            from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+            verify_jwt_in_request(optional=True)
+            jwt_user_id = get_jwt_identity()
+            if jwt_user_id and str(jwt_user_id).isdigit():
+                user_id = int(jwt_user_id)
     except Exception:
         pass
 
