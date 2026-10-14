@@ -41,6 +41,7 @@ function handlePhoneNumberShare({ lid, jid }) {
     }
   } catch (e) {}
   map[lid] = jid;
+  map[jid] = lid; // bidirectional mapping
   try {
     fs.writeFileSync(LID_MAP_FILE, JSON.stringify(map, null, 2), 'utf8');
   } catch (e) {}
@@ -52,10 +53,63 @@ function resolveLidToPhone(lidOrJid) {
   try {
     if (fs.existsSync(LID_MAP_FILE)) {
       const map = JSON.parse(fs.readFileSync(LID_MAP_FILE, 'utf8'));
-      if (map[lidOrJid]) return map[lidOrJid];
+      if (map[lidOrJid] && map[lidOrJid].endsWith('@s.whatsapp.net')) return map[lidOrJid];
     }
   } catch (e) {}
   return lidOrJid;
+}
+
+function resolvePhoneToLid(phoneJid) {
+  if (!phoneJid) return null;
+  try {
+    if (fs.existsSync(LID_MAP_FILE)) {
+      const map = JSON.parse(fs.readFileSync(LID_MAP_FILE, 'utf8'));
+      if (map[phoneJid] && map[phoneJid].endsWith('@lid')) return map[phoneJid];
+    }
+  } catch (e) {}
+  return null;
+}
+
+let myJids = new Set();
+function loadMyJids() {
+  try {
+    const credsFile = path.join(__dirname, '..', '..', 'auth_info_baileys', 'creds.json');
+    if (fs.existsSync(credsFile)) {
+      const creds = JSON.parse(fs.readFileSync(credsFile, 'utf8'));
+      if (creds.me) {
+        if (creds.me.id) {
+          myJids.add(creds.me.id);
+          myJids.add(creds.me.id.split(':')[0] + '@s.whatsapp.net');
+        }
+        if (creds.me.lid) {
+          myJids.add(creds.me.lid);
+          myJids.add(creds.me.lid.split(':')[0] + '@lid');
+        }
+      }
+    }
+  } catch (e) {}
+}
+loadMyJids();
+
+function setMyJid(id, lid) {
+  if (id) {
+    myJids.add(id);
+    myJids.add(id.split(':')[0] + '@s.whatsapp.net');
+  }
+  if (lid) {
+    myJids.add(lid);
+    myJids.add(lid.split(':')[0] + '@lid');
+  }
+}
+
+function isSelfJid(jid) {
+  if (!jid) return false;
+  loadMyJids();
+  const clean = jid.split(':')[0] + (jid.includes('@') ? '@' + jid.split('@')[1] : '');
+  if (myJids.has(jid) || myJids.has(clean)) return true;
+  if (jid.includes('116939829588032')) return true; // current bot LID
+  if (jid.includes('260593114161297')) return true; // old self note
+  return false;
 }
 
 /**
@@ -128,6 +182,13 @@ function unwrapMessage(msg) {
  */
 function extractMessageData(msg) {
   const content = unwrapMessage(msg);
+  if (!content) return null;
+
+  // NEVER save internal WhatsApp protocol messages (sync stubs, encryption keys, receipts)
+  if (content.protocolMessage) {
+    return null;
+  }
+
   // Determine message type and text
   let type = 'unknown';
   let text = '';
@@ -172,9 +233,6 @@ function extractMessageData(msg) {
   } else if (content.reactionMessage) {
     type = 'reaction';
     text = content.reactionMessage.text || '';
-  } else if (content.protocolMessage) {
-    type = 'protocol';
-    text = content.protocolMessage.type !== undefined ? `protocol_type_${content.protocolMessage.type}` : '';
   } else {
     // Try to find any text-like content
     const keys = Object.keys(content);
@@ -182,6 +240,11 @@ function extractMessageData(msg) {
       type = keys[0].replace('Message', '');
       text = content[keys[0]]?.caption || content[keys[0]]?.text || '';
     }
+  }
+
+  // Ignore empty unknown messages (which are internal WhatsApp sync packets)
+  if (type === 'unknown' && !text && !mediaInfo) {
+    return null;
   }
 
   // Determine timestamp
@@ -211,15 +274,27 @@ function extractMessageData(msg) {
  * Save new messages for a given chat (append, dedup by ID).
  */
 function saveMessages(chatId, rawMessages) {
-  if (!chatId || !rawMessages || rawMessages.length === 0) return;
+  if (!chatId || !rawMessages || rawMessages.length === 0) return 0;
 
-  const existing = readChatMessages(chatId);
+  // Resolve to canonical chat ID (LID -> Phone JID)
+  const canonicalChatId = resolveLidToPhone(chatId);
+
+  // Skip if it's the bot's own internal multi-device sync partner
+  if (isSelfJid(chatId) || isSelfJid(canonicalChatId)) {
+    return 0;
+  }
+
+  const existing = readChatMessages(canonicalChatId);
   const existingIds = new Set(existing.map(m => m.id));
 
   let added = 0;
   for (const msg of rawMessages) {
     const extracted = extractMessageData(msg);
-    if (extracted.id && !existingIds.has(extracted.id)) {
+    if (!extracted || !extracted.id) continue;
+    if (extracted.type === 'protocol') continue;
+    if (extracted.type === 'unknown' && !extracted.text && !extracted.mediaInfo) continue;
+
+    if (!existingIds.has(extracted.id)) {
       existing.push(extracted);
       existingIds.add(extracted.id);
       added++;
@@ -229,7 +304,7 @@ function saveMessages(chatId, rawMessages) {
   if (added > 0) {
     // Sort by timestamp
     existing.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-    writeChatMessages(chatId, existing);
+    writeChatMessages(canonicalChatId, existing);
   }
 
   return added;
@@ -247,24 +322,35 @@ function handleMessagesUpsert(upsert) {
   const byChatId = {};
   for (const msg of messages) {
     const chatId = msg.key?.remoteJid;
-    if (!chatId || chatId === 'status@broadcast') continue;
+    if (!chatId || chatId === 'status@broadcast' || chatId.endsWith('@broadcast')) continue;
+
+    // If incoming from LID and senderPn exists, register mapping immediately
+    if (chatId.endsWith('@lid') && msg.key?.senderPn) {
+      handlePhoneNumberShare({ lid: chatId, jid: msg.key.senderPn });
+    }
+
+    // Canonicalize to phone JID if mapped
+    const targetChatId = resolveLidToPhone(chatId);
+
+    // Skip bot's own internal sync
+    if (isSelfJid(chatId) || isSelfJid(targetChatId)) continue;
 
     // Automatically record sender's pushName as contact
-    if (msg.pushName && !chatId.endsWith('@g.us') && !chatId.endsWith('@newsletter')) {
+    if (msg.pushName && !targetChatId.endsWith('@g.us') && !targetChatId.endsWith('@newsletter')) {
       saveContacts([{
-        id: chatId,
+        id: targetChatId,
         name: msg.pushName,
         notify: msg.pushName,
       }]);
     }
 
-    if (!byChatId[chatId]) byChatId[chatId] = [];
-    byChatId[chatId].push(msg);
+    if (!byChatId[targetChatId]) byChatId[targetChatId] = [];
+    byChatId[targetChatId].push(msg);
   }
 
   let totalAdded = 0;
-  for (const [chatId, msgs] of Object.entries(byChatId)) {
-    totalAdded += saveMessages(chatId, msgs) || 0;
+  for (const [cId, msgs] of Object.entries(byChatId)) {
+    totalAdded += saveMessages(cId, msgs) || 0;
   }
 
   if (totalAdded > 0) {
@@ -537,7 +623,7 @@ function formatPhoneNumber(jid) {
 function getChatSummaries() {
   ensureDir();
   const contacts = getContacts();
-  const summaries = [];
+  const summariesMap = new Map();
 
   try {
     const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json'));
@@ -545,58 +631,69 @@ function getChatSummaries() {
     for (const file of files) {
       const fp = path.join(DATA_DIR, file);
       try {
+        const rawChatId = file.replace('.json', '');
+        
+        // Skip bot's own self JID or LID (internal multi-device sync)
+        if (isSelfJid(rawChatId)) continue;
+
         const messages = JSON.parse(fs.readFileSync(fp, 'utf8'));
         if (!Array.isArray(messages) || messages.length === 0) continue;
 
-        const firstMsg = messages[0];
-        const lastMsg = messages[messages.length - 1];
-        const chatId = firstMsg?.from || file.replace('.json', '');
+        // Filter: Must have at least one real user message (not protocol, not empty unknown)
+        const realMessages = messages.filter(m => m && m.type !== 'protocol' && (Boolean(m.text?.trim()) || Boolean(m.mediaInfo) || ['image', 'video', 'audio', 'document', 'sticker', 'contact', 'location'].includes(m.type)));
+        if (realMessages.length === 0) {
+          continue; // Skip ghost chat!
+        }
 
-        const isGroup = chatId.endsWith('@g.us');
-        const isChannel = chatId.endsWith('@newsletter');
-        const isDirect = chatId.endsWith('@s.whatsapp.net') || chatId.endsWith('@lid');
+        const canonicalId = resolveLidToPhone(rawChatId);
+        if (isSelfJid(canonicalId)) continue;
+
+        const isGroup = canonicalId.endsWith('@g.us');
+        const isChannel = canonicalId.endsWith('@newsletter');
+        const isDirect = canonicalId.endsWith('@s.whatsapp.net') || canonicalId.endsWith('@lid');
 
         // Determine best display name
         let name = null;
-        if (contacts[chatId]?.name && contacts[chatId]?.name !== chatId) {
-          name = contacts[chatId].name;
+        if (contacts[canonicalId]?.name && contacts[canonicalId]?.name !== canonicalId) {
+          name = contacts[canonicalId].name;
+        } else if (contacts[rawChatId]?.name && contacts[rawChatId]?.name !== rawChatId) {
+          name = contacts[rawChatId].name;
         } else {
-          // Look for any incoming pushName
-          for (let i = messages.length - 1; i >= 0; i--) {
-            if (!messages[i].fromMe && messages[i].pushName) {
-              name = messages[i].pushName;
+          for (let i = realMessages.length - 1; i >= 0; i--) {
+            if (!realMessages[i].fromMe && realMessages[i].pushName) {
+              name = realMessages[i].pushName;
               break;
             }
           }
         }
 
-        if (!name || name === chatId) {
-          if (chatId.includes('260593114161297')) {
-            name = 'Catatan / Nomor Pribadi (+62 895-7074-91166)';
-          } else if (isDirect && chatId.endsWith('@s.whatsapp.net')) {
-            name = formatPhoneNumber(chatId);
+        if (!name || name === canonicalId || name === rawChatId) {
+          if (isDirect && canonicalId.endsWith('@s.whatsapp.net')) {
+            name = formatPhoneNumber(canonicalId);
           } else if (isGroup) {
-            name = `Grup (${chatId.split('@')[0].slice(-6)})`;
+            name = `Grup (${canonicalId.split('@')[0].slice(-6)})`;
           } else if (isChannel) {
-            name = `Saluran (${chatId.split('@')[0].slice(-6)})`;
+            name = `Saluran (${canonicalId.split('@')[0].slice(-6)})`;
           } else {
-            name = chatId.endsWith('@lid') ? `Kontak Pribadi (LID ${chatId.split('@')[0].slice(-4)})` : chatId;
+            name = canonicalId.endsWith('@lid') ? `Kontak Pribadi (LID ${canonicalId.split('@')[0].slice(-4)})` : canonicalId;
           }
         }
+
+        const lastMsg = realMessages[realMessages.length - 1];
 
         // Count media and links
         let mediaCount = 0;
         let linkCount = 0;
         const participantMap = {};
 
-        for (const m of messages) {
+        for (const m of realMessages) {
           if (['image', 'video', 'audio', 'document', 'sticker'].includes(m.type)) {
             mediaCount++;
           }
           if (m.text && extractUrls(m.text).length > 0) {
             linkCount++;
           }
-          const senderJid = m.participant || (!m.fromMe ? m.from : null);
+          const senderJid = m.participant || (!m.fromMe ? (m.from || canonicalId) : null);
           if (senderJid && !participantMap[senderJid]) {
             participantMap[senderJid] = {
               jid: senderJid,
@@ -606,19 +703,20 @@ function getChatSummaries() {
           }
         }
 
-        summaries.push({
-          id: chatId,
+        const summaryItem = {
+          id: canonicalId,
+          lid: rawChatId.endsWith('@lid') ? rawChatId : resolvePhoneToLid(canonicalId),
           name,
-          phone: isDirect ? formatPhoneNumber(chatId) : null,
-          raw_phone: isDirect ? chatId.split('@')[0] : null,
+          phone: isDirect ? formatPhoneNumber(canonicalId) : null,
+          raw_phone: isDirect ? canonicalId.split('@')[0] : null,
           type: isGroup ? 'group' : (isChannel ? 'channel' : 'direct'),
           is_group: isGroup,
           is_channel: isChannel,
           is_direct: isDirect,
-          message_count: messages.length,
+          message_count: realMessages.length,
           media_count: mediaCount,
           link_count: linkCount,
-          participant_count: Object.keys(participantMap).length,
+          participant_count: Object.keys(participantMap).length || 1,
           participants: Object.values(participantMap),
           last_message: {
             text: lastMsg.text || (lastMsg.type !== 'text' ? `[${lastMsg.type}]` : ''),
@@ -628,118 +726,99 @@ function getChatSummaries() {
             fromMe: lastMsg.fromMe,
             sender: lastMsg.pushName || (lastMsg.fromMe ? 'Saya / Bot' : null),
           },
-        });
+        };
+
+        // If canonicalId already exists in summariesMap (e.g. merging LID and phone number), merge them!
+        if (summariesMap.has(canonicalId)) {
+          const existing = summariesMap.get(canonicalId);
+          existing.message_count += summaryItem.message_count;
+          existing.media_count += summaryItem.media_count;
+          existing.link_count += summaryItem.link_count;
+          if ((summaryItem.last_message?.timestamp || 0) > (existing.last_message?.timestamp || 0)) {
+            existing.last_message = summaryItem.last_message;
+          }
+          if (summaryItem.name && !summaryItem.name.startsWith('+') && existing.name.startsWith('+')) {
+            existing.name = summaryItem.name;
+          }
+        } else {
+          summariesMap.set(canonicalId, summaryItem);
+        }
       } catch (err) {
         console.warn(`⚠️ [MessageStore] Error summarizing ${file}:`, err.message);
       }
     }
-
-    const existingIds = new Set(summaries.map(s => s.id));
-
-    // Include chats from chats.json ONLY if they had a real conversation (conversationTimestamp exists)
-    // This filters out ghost entries that never had actual messages.
-    const storedChats = getStoredChats();
-    for (const [id, c] of Object.entries(storedChats)) {
-      if (!existingIds.has(id) && c.conversationTimestamp) {
-        const isGroup = id.endsWith('@g.us');
-        const isChannel = id.endsWith('@newsletter');
-        const isDirect = id.endsWith('@s.whatsapp.net');
-
-        let name = c.name || contacts[id]?.name;
-        if (!name) {
-          name = isDirect ? formatPhoneNumber(id) : id;
-        }
-
-        summaries.push({
-          id,
-          name,
-          phone: isDirect ? formatPhoneNumber(id) : null,
-          raw_phone: isDirect ? id.split('@')[0] : null,
-          type: isGroup ? 'group' : (isChannel ? 'channel' : 'direct'),
-          is_group: isGroup,
-          is_channel: isChannel,
-          is_direct: isDirect,
-          message_count: 0,
-          media_count: 0,
-          link_count: 0,
-          participant_count: 1,
-          participants: isDirect ? [{ jid: id, phone: formatPhoneNumber(id), name }] : [],
-          last_message: {
-            text: isDirect ? 'Obrolan kontak pribadi' : (isGroup ? 'Grup WhatsApp' : 'Saluran'),
-            type: 'text',
-            timestamp: c.conversationTimestamp,
-            date: c.conversationTimestamp ? new Date(c.conversationTimestamp * 1000).toISOString() : null,
-            fromMe: false,
-            sender: null,
-          },
-        });
-        existingIds.add(id);
-      }
-    }
-
-    // NOTE: contacts.json loop REMOVED intentionally.
-    // contacts.json contains ALL contacts ever seen (including group members, senders from group messages, etc.)
-    // Adding them all as "personal chats" would result in hundreds of ghost entries with no real conversation.
-    // Only chats with actual message files (data/messages/*.json) or chats.json entries with conversationTimestamp
-    // are legitimate conversations to show in the Explorer.
-
-    // Sort descending by newest message timestamp
-    summaries.sort((a, b) => {
-      const tsA = a.last_message?.timestamp || 0;
-      const tsB = b.last_message?.timestamp || 0;
-      return tsB - tsA;
-    });
-
   } catch (err) {
     console.error('❌ [MessageStore] Error reading summaries:', err);
   }
+
+  const summaries = Array.from(summariesMap.values());
+
+  // Sort descending by newest message timestamp
+  summaries.sort((a, b) => {
+    const tsA = a.last_message?.timestamp || 0;
+    const tsB = b.last_message?.timestamp || 0;
+    return tsB - tsA;
+  });
 
   return summaries;
 }
 
 /**
  * Get full chat details including parsed messages, links, media, and participants.
+ * Automatically merges messages from both Phone JID and LID for seamless viewing.
  */
 function getChatDetail(chatId) {
   ensureDir();
   const contacts = getContacts();
 
-  // Try exact or sanitized file path
-  let messages = readChatMessages(chatId);
-  if (messages.length === 0) {
-    const safe = sanitizeId(chatId);
-    messages = readChatMessages(safe);
+  // Resolve to canonical and associated IDs (Phone JID and LID)
+  const canonicalId = resolveLidToPhone(chatId);
+  const associatedIds = new Set([chatId, canonicalId]);
+  const mappedLid = resolvePhoneToLid(canonicalId);
+  if (mappedLid) associatedIds.add(mappedLid);
+
+  // Read messages across all associated IDs and merge
+  const allMessages = [];
+  const seenIds = new Set();
+  for (const cId of associatedIds) {
+    const msgs = readChatMessages(cId);
+    for (const m of msgs) {
+      if (!m || !m.id || seenIds.has(m.id)) continue;
+      if (m.type === 'protocol') continue;
+      if (m.type === 'unknown' && !m.text && !m.mediaInfo) continue;
+      seenIds.add(m.id);
+      allMessages.push(m);
+    }
   }
 
-  const isGroup = chatId.endsWith('@g.us');
-  const isChannel = chatId.endsWith('@newsletter');
-  const isDirect = chatId.endsWith('@s.whatsapp.net');
+  allMessages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
-  let chatName = contacts[chatId]?.name || null;
+  const isGroup = canonicalId.endsWith('@g.us');
+  const isChannel = canonicalId.endsWith('@newsletter');
+  const isDirect = canonicalId.endsWith('@s.whatsapp.net') || canonicalId.endsWith('@lid');
+
+  let chatName = contacts[canonicalId]?.name || contacts[chatId]?.name || null;
   if (!chatName) {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (!messages[i].fromMe && messages[i].pushName) {
-        chatName = messages[i].pushName;
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+      if (!allMessages[i].fromMe && allMessages[i].pushName) {
+        chatName = allMessages[i].pushName;
         break;
       }
     }
   }
-  if (!chatName || chatName === chatId) {
-    if (chatId.includes('260593114161297')) {
-      chatName = 'Catatan / Nomor Pribadi (+62 895-7074-91166)';
-    } else {
-      chatName = isDirect ? formatPhoneNumber(chatId) : chatId;
-    }
+  if (!chatName || chatName === canonicalId) {
+    chatName = isDirect ? formatPhoneNumber(canonicalId) : canonicalId;
   }
 
   // If no stored messages yet but contact exists or is direct chat, return clean contact view
-  if (messages.length === 0 && (contacts[chatId] || isDirect)) {
-    const phone = formatPhoneNumber(chatId);
+  if (allMessages.length === 0 && (contacts[canonicalId] || contacts[chatId] || isDirect)) {
+    const phone = formatPhoneNumber(canonicalId);
     return {
-      id: chatId,
+      id: canonicalId,
+      lid: mappedLid || (chatId.endsWith('@lid') ? chatId : null),
       name: chatName || phone,
       phone: isDirect ? phone : null,
-      raw_phone: isDirect ? chatId.split('@')[0] : null,
+      raw_phone: isDirect ? canonicalId.split('@')[0] : null,
       type: isGroup ? 'group' : (isChannel ? 'channel' : 'direct'),
       is_group: isGroup,
       is_channel: isChannel,
@@ -756,7 +835,7 @@ function getChatDetail(chatId) {
       ],
       links: [],
       media: [],
-      participants: [{ jid: chatId, phone, name: chatName || phone, message_count: 0 }],
+      participants: [{ jid: canonicalId, phone, name: chatName || phone, message_count: 0 }],
       total_messages: 0,
       total_links: 0,
       total_media: 0,
@@ -767,7 +846,7 @@ function getChatDetail(chatId) {
   const media = [];
   const participantStats = {};
 
-  messages.forEach((m, idx) => {
+  allMessages.forEach((m, idx) => {
     // Media detection
     if (['image', 'video', 'audio', 'document', 'sticker'].includes(m.type) || m.mediaInfo) {
       media.push({
@@ -798,7 +877,7 @@ function getChatDetail(chatId) {
     }
 
     // Participant stats
-    const pJid = m.participant || (!m.fromMe ? m.from : null);
+    const pJid = m.participant || (!m.fromMe ? (m.from || canonicalId) : null);
     if (pJid) {
       if (!participantStats[pJid]) {
         participantStats[pJid] = {
@@ -821,20 +900,22 @@ function getChatDetail(chatId) {
     }
   });
 
+  const phone = isDirect ? formatPhoneNumber(canonicalId) : null;
   return {
-    id: chatId,
-    name: chatName,
-    phone: isDirect ? formatPhoneNumber(chatId) : null,
-    raw_phone: isDirect ? chatId.split('@')[0] : null,
+    id: canonicalId,
+    lid: mappedLid || (chatId.endsWith('@lid') ? chatId : null),
+    name: chatName || phone,
+    phone,
+    raw_phone: isDirect ? canonicalId.split('@')[0] : null,
     type: isGroup ? 'group' : (isChannel ? 'channel' : 'direct'),
     is_group: isGroup,
     is_channel: isChannel,
     is_direct: isDirect,
-    messages,
+    messages: allMessages,
     links,
     media,
     participants: Object.values(participantStats).sort((a, b) => b.message_count - a.message_count),
-    total_messages: messages.length,
+    total_messages: allMessages.length,
     total_links: links.length,
     total_media: media.length,
   };
@@ -1305,6 +1386,9 @@ export default {
   handleChatsUpsert,
   handlePhoneNumberShare,
   resolveLidToPhone,
+  resolvePhoneToLid,
+  isSelfJid,
+  setMyJid,
   harvestGroupContacts,
   saveMessages,
   saveContacts,

@@ -2482,6 +2482,126 @@ def post_whatsapp_explorer_reply():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@document_bp.route('/bps/whatsapp-explorer/sessions', methods=['GET'])
+def get_whatsapp_explorer_sessions():
+    """Mengambil seluruh data sesi aktif dan histori konsultasi WhatsApp."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    try:
+        res = requests.get(f"{base_url}/whatsapp/explorer/sessions", timeout=10)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/sessions/<path:chat_id>', methods=['GET'])
+def get_whatsapp_explorer_session_detail(chat_id):
+    """Mengambil detail sesi untuk chat tertentu."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    try:
+        res = requests.get(f"{base_url}/whatsapp/explorer/sessions/{chat_id}", timeout=10)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/sessions/<path:chat_id>/takeover', methods=['POST'])
+def post_whatsapp_explorer_takeover(chat_id):
+    """Admin mengambil alih sesi obrolan."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    body = request.get_json() if request.is_json else {}
+    try:
+        res = requests.post(f"{base_url}/whatsapp/explorer/sessions/{chat_id}/takeover", json=body, timeout=10)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/sessions/<path:chat_id>/delay', methods=['POST'])
+def post_whatsapp_explorer_delay(chat_id):
+    """Menandai penundaan pengolahan data (maksimal 3 hari kerja)."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    body = request.get_json() if request.is_json else {}
+    try:
+        res = requests.post(f"{base_url}/whatsapp/explorer/sessions/{chat_id}/delay", json=body, timeout=10)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/sessions/<path:chat_id>/reopen', methods=['POST'])
+def post_whatsapp_explorer_reopen(chat_id):
+    """Membuka kembali sesi yang telah ditutup."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    try:
+        res = requests.post(f"{base_url}/whatsapp/explorer/sessions/{chat_id}/reopen", json={}, timeout=10)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/sessions/<path:chat_id>/terminate', methods=['POST'])
+def post_whatsapp_explorer_terminate(chat_id):
+    """Terminasi sesi live chat sesuai panduan PST BPS Gorontalo."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    body = request.get_json() if request.is_json else {}
+    try:
+        res = requests.post(f"{base_url}/whatsapp/explorer/sessions/{chat_id}/terminate", json=body, timeout=15)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/sessions-settings', methods=['GET', 'POST'])
+def handle_whatsapp_explorer_sessions_settings():
+    """Mengambil atau menyimpan konfigurasi sesi & jam operasional live chat."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    try:
+        if request.method == 'POST':
+            body = request.get_json() if request.is_json else {}
+            res = requests.post(f"{base_url}/whatsapp/explorer/sessions-settings", json=body, timeout=10)
+        else:
+            res = requests.get(f"{base_url}/whatsapp/explorer/sessions-settings", timeout=10)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/templates', methods=['GET'])
+def get_whatsapp_explorer_templates():
+    """Mengambil templat resmi pesan panduan layanan PST BPS Gorontalo."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    params = request.args.to_dict()
+    try:
+        res = requests.get(f"{base_url}/whatsapp/explorer/templates", params=params, timeout=10)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ===================================================================
 # MANUAL PDF FILE UPLOAD & PROCESSING
 # ===================================================================

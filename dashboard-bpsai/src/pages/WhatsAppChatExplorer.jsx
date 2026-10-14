@@ -150,6 +150,114 @@ const InfoCircleIcon = ({ className = "w-5 h-5" }) => (
   </svg>
 );
 
+const StopIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+  </svg>
+);
+
+const UserCheckIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11l2 2 4-4" />
+  </svg>
+);
+
+const ClockIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const SettingsIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
+
+// --- Official PST BPS Gorontalo Templates (Conforming to Uploaded Guide) ---
+const OFFICIAL_TEMPLATES = [
+  {
+    id: "pembuka",
+    name: "Pesan Pembuka",
+    category: "PANDUAN",
+    badge: "Jam Layanan",
+    description: "Sapaan awal saat pesan masuk dalam jam operasional layanan",
+    getText: (greeting = "pagi/siang/sore") =>
+`Selamat ${greeting}.
+Terima kasih telah menghubungi PST BPS Provinsi Gorontalo
+Mohon kesediaannya untuk mengisi data berikut ya Kak 😊
+Nama : 
+Pekerjaan : 
+Instansi/Asal : `
+  },
+  {
+    id: "luar_jam",
+    name: "Luar Jam Layanan",
+    category: "PANDUAN",
+    badge: "Luar Jam Kerja",
+    description: "Sapaan saat pesan masuk di luar jam kerja atau hari libur",
+    getText: (greeting = "pagi/siang/sore") =>
+`Selamat ${greeting}.
+Mohon maaf atas keterlambatan respons kami dikarenakan pesan Anda masuk di luar jam operasional petugas layanan kami.
+Terima kasih telah bersedia menunggu. Sebelumnya, mohon kesediaannya terlebih dahulu untuk menginformasikan:
+Nama : 
+Pekerjaan : 
+Asal Instansi : `
+  },
+  {
+    id: "penundaan",
+    name: "Penundaan (3 Hari)",
+    category: "LAYANAN",
+    badge: "Maks. 3 Hari Kerja",
+    description: "Jika permintaan data butuh penyiapan teknis terlebih dahulu",
+    getText: (greeting = "siang") =>
+`Selamat ${greeting} Kak. Data yang Kakak butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja. Kami akan menghubungi Kakak kembali melalui nomor ini setelah data tersebut siap diserahkan.
+Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`
+  },
+  {
+    id: "konfirmasi",
+    name: "Konfirmasi Jawaban",
+    category: "LAYANAN",
+    badge: "Konfirmasi",
+    description: "Menanyakan apakah data/penjelasan yang diberikan sudah jelas",
+    getText: (topic = "[Topik Konsultasi]") =>
+`Bagaimana Kak, terkait penjelasan mengenai ${topic} tadi, apakah sudah cukup jelas?
+Kalau dirasa masih ada poin yang kurang jelas atau ada yang ingin ditanyakan lagi, silakan disampaikan saja, ya. 😊`
+  },
+  {
+    id: "terminasi_selesai",
+    name: "Terminasi: Layanan Selesai",
+    category: "TERMINASI",
+    badge: "Resmi + Survei SKD",
+    description: "Mengakhiri konsultasi yang telah selesai disertai link survei SKD",
+    getText: (topic = "[Topik Konsultasi]") =>
+`Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Dengan ini, konsultasi terkait ${topic} kami akhiri ya Kak. Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: https://s.bps.go.id/skd75
+
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`
+  },
+  {
+    id: "terminasi_tutup_hari",
+    name: "Terminasi: Jam Tutup",
+    category: "TERMINASI",
+    badge: "Tutup Operasional Sore",
+    description: "Mengakhiri layanan hari ini karena jam operasional berakhir (+ link SIGAP & Web)",
+    getText: (schedule = "[hari, tanggal]") =>
+`Selamat sore, Kak.
+Mengingat jam operasional layanan hari ini telah berakhir, proses konsultasi akan kami lanjutkan kembali pada ${schedule} saat jam layanan dibuka.
+
+Untuk kebutuhan data statistik secara mandiri, Kakak dapat mengakses tautan berikut:
+• SIGAP: https://sigap.bps7500.my.id
+• Website BPS Provinsi Gorontalo: https://gorontalo.bps.go.id
+
+Kami akan menghubungi Kakak kembali pada ${schedule} untuk menjawab pertanyaan yang belum terselesaikan.
+
+Terima kasih banyak atas pengertiannya Kak 😊`
+  }
+];
+
 // Consistent avatar colors based on string
 const getAvatarBg = (str = "") => {
   const colors = [
@@ -200,9 +308,9 @@ export default function WhatsAppChatExplorer() {
   const [searchQuery, setSearchQuery] = useState("");
   const [chatTypeFilter, setChatTypeFilter] = useState("ALL"); // ALL | DIRECT | GROUP | CHANNEL
 
-  // Right sidebar drawer (info, media, links, participants)
+  // Right sidebar drawer (info, media, links, participants, pst)
   const [showRightPanel, setShowRightPanel] = useState(false);
-  const [rightPanelTab, setRightPanelTab] = useState("media"); // media | links | participants
+  const [rightPanelTab, setRightPanelTab] = useState("pst"); // pst | media | links | participants
 
   // Reply message state
   const [replyText, setReplyText] = useState("");
@@ -212,6 +320,19 @@ export default function WhatsAppChatExplorer() {
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [newChatPhone, setNewChatPhone] = useState("");
   const [newChatName, setNewChatName] = useState("");
+
+  // Live Chat Sessions & Operating Settings
+  const [liveSettings, setLiveSettings] = useState(null);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  // Termination Modal State
+  const [showTerminationModal, setShowTerminationModal] = useState(false);
+  const [terminationType, setTerminationType] = useState("completed"); // 'completed' | 'end_of_day'
+  const [terminationTopic, setTerminationTopic] = useState("");
+  const [terminationSchedule, setTerminationSchedule] = useState("");
+  const [terminationSendWhatsapp, setTerminationSendWhatsapp] = useState(true);
+  const [isSubmittingTermination, setIsSubmittingTermination] = useState(false);
 
   const messagesEndRef = useRef(null);
 
@@ -292,30 +413,47 @@ export default function WhatsAppChatExplorer() {
     }
   }, [activeChatDetail?.messages]);
 
-  // 1. Fetch live chats from gateway
+  // 1. Fetch live chats from gateway and settings
   const fetchLiveChats = async () => {
     setIsLoadingChats(true);
     try {
-      const res = await apiFetch("/documents/bps/whatsapp-explorer/chats");
-      if (res.success) {
-        setChats(res.chats || []);
-        setStats(res.stats || null);
-        if (!activeChatId && res.chats && res.chats.length > 0) {
-          // On desktop auto-select first chat
+      const [chatsRes, settingsRes] = await Promise.allSettled([
+        apiFetch("/documents/bps/whatsapp-explorer/chats"),
+        apiFetch("/documents/bps/whatsapp-explorer/sessions-settings")
+      ]);
+
+      if (chatsRes.status === "fulfilled" && chatsRes.value?.success) {
+        setChats(chatsRes.value.chats || []);
+        setStats(chatsRes.value.stats || null);
+        if (!activeChatId && chatsRes.value.chats && chatsRes.value.chats.length > 0) {
           if (window.innerWidth >= 768) {
-            setActiveChatId(res.chats[0].id);
+            setActiveChatId(chatsRes.value.chats[0].id);
           }
         }
-      } else {
+      } else if (chatsRes.status === "fulfilled") {
         toast.error(
-          res.error || "Gagal memuat percakapan dari WhatsApp Gateway",
+          chatsRes.value?.error || "Gagal memuat percakapan dari WhatsApp Gateway",
         );
+      }
+
+      if (settingsRes.status === "fulfilled" && settingsRes.value?.success) {
+        setLiveSettings(settingsRes.value.settings || null);
       }
     } catch (err) {
       toast.error(`Koneksi gateway gagal: ${err.message}`);
     } finally {
       setIsLoadingChats(false);
     }
+  };
+
+  // Fetch settings separately
+  const fetchLiveSettings = async () => {
+    try {
+      const res = await apiFetch("/documents/bps/whatsapp-explorer/sessions-settings");
+      if (res.success) {
+        setLiveSettings(res.settings);
+      }
+    } catch (e) {}
   };
 
   // 2. Fetch live chat details
@@ -327,6 +465,10 @@ export default function WhatsAppChatExplorer() {
       );
       if (res.success && res.chat) {
         setActiveChatDetail(res.chat);
+        // If direct chat, prioritize PST tab
+        if (res.chat.is_direct && rightPanelTab !== "media" && rightPanelTab !== "links") {
+          setRightPanelTab("pst");
+        }
       } else {
         toast.error(res.error || "Gagal mengambil pesan obrolan");
       }
@@ -334,6 +476,185 @@ export default function WhatsAppChatExplorer() {
       toast.error(`Gagal memuat detail obrolan: ${err.message}`);
     } finally {
       setIsLoadingDetail(false);
+    }
+  };
+
+  // Handle Admin Takeover
+  const handleTakeover = async (chatId) => {
+    try {
+      const res = await apiFetch(`/documents/bps/whatsapp-explorer/sessions/${encodeURIComponent(chatId)}/takeover`, {
+        method: "POST",
+        body: JSON.stringify({ adminName: "Admin PST" })
+      });
+      if (res.success) {
+        toast.success("Sesi obrolan berhasil diambil alih oleh admin!");
+        setActiveChatDetail((prev) => prev ? { ...prev, session_status: "admin_active" } : prev);
+        setChats((prev) => prev.map(c => c.id === chatId ? { ...c, session_status: "admin_active" } : c));
+      } else {
+        toast.error(res.error || "Gagal mengambil alih sesi");
+      }
+    } catch (err) {
+      toast.error(`Error: ${err.message}`);
+    }
+  };
+
+  // Handle Delay (3 Hari Kerja)
+  const handleDelay = async (chatId) => {
+    try {
+      const res = await apiFetch(`/documents/bps/whatsapp-explorer/sessions/${encodeURIComponent(chatId)}/delay`, {
+        method: "POST",
+        body: JSON.stringify({ adminName: "Admin PST", sendMessage: true })
+      });
+      if (res.success) {
+        toast.success("Status sesi diubah ke Penundaan (Maks. 3 Hari) & pesan terkirim!");
+        fetchLiveChatDetail(chatId);
+        fetchLiveChats();
+      } else {
+        toast.error(res.error || "Gagal menandai penundaan data");
+      }
+    } catch (err) {
+      toast.error(`Error: ${err.message}`);
+    }
+  };
+
+  // Handle Reopen Session
+  const handleReopen = async (chatId) => {
+    try {
+      const res = await apiFetch(`/documents/bps/whatsapp-explorer/sessions/${encodeURIComponent(chatId)}/reopen`, {
+        method: "POST"
+      });
+      if (res.success) {
+        toast.success("Sesi obrolan dibuka kembali!");
+        fetchLiveChatDetail(chatId);
+        fetchLiveChats();
+      } else {
+        toast.error(res.error || "Gagal membuka sesi kembali");
+      }
+    } catch (err) {
+      toast.error(`Error: ${err.message}`);
+    }
+  };
+
+  // Open Termination Modal
+  const handleOpenTerminationModal = (chat) => {
+    const topic = chat?.visitor_data?.topic || chat?.consultation_topic || "";
+    setTerminationTopic(topic);
+    setTerminationType("completed");
+    setTerminationSchedule(liveSettings?.nextOperatingSchedule || "hari kerja berikutnya pukul 08.00 WITA");
+    setTerminationSendWhatsapp(true);
+    setShowTerminationModal(true);
+  };
+
+  // Live text preview for termination
+  const getTerminationPreviewText = () => {
+    if (terminationType === "end_of_day") {
+      const sched = terminationSchedule.trim() || liveSettings?.nextOperatingSchedule || "hari kerja berikutnya pukul 08.00 WITA";
+      const sigapUrl = liveSettings?.links?.sigapUrl || "https://sigap.bps7500.my.id";
+      const bpsUrl = liveSettings?.links?.bpsWebsiteUrl || "https://gorontalo.bps.go.id";
+      return (
+`Selamat sore, Kak.
+Mengingat jam operasional layanan hari ini telah berakhir, proses konsultasi akan kami lanjutkan kembali pada ${sched} saat jam layanan dibuka.
+
+Untuk kebutuhan data statistik secara mandiri, Kakak dapat mengakses tautan berikut:
+• SIGAP: ${sigapUrl}
+• Website BPS Provinsi Gorontalo: ${bpsUrl}
+
+Kami akan menghubungi Kakak kembali pada ${sched} untuk menjawab pertanyaan yang belum terselesaikan.
+
+Terima kasih banyak atas pengertiannya Kak 😊`
+      );
+    } else {
+      const top = terminationTopic.trim() || "konsultasi data";
+      const surveyUrl = liveSettings?.links?.surveyUrl || "https://s.bps.go.id/skd75";
+      return (
+`Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Dengan ini, konsultasi terkait ${top} kami akhiri ya Kak. Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: ${surveyUrl}
+
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`
+      );
+    }
+  };
+
+  // Execute Termination
+  const handleExecuteTermination = async () => {
+    if (!activeChatDetail) return;
+    setIsSubmittingTermination(true);
+    try {
+      const res = await apiFetch(`/documents/bps/whatsapp-explorer/sessions/${encodeURIComponent(activeChatDetail.id)}/terminate`, {
+        method: "POST",
+        body: JSON.stringify({
+          type: terminationType,
+          topic: terminationTopic.trim() || "konsultasi data",
+          nextSchedule: terminationSchedule.trim() || liveSettings?.nextOperatingSchedule,
+          adminName: "Admin PST",
+          sendWhatsappMessage: terminationSendWhatsapp
+        })
+      });
+      if (res.success) {
+        toast.success(
+          terminationType === "end_of_day"
+            ? "Sesi ditutup (Jam Layanan Berakhir)!"
+            : "Sesi berhasil diterminasi & survei SKD dikirim!"
+        );
+        setShowTerminationModal(false);
+        fetchLiveChatDetail(activeChatDetail.id);
+        fetchLiveChats();
+      } else {
+        toast.error(res.error || "Gagal melakukan terminasi sesi");
+      }
+    } catch (err) {
+      toast.error(`Gagal terminasi: ${err.message}`);
+    } finally {
+      setIsSubmittingTermination(false);
+    }
+  };
+
+  // Apply Quick Template to Input Area
+  const handleApplyTemplate = (tmpl) => {
+    if (tmpl.id === "terminasi_selesai") {
+      setTerminationType("completed");
+      handleOpenTerminationModal(activeChatDetail);
+      return;
+    }
+    if (tmpl.id === "terminasi_tutup_hari") {
+      setTerminationType("end_of_day");
+      handleOpenTerminationModal(activeChatDetail);
+      return;
+    }
+    if (tmpl.id === "penundaan") {
+      const timeGreeting = liveSettings?.currentGreeting || "siang";
+      setReplyText(tmpl.getText(timeGreeting));
+      return;
+    }
+    if (tmpl.id === "konfirmasi") {
+      const topic = activeChatDetail?.visitor_data?.topic || activeChatDetail?.consultation_topic || "[Topik Konsultasi]";
+      setReplyText(tmpl.getText(topic));
+      return;
+    }
+    const timeGreeting = liveSettings?.currentGreeting || "pagi/siang/sore";
+    setReplyText(tmpl.getText(timeGreeting));
+  };
+
+  // Save Settings
+  const handleSaveLiveSettings = async (updates, keepOpen = false) => {
+    setIsSavingSettings(true);
+    try {
+      const res = await apiFetch("/documents/bps/whatsapp-explorer/sessions-settings", {
+        method: "POST",
+        body: JSON.stringify(updates)
+      });
+      if (res.success) {
+        setLiveSettings(res.settings);
+        toast.success("Pengaturan berhasil disimpan!");
+        if (!keepOpen) {
+          setShowSettingsModal(false);
+        }
+      } else {
+        toast.error(res.error || "Gagal memperbarui pengaturan");
+      }
+    } catch (err) {
+      toast.error(`Error: ${err.message}`);
+    } finally {
+      setIsSavingSettings(false);
     }
   };
 
@@ -780,11 +1101,24 @@ export default function WhatsAppChatExplorer() {
             </div>
             <div className="min-w-0">
               <h1 className="text-sm font-bold text-ink leading-tight truncate">
-                WhatsApp SIGAP
+                Live Chat PST BPS
               </h1>
-              <p className="text-[11px] text-muted font-medium flex items-center gap-1 truncate">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                <span>BPS Gorontalo</span>
+              <p className="text-[11px] font-medium flex items-center gap-1.5 truncate">
+                {liveSettings ? (
+                  liveSettings.isOperatingHoursNow ? (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                      <span>Jam Layanan Aktif</span>
+                    </span>
+                  ) : (
+                    <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                      <span>Luar Jam Layanan</span>
+                    </span>
+                  )
+                ) : (
+                  <span className="text-muted">BPS Gorontalo</span>
+                )}
               </p>
             </div>
           </div>
@@ -795,7 +1129,7 @@ export default function WhatsAppChatExplorer() {
               <button
                 type="button"
                 onClick={() => setSourceMode("live")}
-                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                className={`px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
                   sourceMode === "live"
                     ? "bg-surface text-emerald-700 shadow-xs font-bold"
                     : "text-muted hover:text-ink"
@@ -808,7 +1142,7 @@ export default function WhatsAppChatExplorer() {
               <button
                 type="button"
                 onClick={() => setSourceMode("backup")}
-                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                className={`px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
                   sourceMode === "backup"
                     ? "bg-surface text-accent shadow-xs font-bold"
                     : "text-muted hover:text-ink"
@@ -819,13 +1153,23 @@ export default function WhatsAppChatExplorer() {
               </button>
             </div>
 
+            {/* Tombol Pengaturan Operasional & Auto-Chat */}
+            <button
+              type="button"
+              onClick={() => setShowSettingsModal(true)}
+              className="p-1.5 text-muted hover:text-ink hover:bg-hover/80 rounded-lg transition-colors cursor-pointer"
+              title="Pengaturan Auto-Chat & Jam Layanan PST"
+            >
+              <SettingsIcon className="w-4 h-4 text-ink" />
+            </button>
+
             <button
               type="button"
               onClick={() =>
                 sourceMode === "live" ? fetchLiveChats() : fetchBackupList()
               }
               disabled={isLoadingChats}
-              className="p-1.5 text-muted hover:text-ink hover:bg-hover/80 rounded-full transition-colors cursor-pointer"
+              className="p-1.5 text-muted hover:text-ink hover:bg-hover/80 rounded-lg transition-colors cursor-pointer"
               title="Segarkan daftar obrolan"
             >
               <RefreshIcon
@@ -1003,7 +1347,7 @@ export default function WhatsAppChatExplorer() {
 
                   {/* Chat Content */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1 mb-1">
+                    <div className="flex items-center justify-between gap-1 mb-0.5">
                       <h3
                         className={`text-sm truncate ${isActive ? "font-bold text-ink" : "font-semibold text-ink"}`}
                       >
@@ -1013,6 +1357,28 @@ export default function WhatsAppChatExplorer() {
                         {formatTime(chat.last_message?.timestamp)}
                       </span>
                     </div>
+
+                    {/* Session status badge for direct chats */}
+                    {chat.is_direct && (
+                      <div className="mb-1">
+                        <span
+                          className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                            chat.session_status === "closed"
+                              ? "bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-zinc-300"
+                              : chat.session_status === "admin_active"
+                              ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
+                              : chat.session_status === "delayed"
+                              ? "bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300"
+                              : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 animate-pulse"
+                          }`}
+                        >
+                          {chat.session_status === "closed" && "✅ Selesai"}
+                          {chat.session_status === "admin_active" && "👤 Admin Aktif"}
+                          {chat.session_status === "delayed" && "⏳ Diproses (3 Hari)"}
+                          {chat.session_status === "waiting_admin" && "🤖 Menunggu Admin"}
+                        </span>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs text-muted truncate flex-1 flex items-center gap-1">
@@ -1097,25 +1463,39 @@ export default function WhatsAppChatExplorer() {
                 </div>
 
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h2 className="font-bold text-ink text-sm md:text-base truncate leading-snug">
                       {activeChat.name}
                     </h2>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                        activeChat.is_group
-                          ? "bg-accent-soft text-accent"
-                          : activeChat.is_channel
+
+                    {activeChat.is_direct ? (
+                      <span
+                        className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 ${
+                          activeChatDetail?.session_status === "closed"
+                            ? "bg-gray-100 text-gray-800 dark:bg-zinc-800 dark:text-zinc-200"
+                            : activeChatDetail?.session_status === "admin_active"
+                            ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
+                            : activeChatDetail?.session_status === "delayed"
+                            ? "bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300"
+                            : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                        }`}
+                      >
+                        {activeChatDetail?.session_status === "closed" && "✅ Sesi Diterminasi"}
+                        {activeChatDetail?.session_status === "admin_active" && "👤 Ditangani Admin"}
+                        {activeChatDetail?.session_status === "delayed" && "⏳ Diproses (3 Hari)"}
+                        {activeChatDetail?.session_status === "waiting_admin" && "🤖 Menunggu Admin"}
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                          activeChat.is_group
                             ? "bg-accent-soft text-accent"
-                            : "bg-emerald-100 text-emerald-800"
-                      }`}
-                    >
-                      {activeChat.is_group
-                        ? "Grup WhatsApp"
-                        : activeChat.is_channel
-                          ? "Saluran"
-                          : "Kontak Pribadi"}
-                    </span>
+                            : "bg-indigo-100 text-indigo-800"
+                        }`}
+                      >
+                        {activeChat.is_group ? "Grup WhatsApp" : "Saluran Resmi"}
+                      </span>
+                    )}
                   </div>
 
                   <p className="text-xs text-muted font-mono truncate">
@@ -1124,8 +1504,46 @@ export default function WhatsAppChatExplorer() {
                 </div>
               </div>
 
-              {/* Action Toolbar */}
-              <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+              {/* Action Toolbar with PST Termination Controls */}
+              <div className="flex items-center gap-1.5 md:gap-2 shrink-0 flex-wrap">
+                {/* Tombol Ambil Alih (Jika bot sedang handle / menunggu) */}
+                {activeChat.is_direct && activeChatDetail?.session_status === "waiting_admin" && (
+                  <button
+                    type="button"
+                    onClick={() => handleTakeover(activeChat.id)}
+                    className="px-2.5 md:px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                    title="Ambil alih obrolan secara langsung dari bot"
+                  >
+                    <UserCheckIcon className="w-3.5 h-3.5" />
+                    <span>Ambil Alih</span>
+                  </button>
+                )}
+
+                {/* Tombol Terminasi Layanan (Sesuai Aturan File Terminasi BPS Gorontalo) */}
+                {activeChat.is_direct && activeChatDetail?.session_status !== "closed" && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenTerminationModal(activeChat)}
+                    className="px-2.5 md:px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Terminasi sesi konsultasi & kirim survei SKD / penutupan"
+                  >
+                    <StopIcon className="w-3.5 h-3.5" />
+                    <span>Terminasi Sesi</span>
+                  </button>
+                )}
+
+                {/* Tombol Buka Kembali jika sudah ditutup */}
+                {activeChat.is_direct && activeChatDetail?.session_status === "closed" && (
+                  <button
+                    type="button"
+                    onClick={() => handleReopen(activeChat.id)}
+                    className="px-2.5 md:px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-lg shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
+                    title="Buka kembali sesi konsultasi ini"
+                  >
+                    <span>🔄 Buka Kembali</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() =>
@@ -1138,7 +1556,7 @@ export default function WhatsAppChatExplorer() {
                   title="Salin nomor kontak"
                 >
                   <CopyIcon className="w-3.5 h-3.5 text-muted" />
-                  <span className="hidden sm:inline">Salin Nomor</span>
+                  <span className="hidden sm:inline">Salin</span>
                 </button>
 
                 {activeChat.is_direct && (
@@ -1162,10 +1580,10 @@ export default function WhatsAppChatExplorer() {
                       ? "bg-brand text-white border-accent shadow-xs"
                       : "bg-surface text-ink border-line-strong hover:bg-subtle shadow-2xs"
                   }`}
-                  title="Tampilkan panel media, tautan, dan anggota"
+                  title="Tampilkan panel data PST, media, dan tautan"
                 >
                   <InfoCircleIcon className="w-4 h-4" />
-                  <span className="hidden md:inline">Media & Info</span>
+                  <span className="hidden md:inline">Data PST & Info</span>
                 </button>
               </div>
             </div>
@@ -1197,23 +1615,29 @@ export default function WhatsAppChatExplorer() {
             <div className="p-3 md:px-6 bg-subtle border-t border-line shrink-0">
               {sourceMode === "live" ? (
                 <form onSubmit={handleSendReply} className="space-y-2">
-                  {/* Canned Quick Templates */}
+                  {/* Official PST BPS Gorontalo Canned Templates */}
                   <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs text-muted no-scrollbar">
-                    <span className="text-[11px] font-bold text-faint shrink-0">
-                      Templat Cepat:
+                    <span className="text-[11px] font-bold text-faint shrink-0 flex items-center gap-1">
+                      <span>📜 Panduan PST:</span>
                     </span>
-                    {[
-                      "Halo, ada yang bisa kami bantu terkait data statistik BPS?",
-                      "Terima kasih atas pertanyaannya. Kami sedang memeriksa rilis data terkait.",
-                      "Informasi publikasi resmi BPS dapat diakses via https://gorontalo.bps.go.id",
-                    ].map((tmpl, idx) => (
+                    {OFFICIAL_TEMPLATES.map((tmpl) => (
                       <button
-                        key={idx}
+                        key={tmpl.id}
                         type="button"
-                        onClick={() => setReplyText(tmpl)}
-                        className="px-3 py-1 rounded-full bg-surface hover:bg-emerald-50 hover:text-emerald-800 text-ink border border-line-strong whitespace-nowrap cursor-pointer transition-colors shadow-2xs font-medium"
+                        onClick={() => handleApplyTemplate(tmpl)}
+                        className="px-3 py-1 rounded-full bg-surface hover:bg-emerald-50 hover:text-emerald-800 text-ink border border-line-strong whitespace-nowrap cursor-pointer transition-colors shadow-2xs font-semibold flex items-center gap-1 text-[11.5px]"
+                        title={tmpl.description}
                       >
-                        {tmpl.slice(0, 38)}...
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            tmpl.category === "TERMINASI"
+                              ? "bg-rose-500"
+                              : tmpl.category === "LAYANAN"
+                              ? "bg-blue-500"
+                              : "bg-emerald-500"
+                          }`}
+                        ></span>
+                        <span>{tmpl.name}</span>
                       </button>
                     ))}
                   </div>
@@ -1362,8 +1786,21 @@ export default function WhatsAppChatExplorer() {
             </div>
           </div>
 
-          {/* Sub-Tabs: Media, Links, Participants */}
+          {/* Sub-Tabs: PST Data, Media, Links, Participants */}
           <div className="flex items-center border-b border-line text-xs font-semibold bg-subtle shrink-0">
+            {activeChatDetail.is_direct && (
+              <button
+                type="button"
+                onClick={() => setRightPanelTab("pst")}
+                className={`flex-1 py-2 text-center transition-all cursor-pointer border-b-2 ${
+                  rightPanelTab === "pst"
+                    ? "border-accent text-[#00a884] bg-surface font-bold"
+                    : "border-transparent text-muted hover:text-ink"
+                }`}
+              >
+                Data PST
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setRightPanelTab("media")}
@@ -1402,7 +1839,105 @@ export default function WhatsAppChatExplorer() {
           </div>
 
           {/* Tab Contents */}
-          <div className="flex-1 overflow-y-auto p-3.5 bg-subtle/60">
+          <div className="flex-1 overflow-y-auto p-3.5 bg-subtle/60 space-y-3">
+            {/* TAB 0: DATA PENGUNJUNG PST */}
+            {rightPanelTab === "pst" && activeChatDetail.is_direct && (
+              <div className="space-y-3">
+                <div className="p-3.5 bg-surface rounded-xl border border-line shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-bold text-ink flex items-center gap-1.5">
+                      <span>📋 Data Pengunjung PST</span>
+                    </h5>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const v = activeChatDetail.visitor_data;
+                        const summary = `Nama: ${v?.nama || '-'}\nPekerjaan: ${v?.pekerjaan || '-'}\nInstansi: ${v?.instansi || '-'}`;
+                        handleCopy(summary, "Format Buku Tamu");
+                      }}
+                      className="text-[10.5px] text-accent hover:underline font-semibold"
+                    >
+                      Salin Format
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between py-1 border-b border-line/60">
+                      <span className="text-muted">Nama:</span>
+                      <span className="font-semibold text-ink text-right">
+                        {activeChatDetail.visitor_data?.nama || "-"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-line/60">
+                      <span className="text-muted">Pekerjaan:</span>
+                      <span className="font-semibold text-ink text-right">
+                        {activeChatDetail.visitor_data?.pekerjaan || "-"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-line/60">
+                      <span className="text-muted">Instansi / Asal:</span>
+                      <span className="font-semibold text-ink text-right">
+                        {activeChatDetail.visitor_data?.instansi || "-"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Sesi & Terminasi Card */}
+                <div className="p-3.5 bg-surface rounded-xl border border-line shadow-2xs space-y-2.5">
+                  <h5 className="text-xs font-bold text-ink">
+                    ⚙️ Kontrol Sesi Konsultasi
+                  </h5>
+                  <div className="space-y-1.5 text-xs text-muted">
+                    <div className="flex justify-between items-center">
+                      <span>Status:</span>
+                      <span className="font-bold text-ink">
+                        {activeChatDetail.session_status === "closed" && "✅ Diterminasi"}
+                        {activeChatDetail.session_status === "admin_active" && "👤 Ditangani Admin"}
+                        {activeChatDetail.session_status === "delayed" && "⏳ Diproses (3 Hari)"}
+                        {activeChatDetail.session_status === "waiting_admin" && "🤖 Menunggu Admin"}
+                      </span>
+                    </div>
+                    {activeChatDetail.session?.autoGreetedAt && (
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span>Pesan Pembuka:</span>
+                        <span>{formatTime(activeChatDetail.session.autoGreetedAt)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2 space-y-2 border-t border-line">
+                    {activeChatDetail.session_status !== "closed" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleDelay(activeChatDetail.id)}
+                          className="w-full py-1.5 px-3 text-xs font-semibold text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors cursor-pointer"
+                        >
+                          ⏳ Tandai Penundaan (3 Hari)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenTerminationModal(activeChatDetail)}
+                          className="w-full py-2 px-3 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <StopIcon className="w-4 h-4" />
+                          <span>Terminasi Sesi Ini</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleReopen(activeChatDetail.id)}
+                        className="w-full py-2 px-3 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-xl transition-colors cursor-pointer"
+                      >
+                        🔄 Buka Sesi Kembali
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             {/* TAB 1: MEDIA */}
             {rightPanelTab === "media" && (
               <div className="space-y-2">
@@ -1598,6 +2133,380 @@ export default function WhatsAppChatExplorer() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Official PST BPS Termination Modal */}
+      {showTerminationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-xl w-full p-6 border border-line overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between pb-3 border-b border-line mb-4 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-lg shadow-xs">
+                  🛑
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-ink">
+                    Terminasi Sesi Layanan PST BPS Gorontalo
+                  </h3>
+                  <p className="text-xs text-muted">
+                    Aturan penutupan sesuai dokumen panduan resmi PST BPS
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTerminationModal(false)}
+                className="text-faint hover:text-ink text-sm p-1.5 rounded-lg hover:bg-subtle cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              {/* Pilihan Jenis Terminasi */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-ink block">
+                  Pilih Aturan Terminasi Dokumen BPS:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Opsi A: Selesai */}
+                  <div
+                    onClick={() => setTerminationType("completed")}
+                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                      terminationType === "completed"
+                        ? "border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-xs"
+                        : "border-line bg-subtle hover:border-line-strong"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <input
+                        type="radio"
+                        checked={terminationType === "completed"}
+                        onChange={() => setTerminationType("completed")}
+                        className="text-emerald-600"
+                      />
+                      <span className="text-xs font-bold text-ink">
+                        1. Layanan Selesai
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted leading-relaxed">
+                      Konsultasi selesai setelah konfirmasi. Menyertakan link survei SKD: <b>https://s.bps.go.id/skd75</b>
+                    </p>
+                  </div>
+
+                  {/* Opsi B: Tutup Jam Layanan */}
+                  <div
+                    onClick={() => setTerminationType("end_of_day")}
+                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                      terminationType === "end_of_day"
+                        ? "border-amber-600 bg-amber-50/50 dark:bg-amber-950/20 shadow-xs"
+                        : "border-line bg-subtle hover:border-line-strong"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <input
+                        type="radio"
+                        checked={terminationType === "end_of_day"}
+                        onChange={() => setTerminationType("end_of_day")}
+                        className="text-amber-600"
+                      />
+                      <span className="text-xs font-bold text-ink">
+                        2. Jam Layanan Berakhir
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted leading-relaxed">
+                      Penutupan operasional harian di sore hari. Menyertakan jadwal buka kembali, tautan SIGAP & Web BPS.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Input Variabel Berdasarkan Jenis */}
+              {terminationType === "completed" ? (
+                <div>
+                  <label className="block text-xs font-bold text-ink mb-1">
+                    Topik Konsultasi <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={terminationTopic}
+                    onChange={(e) => setTerminationTopic(e.target.value)}
+                    placeholder="Contoh: Data Inflasi Kota Gorontalo 2024 / Kemiskinan"
+                    className="w-full px-3.5 py-2 text-sm bg-subtle border border-line-strong rounded-xl focus:bg-surface focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  />
+                  <p className="text-[11px] text-muted mt-1">
+                    Variabel <code>[Topik Konsultasi]</code> yang disisipkan ke dalam pesan penutup resmi.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-ink mb-1">
+                    Jadwal Layanan Dibuka Kembali <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={terminationSchedule}
+                    onChange={(e) => setTerminationSchedule(e.target.value)}
+                    placeholder="Contoh: Kamis, 15 Oktober 2026 pukul 08.00 WITA"
+                    className="w-full px-3.5 py-2 text-sm bg-subtle border border-line-strong rounded-xl focus:bg-surface focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+                  />
+                  <p className="text-[11px] text-muted mt-1">
+                    Variabel <code>[hari, tanggal]</code> saat jam layanan dibuka kembali.
+                  </p>
+                </div>
+              )}
+
+              {/* Pratinjau Teks Pesan */}
+              <div>
+                <label className="block text-xs font-bold text-ink mb-1 flex items-center justify-between">
+                  <span>Pratinjau Pesan Penutup yang Dikirim:</span>
+                  <span className="text-[10px] text-faint">Format Dokumen BPS Gorontalo</span>
+                </label>
+                <div className="p-3 bg-subtle rounded-xl border border-line text-xs font-mono whitespace-pre-wrap leading-relaxed text-ink select-all">
+                  {getTerminationPreviewText()}
+                </div>
+              </div>
+
+              {/* Checkbox Kirim ke WhatsApp */}
+              <label className="flex items-center gap-2.5 text-xs font-semibold text-ink cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={terminationSendWhatsapp}
+                  onChange={(e) => setTerminationSendWhatsapp(e.target.checked)}
+                  className="rounded-sm text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                />
+                <span>Kirim pesan resmi ini langsung ke nomor WhatsApp pelanggan</span>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-line mt-4 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowTerminationModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-muted hover:bg-subtle rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingTermination}
+                onClick={handleExecuteTermination}
+                className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {isSubmittingTermination ? (
+                  <>
+                    <RefreshIcon className="w-4 h-4 animate-spin" />
+                    <span>Memproses...</span>
+                  </>
+                ) : (
+                  <>
+                    <StopIcon className="w-4 h-4" />
+                    <span>Konfirmasi & Akhiri Sesi</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Auto-Chat & Operating Hours Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-md w-full p-6 border border-line overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between pb-3 border-b border-line mb-4 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg shadow-xs">
+                  ⚙️
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-ink">
+                    Pengaturan Auto-Chat & Jam Layanan
+                  </h3>
+                  <p className="text-xs text-muted">
+                    PST BPS Provinsi Gorontalo (WITA / UTC+8)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(false)}
+                className="text-faint hover:text-ink text-sm p-1.5 rounded-lg hover:bg-subtle cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Toggle Auto-Greeting */}
+              <div className="p-3.5 bg-subtle rounded-xl border border-line flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-bold text-ink text-xs">
+                    Otomatis Chat Duluan (Auto-Greeting)
+                  </h4>
+                  <p className="text-[11px] text-muted mt-0.5">
+                    Kirim pesan pembuka / follow-up otomatis sebelum admin ambil alih
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleSaveLiveSettings({
+                      autoGreetingEnabled: !liveSettings?.autoGreetingEnabled,
+                    }, true)
+                  }
+                  className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                    liveSettings?.autoGreetingEnabled
+                      ? "bg-emerald-600 justify-end"
+                      : "bg-gray-300 dark:bg-zinc-700 justify-start"
+                  }`}
+                >
+                  <div className="bg-white w-4 h-4 rounded-full shadow-md"></div>
+                </button>
+              </div>
+
+              {/* Terminasi Otomatis & Aturan Chat SIGAP */}
+              <div className="p-3.5 bg-subtle rounded-xl border border-line space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="font-bold text-ink text-xs flex items-center gap-1.5">
+                      <span>⏱️</span> Auto-Terminasi 10 Menit Tidak Aktif
+                    </h4>
+                    <p className="text-[11px] text-muted mt-0.5">
+                      Otomatis akhiri sesi jika tidak ada aktivitas percakapan selama 10 menit
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSaveLiveSettings({
+                        autoTerminateOnTimeout: !liveSettings?.autoTerminateOnTimeout,
+                      }, true)
+                    }
+                    className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                      liveSettings?.autoTerminateOnTimeout !== false
+                        ? "bg-emerald-600 justify-end"
+                        : "bg-gray-300 dark:bg-zinc-700 justify-start"
+                    }`}
+                  >
+                    <div className="bg-white w-4 h-4 rounded-full shadow-md"></div>
+                  </button>
+                </div>
+
+                {/* Sub-toggle: Kirim Pesan Penutup & SKD saat Timeout */}
+                <div className="pt-2.5 border-t border-line/60 flex items-center justify-between gap-3">
+                  <div>
+                    <span className="font-semibold text-ink text-[11.5px] block">
+                      Kirim Pesan Penutup Layanan Selesai (Survei SKD)
+                    </span>
+                    <span className="text-[10.5px] text-muted block mt-0.5">
+                      Kirim pesan terminasi resmi BPS Gorontalo + tautan survei SKD (https://s.bps.go.id/skd75) ke WhatsApp pengunjung saat timeout
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSaveLiveSettings({
+                        sendAutoTerminationMessage: !liveSettings?.sendAutoTerminationMessage,
+                      }, true)
+                    }
+                    className={`w-10 h-5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                      liveSettings?.sendAutoTerminationMessage !== false
+                        ? "bg-emerald-600 justify-end"
+                        : "bg-gray-300 dark:bg-zinc-700 justify-start"
+                    }`}
+                  >
+                    <div className="bg-white w-3.5 h-3.5 rounded-full shadow-md"></div>
+                  </button>
+                </div>
+
+                {/* Info Card: Aturan Chat Ulang SIGAP */}
+                <div className="bg-surface rounded-lg p-2.5 border border-line text-[11px] space-y-1.5 text-muted">
+                  <span className="font-bold text-ink block text-[11.5px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                    <span>💡</span> Aturan Chat Ulang SIGAP Sesuai Terminasi:
+                  </span>
+                  <p className="leading-relaxed">
+                    • <b>Bisa chat lagi setelah 10 menit:</b> Jika sesi telah diterminasi (atau tidak aktif &gt; 10 menit), saat pengunjung mengirim pesan kembali, <b>SIGAP otomatis chat duluan</b> untuk menyambut sesi konsultasi baru.
+                  </p>
+                  <p className="leading-relaxed">
+                    • <b>Mencegah spam sapaan:</b> Jika pengunjung membalas pesan penutup dalam kurun waktu &lt; 10 menit (misal sekadar mengucapkan terima kasih), SIGAP tidak akan mengirim pesan pembuka berulang kali.
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Waktu Saat Ini */}
+              <div className="p-3 bg-surface rounded-xl border border-line space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted">Status Jam Operasional:</span>
+                  <span
+                    className={`font-bold px-2 py-0.5 rounded-full text-[11px] ${
+                      liveSettings?.isOperatingHoursNow
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-amber-100 text-amber-800"
+                    }`}
+                  >
+                    {liveSettings?.isOperatingHoursNow
+                      ? "🟢 Jam Layanan Aktif"
+                      : "🟡 Di Luar Jam Layanan"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-muted">Waktu Gorontalo (WITA):</span>
+                  <span className="font-mono text-ink">
+                    {liveSettings?.currentGorontaloTime
+                      ? new Date(liveSettings.currentGorontaloTime).toLocaleTimeString("id-ID", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          timeZone: "Asia/Makassar"
+                        }) + " WITA"
+                      : "-"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-muted">Sapaan Otomatis:</span>
+                  <span className="font-bold capitalize text-ink">
+                    Selamat {liveSettings?.currentGreeting || "pagi/siang/sore"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Tabel Jam Kerja PST Gorontalo */}
+              <div>
+                <h4 className="font-bold text-ink mb-1.5">
+                  Jadwal Operasional Layanan PST BPS Gorontalo:
+                </h4>
+                <div className="border border-line rounded-xl overflow-hidden divide-y divide-line text-[11.5px]">
+                  <div className="px-3 py-1.5 bg-subtle flex justify-between font-bold text-muted">
+                    <span>Hari</span>
+                    <span>Jam Layanan</span>
+                  </div>
+                  <div className="px-3 py-1.5 flex justify-between bg-surface">
+                    <span>Senin - Kamis</span>
+                    <span className="font-mono font-semibold">08:00 - 15:30 WITA</span>
+                  </div>
+                  <div className="px-3 py-1.5 flex justify-between bg-surface">
+                    <span>Jumat</span>
+                    <span className="font-mono font-semibold">08:00 - 15:00 WITA</span>
+                  </div>
+                  <div className="px-3 py-1.5 flex justify-between bg-subtle/50 text-faint">
+                    <span>Sabtu & Minggu</span>
+                    <span>Tutup (Luar Jam Layanan)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-line mt-4 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(false)}
+                className="px-5 py-2 text-xs font-bold text-white bg-brand hover:bg-brand-hover rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -17,6 +17,7 @@ import backupRouter, { setBackupService } from './src/routes/backupRoute.js';
 import explorerRouter, { setExplorerSocketGetter } from './src/routes/chatExplorerRoute.js';
 import { createBackupService } from './src/services/whatsappBackupService.js';
 import messageStore from './src/store/messageStore.js';
+import liveChatSessionService from './src/services/liveChatSessionService.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -36,6 +37,7 @@ let currentQrUpdatedAt = null;
 const backupService = createBackupService(() => sock, () => isConnected, messageStore);
 setBackupService(backupService);
 setExplorerSocketGetter(() => sock, () => isConnected, fetchSubscribedNewsletters);
+liveChatSessionService.setSocketGetter(() => sock, () => isConnected);
 
 function formatJid(target) {
   let cleaned = String(target || '').trim();
@@ -121,10 +123,12 @@ async function connectToWhatsApp() {
           currentQrDataUrl = null;
           console.log('❌ [WhatsApp] Sesi keluar (Logged out). Klik Ganti Nomor di dashboard atau reset sesi untuk scan ulang.');
         }
-      } else if (connection === 'open') {
         isConnected = true;
         currentQr = null;
         currentQrDataUrl = null;
+        if (sock?.user?.id || sock?.user?.lid) {
+          messageStore.setMyJid(sock.user.id, sock.user.lid);
+        }
         const senderNum = sock?.user?.id ? sock.user.id.split(':')[0] : 'Aktif';
         console.log('\n=============================================================');
         console.log(`✅ [WhatsApp] GATEWAY BERHASIL TERHUBUNG!`);
@@ -177,6 +181,21 @@ async function connectToWhatsApp() {
       }
       try {
         messageStore.handleMessagesUpsert(upsert);
+
+        // Auto-reply live chat sebelum admin ambil alih & tracking respon admin
+        if (upsert.messages && Array.isArray(upsert.messages)) {
+          for (const m of upsert.messages) {
+            const rawJid = m.key?.remoteJid;
+            if (!rawJid || messageStore.isSelfJid(rawJid)) {
+              continue; // Abaikan pesan sync internal multi-device milik bot sendiri
+            }
+            if (m.key?.fromMe) {
+              liveChatSessionService.handleAdminMessageSent(rawJid, 'Admin PST', m.key?.id);
+            } else if (upsert.type === 'notify' || upsert.type === 'append') {
+              liveChatSessionService.handleIncomingMessage(sock, m);
+            }
+          }
+        }
       } catch (err) {
         console.error('❌ Error handling messages.upsert:', err);
       }
@@ -494,6 +513,7 @@ app.post(['/webhook', '/send'], async (req, res) => {
         pushName: 'SIGAP BPS Admin',
       };
       messageStore.saveMessages(jid, [outgoingMsg]);
+      liveChatSessionService.handleAdminMessageSent(jid, 'SIGAP BPS Admin');
     } catch (saveErr) {
       console.warn('⚠️ Gagal menyimpan pesan keluar ke store:', saveErr.message);
     }

@@ -1,6 +1,6 @@
-// chatExplorerRoute.js - Express router for WhatsApp Chat & Backup Explorer
 import express from 'express';
 import messageStore from '../store/messageStore.js';
+import liveChatSessionService from '../services/liveChatSessionService.js';
 
 const router = express.Router();
 
@@ -127,6 +127,22 @@ router.get('/chats', async (req, res) => {
       return (a.name || '').localeCompare(b.name || '');
     });
 
+    // Enrich direct chats with session data (waiting_admin, admin_active, delayed, closed)
+    for (const s of summaries) {
+      if (s.is_direct) {
+        const session = liveChatSessionService.getSession(s.id);
+        s.session_status = session?.status || 'waiting_admin';
+        s.auto_greeted = Boolean(session?.autoGreeted);
+        s.auto_greeted_at = session?.autoGreetedAt || null;
+        s.visitor_data = session?.visitorData || null;
+        s.termination_type = session?.terminationType || null;
+        s.consultation_topic = session?.consultationTopic || null;
+        s.closed_at = session?.closedAt || null;
+      } else {
+        s.session_status = 'group';
+      }
+    }
+
     const stats = messageStore.getMessageStats();
     res.json({
       success: true,
@@ -198,6 +214,12 @@ router.get('/chats/:chatId', async (req, res) => {
         console.warn('Catatan groupMetadata:', grpErr.message);
       }
     }
+
+    // Enrich detail with live session data
+    const session = liveChatSessionService.getSession(chatId);
+    detail.session = session || null;
+    detail.session_status = session?.status || (detail.is_direct ? 'waiting_admin' : 'group');
+    detail.visitor_data = session?.visitorData || null;
 
     res.json({
       success: true,
@@ -300,6 +322,7 @@ router.post('/reply', async (req, res) => {
       pushName: 'SIGAP BPS Admin',
     };
     messageStore.saveMessages(jid, [outgoingMsg]);
+    liveChatSessionService.handleAdminMessageSent(jid, 'SIGAP BPS Admin');
 
     res.json({
       success: true,
@@ -310,6 +333,236 @@ router.post('/reply', async (req, res) => {
   } catch (err) {
     console.error('❌ [Explorer] Error sending reply:', err);
     res.status(500).json({ success: false, error: `Gagal mengirim balasan: ${err.message}` });
+  }
+});
+
+// ===================================================================
+// LIVE CHAT SESSIONS & TERMINATION ENDPOINTS
+// ===================================================================
+
+// GET /whatsapp/explorer/sessions — get all active & past live chat sessions
+router.get('/sessions', (req, res) => {
+  try {
+    const all = liveChatSessionService.getAllSessions();
+    const settings = liveChatSessionService.getLiveSettings();
+    res.json({
+      success: true,
+      sessions: all,
+      settings
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /whatsapp/explorer/sessions/:chatId — get single session details
+router.get('/sessions/:chatId', (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const session = liveChatSessionService.getSession(chatId);
+    const settings = liveChatSessionService.getLiveSettings();
+    res.json({
+      success: true,
+      session: session || null,
+      settings
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /whatsapp/explorer/sessions/:chatId/takeover — admin takes over chat
+router.post('/sessions/:chatId/takeover', (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { adminName = 'Admin PST' } = req.body || {};
+    const session = liveChatSessionService.takeoverSession(chatId, adminName);
+    res.json({
+      success: true,
+      message: 'Sesi obrolan berhasil diambil alih oleh admin',
+      session
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /whatsapp/explorer/sessions/:chatId/delay — mark session as delayed (maks. 3 hari kerja)
+router.post('/sessions/:chatId/delay', async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { adminName = 'Admin PST', sendMessage = true } = req.body || {};
+    const session = liveChatSessionService.delaySession(chatId, adminName);
+
+    if (sendMessage) {
+      const sock = _getSock();
+      const isConn = _getIsConnected();
+      if (sock && isConn) {
+        const jid = formatTargetJid(chatId);
+        const delayMsg = liveChatSessionService.buildDelayMessage();
+        await sock.sendMessage(jid, { text: delayMsg });
+        const outMsg = {
+          key: { id: `delay-${Date.now()}`, remoteJid: jid, fromMe: true },
+          message: { conversation: delayMsg },
+          messageTimestamp: Math.floor(Date.now() / 1000),
+          pushName: `${adminName} (Penundaan Data)`
+        };
+        messageStore.saveMessages(jid, [outMsg]);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Status sesi diperbarui ke Penundaan Pengolahan Data (Maks. 3 Hari)',
+      session
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /whatsapp/explorer/sessions/:chatId/reopen — reopen closed session
+router.post('/sessions/:chatId/reopen', (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const session = liveChatSessionService.reopenSession(chatId);
+    res.json({
+      success: true,
+      message: 'Sesi berhasil dibuka kembali',
+      session
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /whatsapp/explorer/sessions/:chatId/terminate — official session termination conforming to PDF
+router.post('/sessions/:chatId/terminate', async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const {
+      type = 'completed', // 'completed' | 'end_of_day'
+      topic = '',
+      nextSchedule = '',
+      message = '',
+      adminName = 'Admin PST',
+      sendWhatsappMessage = true
+    } = req.body || {};
+
+    const sock = _getSock();
+    const isConnected = _getIsConnected();
+
+    if (sendWhatsappMessage && (!sock || !isConnected)) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp Gateway belum terhubung. Tidak dapat mengirim pesan terminasi ke pelanggan.'
+      });
+    }
+
+    const jid = formatTargetJid(chatId);
+    const sendFn = async (targetJid, text) => {
+      return await sock.sendMessage(targetJid, { text });
+    };
+
+    const result = await liveChatSessionService.terminateSession(
+      jid,
+      { type, topic, nextSchedule, message, adminName, sendWhatsappMessage },
+      sendFn
+    );
+
+    res.json({
+      success: true,
+      message: type === 'end_of_day'
+        ? 'Sesi berhasil diterminasi (Jam Layanan Berakhir)'
+        : 'Sesi konsultasi berhasil diterminasi dan survei SKD dikirim',
+      result
+    });
+  } catch (err) {
+    console.error('❌ [Explorer] Error terminating session:', err);
+    res.status(500).json({ success: false, error: `Gagal terminasi sesi: ${err.message}` });
+  }
+});
+
+// GET /whatsapp/explorer/sessions-settings
+router.get('/sessions-settings', (req, res) => {
+  try {
+    res.json({
+      success: true,
+      settings: liveChatSessionService.getLiveSettings()
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /whatsapp/explorer/sessions-settings
+router.post('/sessions-settings', (req, res) => {
+  try {
+    const updated = liveChatSessionService.updateLiveSettings(req.body || {});
+    res.json({
+      success: true,
+      message: 'Pengaturan Live Chat & Jam Operasional berhasil disimpan',
+      settings: updated
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /whatsapp/explorer/templates — get all official PST BPS templates from uploaded guide
+router.get('/templates', (req, res) => {
+  try {
+    const topic = req.query.topic || 'konsultasi data';
+    const schedule = req.query.schedule || null;
+    res.json({
+      success: true,
+      templates: [
+        {
+          id: 'opening',
+          title: 'Pesan Pembuka (Jam Layanan)',
+          category: 'pembuka',
+          text: liveChatSessionService.buildOpeningMessage(),
+          description: 'Dikirim otomatis saat chat masuk pada jam operasional layanan'
+        },
+        {
+          id: 'out_of_hours',
+          title: 'Pesan Luar Jam Layanan',
+          category: 'luar_jam',
+          text: liveChatSessionService.buildOutOfHoursMessage(),
+          description: 'Dikirim otomatis saat chat masuk di luar jam operasional petugas'
+        },
+        {
+          id: 'delay',
+          title: 'Pesan Penundaan (3 Hari Kerja)',
+          category: 'penundaan',
+          text: liveChatSessionService.buildDelayMessage(),
+          description: 'Jika permintaan data butuh penyiapan teknis (maks. 3 hari kerja)'
+        },
+        {
+          id: 'confirmation',
+          title: 'Pesan Konfirmasi',
+          category: 'konfirmasi',
+          text: liveChatSessionService.buildConfirmationMessage(topic),
+          description: 'Memastikan apakah penjelasan/data yang diberikan sudah jelas'
+        },
+        {
+          id: 'termination_completed',
+          title: 'Pesan Penutup: Layanan Selesai (+Survei SKD)',
+          category: 'terminasi',
+          text: liveChatSessionService.buildClosingCompletedMessage(topic),
+          description: 'Terminasi konsultasi selesai dengan konfirmasi & link survei SKD'
+        },
+        {
+          id: 'termination_end_of_day',
+          title: 'Pesan Penutup: Jam Layanan Telah Selesai',
+          category: 'terminasi',
+          text: liveChatSessionService.buildClosingEndOfDayMessage(schedule),
+          description: 'Terminasi saat jam operasional hari ini berakhir (+ link SIGAP & Web BPS)'
+        }
+      ]
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
