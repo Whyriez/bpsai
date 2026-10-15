@@ -322,7 +322,7 @@ router.post('/reply', async (req, res) => {
       pushName: 'SIGAP BPS Admin',
     };
     messageStore.saveMessages(jid, [outgoingMsg]);
-    liveChatSessionService.handleAdminMessageSent(jid, 'SIGAP BPS Admin');
+    liveChatSessionService.handleAdminMessageSent(jid, 'SIGAP BPS Admin', sent?.key?.id, message);
 
     res.json({
       success: true,

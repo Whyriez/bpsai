@@ -190,7 +190,11 @@ async function connectToWhatsApp() {
               continue; // Abaikan pesan sync internal multi-device milik bot sendiri
             }
             if (m.key?.fromMe) {
-              liveChatSessionService.handleAdminMessageSent(rawJid, 'Admin PST', m.key?.id);
+              const text = m.message?.conversation ||
+                m.message?.extendedTextMessage?.text ||
+                m.message?.imageMessage?.caption ||
+                '';
+              liveChatSessionService.handleAdminMessageSent(rawJid, 'Admin PST', m.key?.id, text);
             } else if (upsert.type === 'notify' || upsert.type === 'append') {
               liveChatSessionService.handleIncomingMessage(sock, m);
             }
@@ -513,7 +517,7 @@ app.post(['/webhook', '/send'], async (req, res) => {
         pushName: 'SIGAP BPS Admin',
       };
       messageStore.saveMessages(jid, [outgoingMsg]);
-      liveChatSessionService.handleAdminMessageSent(jid, 'SIGAP BPS Admin');
+      liveChatSessionService.handleAdminMessageSent(jid, 'SIGAP BPS Admin', sentResult?.key?.id, message || '');
     } catch (saveErr) {
       console.warn('⚠️ Gagal menyimpan pesan keluar ke store:', saveErr.message);
     }

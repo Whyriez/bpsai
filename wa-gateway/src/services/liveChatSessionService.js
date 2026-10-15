@@ -286,6 +286,45 @@ export function extractVisitorDataFromText(text) {
 }
 
 /**
+ * Mengecek apakah pesan pengunjung hanya berupa ucapan terima kasih / salam penutup singkat
+ * Contoh: "terima kasih", "makasih", "siap", "ok", "sama-sama", emoji 👍 / 🙏
+ */
+export function isCourtesyOrAcknowledgmentMessage(text) {
+  if (!text || typeof text !== 'string') return false;
+  const clean = text.trim().toLowerCase().replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ');
+  if (!clean) {
+    // Pesan hanya berisi emotikon (seperti 👍, 🙏, 😊), anggap respons sopan penutup
+    return true;
+  }
+  const courtesyList = [
+    'terima kasih', 'terimakasih', 'makasih', 'makasi', 'matur nuwun', 'suwun', 'syukron',
+    'thanks', 'thank you', 'thx', 'tq', 'ty', 'ok', 'oke', 'okay', 'siap', 'baik', 'sama sama',
+    'samasama', 'sama2', 'siaap', 'baik pak', 'baik kak', 'terima kasih pak', 'terima kasih kak',
+    'terimakasih pak', 'terimakasih kak', 'makasih pak', 'makasih kak', 'masama', 'noted',
+    'siap pak', 'siap kak', 'oke siap', 'ok siap', 'ok terima kasih', 'oke terima kasih',
+    'baik terima kasih', 'baik terimakasih', 'siap makasih', 'ok kak', 'oke kak', 'ok pak',
+    'oke pak', 'alhamdulillah', 'siap terimakasih'
+  ];
+  return courtesyList.some(w => clean === w || clean.startsWith(w + ' ') || clean.endsWith(' ' + w));
+}
+
+/**
+ * Mengecek apakah pesan yang dikirim oleh admin / bot merupakan pesan terminasi / penutup resmi
+ */
+export function isTerminationClosingText(text) {
+  if (!text || typeof text !== 'string') return false;
+  const lower = text.toLowerCase();
+  return (
+    lower.includes('s.bps.go.id/skd') ||
+    lower.includes('kami akhiri ya kak') ||
+    lower.includes('kami akhiri ya') ||
+    (lower.includes('konsultasi terkait') && lower.includes('kami akhiri')) ||
+    lower.includes('jam operasional layanan hari ini telah berakhir') ||
+    lower.includes('proses konsultasi akan kami lanjutkan kembali')
+  );
+}
+
+/**
  * Mengambil atau membuat sesi chat
  */
 export function getOrCreateSession(chatId) {
@@ -411,6 +450,15 @@ export async function handleIncomingMessage(sock, msg) {
 
     // 1. Jika sesi sebelumnya sudah diterminasi / closed:
     if (isSessionClosed) {
+      // Jika pesan pengunjung hanya ucapan terima kasih / acknowledgment sopan, pertahankan sesi tertutup
+      // agar tidak memicu form pembuka konsultasi baru dan loop auto-terminasi berulang!
+      if (isCourtesyOrAcknowledgmentMessage(incomingText)) {
+        console.log(`💬 [LiveChat] Pesan dari ${chatId} adalah ucapan terima kasih/sopan santun pasca-terminasi ("${(incomingText || '').trim()}"). Sesi tetap closed.`);
+        session.lastActivityAt = nowSec;
+        saveSessions();
+        return;
+      }
+
       if (isPastTerminationTimeout) {
         // SUDAH LEWAT DARI 10 MENIT PASCA TERMINASI:
         // Sesuai aturan terminasi BPS Gorontalo: SIGAP bisa chat duluan lagi untuk konsultasi baru!
@@ -537,15 +585,30 @@ export async function handleIncomingMessage(sock, msg) {
 
 /**
  * Handle saat Admin mengirim pesan (dari Dashboard atau HP tertaut)
- * Menandakan admin telah mengambil alih sesi secara aktif.
+ * Menandakan admin telah mengambil alih sesi secara aktif atau menutup sesi jika pesan penutup.
  */
-export function handleAdminMessageSent(chatId, adminName = 'Admin PST', msgId = null) {
+export function handleAdminMessageSent(chatId, adminName = 'Admin PST', msgId = null, msgText = '') {
   if (!chatId) return;
   // Abaikan pesan otomatis yang dikirim oleh sistem / bot SIGAP
   if (msgId && isBotMessage(msgId)) {
     return;
   }
   const session = getOrCreateSession(chatId);
+
+  // Jika pesan admin mengandung teks penutup / terminasi resmi PST BPS:
+  // Otomatis tandai sesi sebagai closed agar detektor auto-terminasi tidak mengirim penutup ganda 10 menit kemudian!
+  if (isTerminationClosingText(msgText)) {
+    console.log(`🔒 [LiveChat] Pesan admin ke ${chatId} terdeteksi sebagai pesan terminasi/penutup. Menutup sesi.`);
+    session.status = 'closed';
+    session.closedAt = Math.floor(Date.now() / 1000);
+    session.lastActivityAt = session.closedAt;
+    session.closedBy = adminName;
+    session.terminationMessage = msgText;
+    session.terminationType = msgText.toLowerCase().includes('operasional') ? 'end_of_day' : 'completed';
+    saveSessions();
+    return;
+  }
+
   // Jangan ubah status jika sesi sudah ditutup (closed)
   if (session.status === 'closed') {
     return;
@@ -611,6 +674,18 @@ export async function terminateSession(chatId, payload = {}, sendFn = null) {
   } = payload;
 
   const session = getOrCreateSession(chatId);
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  // Jika sesi sudah berstatus closed dan baru saja ditutup (< 90 detik lalu), cegah pengiriman ganda
+  if (session.status === 'closed' && session.closedAt && (nowSec - session.closedAt < 90)) {
+    console.log(`ℹ️ [LiveChat] Sesi ${chatId} sudah ditutup ${nowSec - session.closedAt}s lalu. Melewati eksekusi terminasi ganda.`);
+    return {
+      success: true,
+      session,
+      messageSent: false,
+      alreadyClosed: true
+    };
+  }
 
   // Buat pesan teks terminasi jika belum disertakan
   let terminationText = message;
@@ -621,6 +696,17 @@ export async function terminateSession(chatId, payload = {}, sendFn = null) {
       terminationText = buildClosingCompletedMessage(topic || session.consultationTopic || 'konsultasi data');
     }
   }
+
+  // Set status sesi menjadi 'closed' SEBELUM pengiriman pesan ke Baileys
+  // Hal ini krusial untuk mencegah race condition event Baileys messages.upsert yang memicu handleAdminMessageSent
+  session.status = 'closed';
+  session.terminationType = type;
+  session.consultationTopic = topic || session.consultationTopic;
+  session.closedAt = nowSec;
+  session.lastActivityAt = session.closedAt;
+  session.closedBy = adminName;
+  session.terminationMessage = terminationText;
+  saveSessions();
 
   let sentResult = null;
   if (sendWhatsappMessage && sendFn) {
@@ -649,16 +735,6 @@ export async function terminateSession(chatId, payload = {}, sendFn = null) {
       throw sendErr;
     }
   }
-
-  // Update session record
-  session.status = 'closed';
-  session.terminationType = type;
-  session.consultationTopic = topic || session.consultationTopic;
-  session.closedAt = Math.floor(Date.now() / 1000);
-  session.lastActivityAt = session.closedAt;
-  session.closedBy = adminName;
-  session.terminationMessage = terminationText;
-  saveSessions();
 
   return {
     success: true,
@@ -721,8 +797,9 @@ export async function checkAndAutoTerminateSessions() {
   const nowSec = Math.floor(Date.now() / 1000);
 
   for (const [chatId, session] of Object.entries(sessions)) {
-    // Hanya proses sesi yang masih aktif (waiting_admin, admin_active, delayed)
-    if (session.status === 'closed') continue;
+    // Hanya proses sesi yang masih aktif (waiting_admin, admin_active)
+    // Sesi 'closed' dan sesi 'delayed' (penundaan hingga 3 hari kerja) TIDAK boleh diterminasi timeout 10 menit!
+    if (session.status === 'closed' || session.status === 'delayed') continue;
     if (
       chatId.endsWith('@g.us') ||
       chatId.endsWith('@newsletter') ||
@@ -808,5 +885,7 @@ export default {
   getLiveSettings,
   updateLiveSettings,
   setSocketGetter,
-  checkAndAutoTerminateSessions
+  checkAndAutoTerminateSessions,
+  isCourtesyOrAcknowledgmentMessage,
+  isTerminationClosingText
 };
