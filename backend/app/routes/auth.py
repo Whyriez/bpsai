@@ -71,11 +71,11 @@ def verify_imap_direct(identifier: str, password: str):
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    """Endpoint untuk login user via IMAP BPS langsung atau Central Auth Gateway.
+    """Endpoint untuk login user via Central Authentication Gateway (RS256).
     ---
     tags:
       - Authentication
-    summary: Login user menggunakan Akun BPS.
+    summary: Login user menggunakan Akun BPS ke Central Auth Gateway.
     """
     data = request.json or {}
     input_identifier = data.get('email') or data.get('username')
@@ -83,6 +83,13 @@ def login():
 
     if not input_identifier or not password:
         return jsonify({"msg": "Username/Email dan password diperlukan"}), 400
+
+    # Dapatkan IP client untuk perlindungan rate limiter di Gateway
+    client_ip = request.headers.get('X-Forwarded-For')
+    if client_ip:
+        client_ip = client_ip.split(',')[0].strip()
+    else:
+        client_ip = request.remote_addr or "127.0.0.1"
 
     seed_email = os.getenv('SEED_ADMIN_EMAIL', '').strip().lower()
     seed_username = os.getenv('SEED_ADMIN_USERNAME', '').strip().lower()
@@ -94,21 +101,24 @@ def login():
         (seed_username and clean_input == seed_username)
     )
 
-    auth_mode = os.getenv("AUTH_MODE", "imap").strip().lower()
+    auth_mode = os.getenv("AUTH_MODE", "central").strip().lower()
+    gateway_access_token = None
+    token_info = {}
 
     # 1. Mode Fallback Darurat Admin (jika ADMIN_FALLBACK_PASSWORD diset di .env)
     if fallback_pwd and password == fallback_pwd and is_seed:
-        auth_success = True
         username = seed_username or "admin"
         email = seed_email or "admin@bps.go.id"
-    # 2. Mode Central Auth Gateway (jika AUTH_MODE diatur explicitly ke 'central')
-    elif auth_mode == "central":
-        client_ip = request.headers.get('X-Forwarded-For')
-        if client_ip:
-            client_ip = client_ip.split(',')[0].strip()
-        else:
-            client_ip = request.remote_addr or "127.0.0.1"
-
+    # 2. Mode Direct IMAP Explicit (jika disetel di .env AUTH_MODE=imap)
+    elif auth_mode == "imap":
+        auth_success, username, email, err_msg, status_code = verify_imap_direct(input_identifier, password)
+        if not auth_success:
+            return jsonify({
+                "msg": err_msg,
+                "code": "INVALID_CREDENTIALS" if status_code == 401 else "PROVIDER_UNAVAILABLE"
+            }), status_code
+    # 3. Mode Default: Central Authentication Gateway (RS256)
+    else:
         try:
             auth_data = verify_bps_credentials(
                 username=input_identifier,
@@ -116,21 +126,27 @@ def login():
                 client_ip=client_ip
             )
             identity = auth_data.get("identity", {})
+            token_info = auth_data.get("token", {})
+            gateway_access_token = token_info.get("access_token")
             username = identity.get("username", "").strip()
             email = identity.get("email", "").strip()
-            auth_success = True
         except CentralAuthError as e:
-            return jsonify({"msg": e.message, "code": e.error_code}), e.status_code
+            # Jika Central Auth Gateway timeout / 503, otomatis coba fallback direct IMAP arsipmail
+            if e.status_code in [503, 504]:
+                print(f"[CentralAuth] Gateway returned {e.status_code}, mencoba fallback direct IMAP...")
+                try:
+                    imap_ok, imap_user, imap_email, imap_err, imap_code = verify_imap_direct(input_identifier, password)
+                    if imap_ok:
+                        username = imap_user
+                        email = imap_email
+                    else:
+                        return jsonify({"msg": e.message, "code": e.error_code}), e.status_code
+                except Exception:
+                    return jsonify({"msg": e.message, "code": e.error_code}), e.status_code
+            else:
+                return jsonify({"msg": e.message, "code": e.error_code}), e.status_code
         except Exception as e:
             return jsonify({"msg": f"Gagal memproses autentikasi: {str(e)}"}), 500
-    # 3. Mode Default: Langsung tembak ke arsipmail.bps.go.id:993
-    else:
-        auth_success, username, email, err_msg, status_code = verify_imap_direct(input_identifier, password)
-        if not auth_success:
-            return jsonify({
-                "msg": err_msg,
-                "code": "INVALID_CREDENTIALS" if status_code == 401 else "PROVIDER_UNAVAILABLE"
-            }), status_code
 
     # ---------------------------------------------------------
     # PROSES OTORISASI & PEMETAAN USER KE DATABASE LOKAL
@@ -161,19 +177,10 @@ def login():
 
     if not user:
         return jsonify({
-            "msg": "Login email BPS berhasil, namun akun Anda belum terdaftar di sistem ini. Silahkan hubungi Administrator."
+            "msg": "Login berhasil via Central Auth, namun akun Anda belum terdaftar di sistem ini. Silahkan hubungi Administrator."
         }), 403
 
-    # Buat JWT access token & refresh token lokal (HS256)
-    access_token = create_access_token(
-        identity=str(user.id),
-        additional_claims={
-            "username": user.username,
-            "email": user.email,
-            "role": user.role,
-            "sub": str(user.id)
-        }
-    )
+    # Buat refresh token lokal
     refresh_token = create_refresh_token(
         identity=str(user.id),
         additional_claims={
@@ -183,13 +190,29 @@ def login():
         }
     )
 
+    # Gunakan gateway token RS256 jika tersedia, jika tidak buat access token lokal
+    if not gateway_access_token:
+        access_token = create_access_token(
+            identity=str(user.id),
+            additional_claims={
+                "username": user.username,
+                "email": user.email,
+                "role": user.role,
+                "sub": str(user.id)
+            }
+        )
+        expires_in = 3600 * 24
+    else:
+        access_token = gateway_access_token
+        expires_in = token_info.get("expires_in", 900)
+
     return jsonify({
         "success": True,
         "access_token": access_token,
         "gateway_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "Bearer",
-        "expires_in": 3600 * 24,
+        "expires_in": expires_in,
         "user": user.to_dict()
     }), 200
 

@@ -61,7 +61,7 @@ def verify_bps_credentials(username: str, password: str, client_ip: Optional[str
         headers["X-Forwarded-For"] = client_ip
 
     try:
-        res = requests.post(url, json=payload, headers=headers, timeout=12)
+        res = requests.post(url, json=payload, headers=headers, timeout=25)
 
         if res.status_code == 200:
             return res.json()
