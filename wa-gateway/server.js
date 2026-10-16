@@ -91,6 +91,7 @@ async function connectToWhatsApp() {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
+        isConnected = false;
         currentQr = qr;
         currentQrUpdatedAt = new Date().toISOString();
         try {
@@ -123,19 +124,19 @@ async function connectToWhatsApp() {
           currentQrDataUrl = null;
           console.log('❌ [WhatsApp] Sesi keluar (Logged out). Klik Ganti Nomor di dashboard atau reset sesi untuk scan ulang.');
         }
+      } else if (connection === 'open') {
         isConnected = true;
         currentQr = null;
         currentQrDataUrl = null;
         if (sock?.user?.id || sock?.user?.lid) {
           messageStore.setMyJid(sock.user.id, sock.user.lid);
         }
-        const senderNum = sock?.user?.id ? sock.user.id.split(':')[0] : 'Aktif';
+        const senderNum = sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : 'Aktif';
         console.log('\n=============================================================');
         console.log(`✅ [WhatsApp] GATEWAY BERHASIL TERHUBUNG!`);
         console.log(`📱 Nomor Bot: ${senderNum}`);
         console.log(`🚀 Siap melayani pengiriman rilis BPS dari backend SIGAP!`);
         console.log('=============================================================\n');
-
 
         setTimeout(async () => {
           // Trigger App State resync
@@ -240,7 +241,7 @@ async function connectToWhatsApp() {
 }
 
 function getStatusResponse() {
-  const rawPhone = sock?.user?.id ? sock.user.id.split(':')[0] : null;
+  const rawPhone = sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null;
   let formattedPhone = null;
   if (rawPhone) {
     formattedPhone = rawPhone.startsWith('62')
@@ -248,16 +249,18 @@ function getStatusResponse() {
       : `+${rawPhone}`;
   }
 
+  const actuallyConnected = Boolean(isConnected && rawPhone);
+
   return {
     name: 'SIGAP BPS WhatsApp Gateway (Baileys)',
-    status: isConnected ? 'CONNECTED' : (currentQr ? 'SCAN_QR' : 'DISCONNECTED'),
-    is_connected: isConnected,
-    phone: rawPhone,
-    phone_formatted: formattedPhone,
-    qr_waiting: !!currentQr,
-    qr_image: currentQrDataUrl,
+    status: actuallyConnected ? 'CONNECTED' : (currentQr ? 'SCAN_QR' : 'DISCONNECTED'),
+    is_connected: actuallyConnected,
+    phone: actuallyConnected ? rawPhone : null,
+    phone_formatted: actuallyConnected ? formattedPhone : null,
+    qr_waiting: !actuallyConnected && !!currentQr,
+    qr_image: actuallyConnected ? null : currentQrDataUrl,
     qr_updated_at: currentQrUpdatedAt,
-    instructions: isConnected
+    instructions: actuallyConnected
       ? 'Gateway aktif dan siap digunakan.'
       : (currentQr ? 'Silakan scan QR code di Dashboard atau terminal HP.' : 'Sedang menghubungkan ke server WhatsApp...')
   };

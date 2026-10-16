@@ -1188,7 +1188,7 @@ const BpsSyncModal = ({
         try {
           const res = await apiFetch("/documents/bps/whatsapp-status");
           setWaStatus(res);
-          if (res && res.is_connected) {
+          if (res && res.is_connected && (res.phone || res.phone_formatted)) {
             toast.success(
               `Nomor WhatsApp bot (${res.phone_formatted || res.phone}) berhasil ditautkan!`,
             );
@@ -1964,14 +1964,14 @@ const BpsSyncModal = ({
                           </label>
                           <span
                             className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                              waStatus?.is_connected
+                              waStatus?.is_connected && (waStatus?.phone || waStatus?.phone_formatted)
                                 ? "bg-emerald-100 text-emerald-800"
                                 : waStatus?.status === "SCAN_QR"
                                   ? "bg-amber-100 text-amber-800"
                                   : "bg-hover text-ink"
                             }`}
                           >
-                            {waStatus?.is_connected
+                            {waStatus?.is_connected && (waStatus?.phone || waStatus?.phone_formatted)
                               ? "Terhubung"
                               : waStatus?.status === "SCAN_QR"
                                 ? "Menunggu Scan"
@@ -2022,13 +2022,13 @@ const BpsSyncModal = ({
                             <span>
                               {isResettingWa
                                 ? "Mereset..."
-                                : waStatus?.is_connected
+                                : waStatus?.is_connected && (waStatus?.phone || waStatus?.phone_formatted)
                                   ? "Ganti Nomor"
                                   : "Scan QR Code"}
                             </span>
                           </button>
 
-                          {waStatus?.is_connected && (
+                          {waStatus?.is_connected && (waStatus?.phone || waStatus?.phone_formatted) && (
                             <button
                               type="button"
                               onClick={handleDisconnectWaSession}
@@ -3610,7 +3610,7 @@ const BpsSyncModal = ({
 
                 {/* Area Gambar QR Code */}
                 <div className="flex flex-col items-center justify-center min-h-[260px] p-4 bg-surface border border-line rounded-2xl shadow-xs">
-                  {waStatus?.is_connected ? (
+                  {waStatus?.is_connected && (waStatus?.phone || waStatus?.phone_formatted) ? (
                     <div className="py-8 space-y-3">
                       <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl mx-auto">
                         ✓
