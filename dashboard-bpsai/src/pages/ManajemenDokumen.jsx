@@ -1131,7 +1131,7 @@ const BpsSyncModal = ({
       isOpen: true,
       title: "Ganti Nomor WhatsApp Bot?",
       message:
-        "Sesi nomor bot saat ini akan terputus dan sistem akan memunculkan QR Code baru untuk ditautkan dengan nomor WhatsApp yang baru.",
+        "Sesi nomor bot saat ini akan terputus dan riwayat obrolan nomor ini akan otomatis diamankan ke arsip cadangan (ZIP). Riwayat live akan dibersihkan sehingga nomor bot baru akan mulai dengan obrolan bersih tanpa tercampur nomor lama.",
       confirmText: "Ya, Ganti Nomor",
       confirmColor: "emerald",
       onConfirm: async () => {
@@ -1170,7 +1170,7 @@ const BpsSyncModal = ({
       isOpen: true,
       title: "Putuskan / Hapus Nomor Bot?",
       message:
-        "Sesi bot akan dihapus dari server gateway lokal dan status bot akan menjadi belum tertaut. Bot tidak akan dapat mengirim pesan hingga ditautkan kembali.",
+        "Sesi nomor bot saat ini akan diputuskan dan riwayat obrolan nomor ini otomatis diamankan ke arsip cadangan (ZIP). Riwayat obrolan langsung akan dikosongkan agar nomor berikutnya tidak menampilkan percakapan nomor lama.",
       confirmText: "Ya, Putuskan Nomor",
       confirmColor: "red",
       onConfirm: async () => {

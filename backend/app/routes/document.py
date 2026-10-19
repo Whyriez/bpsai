@@ -2393,9 +2393,9 @@ def get_whatsapp_explorer_chats():
         res = requests.get(f"{base_url}/whatsapp/explorer/chats", timeout=15)
         return jsonify(res.json()), res.status_code
     except requests.exceptions.ConnectionError:
-        return jsonify({"success": False, "chats": [], "total": 0, "error": "Gateway tidak terhubung"}), 503
+        return jsonify({"success": False, "is_connected": False, "chats": [], "total": 0, "error": "Gateway tidak terhubung"}), 503
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "is_connected": False, "error": str(e)}), 500
 
 
 @document_bp.route('/bps/whatsapp-explorer/chats/<path:chat_id>', methods=['GET'])
@@ -2474,7 +2474,7 @@ def post_whatsapp_explorer_reply():
         return jsonify({"success": False, "error": "Parameter target dan message wajib diisi"}), 400
 
     try:
-        res = requests.post(f"{base_url}/whatsapp/explorer/reply", json={"target": target, "message": message}, timeout=15)
+        res = requests.post(f"{base_url}/whatsapp/explorer/reply", json=body, timeout=15)
         return jsonify(res.json()), res.status_code
     except requests.exceptions.ConnectionError:
         return jsonify({"success": False, "error": "Tidak dapat terhubung ke WhatsApp Gateway"}), 503

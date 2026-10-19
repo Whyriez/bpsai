@@ -43,6 +43,31 @@ router.get('/chats', async (req, res) => {
   try {
     const sock = _getSock();
     const isConn = _getIsConnected();
+    const rawPhone = sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null;
+    const isActuallyConnected = Boolean(isConn && rawPhone);
+
+    // Jika bot sedang terputus / logout, kembalikan daftar kosong agar tidak membocorkan riwayat nomor lama
+    if (!isActuallyConnected) {
+      return res.json({
+        success: true,
+        is_connected: false,
+        status: 'DISCONNECTED',
+        phone: null,
+        phone_formatted: null,
+        total: 0,
+        stats: {
+          total_chats: 0,
+          total_messages: 0,
+          total_contacts: 0,
+          total_groups: 0,
+          total_channels: 0,
+          total_direct: 0,
+        },
+        chats: [],
+        message: 'WhatsApp belum terhubung atau sesi telah keluar.',
+      });
+    }
+
     const summaries = messageStore.getChatSummaries();
     const existingIds = new Set(summaries.map(s => s.id));
 
@@ -146,6 +171,10 @@ router.get('/chats', async (req, res) => {
     const stats = messageStore.getMessageStats();
     res.json({
       success: true,
+      is_connected: true,
+      status: 'CONNECTED',
+      phone: rawPhone,
+      phone_formatted: messageStore.formatPhoneNumber(rawPhone),
       total: summaries.length,
       stats: {
         ...stats,
@@ -171,6 +200,15 @@ router.get('/chats/:chatId', async (req, res) => {
     }
     const sock = _getSock();
     const isConn = _getIsConnected();
+    const rawPhone = sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null;
+    const isActuallyConnected = Boolean(isConn && rawPhone);
+
+    if (!isActuallyConnected) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp belum terhubung atau sesi telah keluar.',
+      });
+    }
 
     let detail = messageStore.getChatDetail(chatId);
 
@@ -285,7 +323,7 @@ router.get('/backups/chat', async (req, res) => {
 // POST /whatsapp/explorer/reply — send reply message directly from SIGAP
 router.post('/reply', async (req, res) => {
   try {
-    const { target, message } = req.body;
+    const { target, message, quotedMsgId, quotedParticipant, quotedText, quotedSender, quotedFromMe } = req.body;
     if (!target || !message) {
       return res.status(400).json({ success: false, error: 'Target dan pesan balasan wajib diisi' });
     }
@@ -305,8 +343,25 @@ router.post('/reply', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Format nomor atau grup target tidak valid' });
     }
 
-    console.log(`💬 [Explorer] Mengirim balasan ke ${jid}: "${message.slice(0, 50)}..."`);
-    const sent = await sock.sendMessage(jid, { text: message });
+    console.log(`💬 [Explorer] Mengirim balasan ke ${jid}: "${message.slice(0, 50)}..."${quotedMsgId ? ` (Membalas ${quotedMsgId})` : ''}`);
+    
+    // Prepare Baileys send options for quoting
+    const sendOptions = {};
+    if (quotedMsgId) {
+      sendOptions.quoted = {
+        key: {
+          remoteJid: jid,
+          id: quotedMsgId,
+          participant: quotedParticipant || undefined,
+          fromMe: Boolean(quotedFromMe),
+        },
+        message: {
+          conversation: quotedText || '',
+        },
+      };
+    }
+
+    const sent = await sock.sendMessage(jid, { text: message }, sendOptions);
 
     // Store the outgoing message locally in messageStore as well
     const outgoingMsg = {
@@ -315,9 +370,22 @@ router.post('/reply', async (req, res) => {
         remoteJid: jid,
         fromMe: true,
       },
-      message: {
-        conversation: message,
-      },
+      message: quotedMsgId
+        ? {
+            extendedTextMessage: {
+              text: message,
+              contextInfo: {
+                stanzaId: quotedMsgId,
+                participant: quotedParticipant || undefined,
+                quotedMessage: {
+                  conversation: quotedText || '',
+                },
+              },
+            },
+          }
+        : {
+            conversation: message,
+          },
       messageTimestamp: Math.floor(Date.now() / 1000),
       pushName: 'SIGAP BPS Admin',
     };
@@ -329,6 +397,14 @@ router.post('/reply', async (req, res) => {
       message: 'Pesan balasan berhasil dikirim melalui WhatsApp Gateway',
       message_id: sent?.key?.id,
       timestamp: Math.floor(Date.now() / 1000),
+      quoted: quotedMsgId
+        ? {
+            id: quotedMsgId,
+            participant: quotedParticipant || null,
+            text: quotedText || '',
+            sender: quotedSender || null,
+          }
+        : null,
     });
   } catch (err) {
     console.error('❌ [Explorer] Error sending reply:', err);

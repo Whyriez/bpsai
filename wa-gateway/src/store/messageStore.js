@@ -3,6 +3,10 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const AdmZip = require('adm-zip');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,6 +17,7 @@ const CONTACTS_FILE = path.join(__dirname, '..', '..', 'data', 'contacts.json');
 const CHATS_FILE = path.join(__dirname, '..', '..', 'data', 'chats.json');
 const MEDIA_DIR = path.join(__dirname, '..', '..', 'data', 'media');
 const LID_MAP_FILE = path.join(__dirname, '..', '..', 'data', 'lid_map.json');
+const SESSION_INFO_FILE = path.join(__dirname, '..', '..', 'data', 'session_info.json');
 
 // Ensure data dirs exist
 function ensureDir() {
@@ -257,6 +262,42 @@ function extractMessageData(msg) {
     timestamp = Math.floor(Date.now() / 1000);
   }
 
+  // Extract quoted context if present
+  let quoted = null;
+  const contextInfo =
+    content.extendedTextMessage?.contextInfo ||
+    content.imageMessage?.contextInfo ||
+    content.videoMessage?.contextInfo ||
+    content.audioMessage?.contextInfo ||
+    content.documentMessage?.contextInfo ||
+    content.stickerMessage?.contextInfo ||
+    msg.message?.extendedTextMessage?.contextInfo ||
+    content.contextInfo;
+
+  if (contextInfo?.quotedMessage || contextInfo?.stanzaId) {
+    const qContent = unwrapMessage({ message: contextInfo.quotedMessage }) || {};
+    const qText =
+      qContent.conversation ||
+      qContent.extendedTextMessage?.text ||
+      qContent.imageMessage?.caption ||
+      qContent.videoMessage?.caption ||
+      qContent.documentMessage?.fileName ||
+      qContent.documentMessage?.caption ||
+      (qContent.imageMessage ? '[Foto / Gambar]' : null) ||
+      (qContent.videoMessage ? '[Video]' : null) ||
+      (qContent.audioMessage ? '[Pesan Suara]' : null) ||
+      (qContent.documentMessage ? '[Dokumen]' : null) ||
+      '';
+
+    const qParticipant = contextInfo.participant || null;
+    quoted = {
+      id: contextInfo.stanzaId || null,
+      participant: qParticipant,
+      text: qText,
+      sender: qParticipant ? formatPhoneNumber(qParticipant) : null,
+    };
+  }
+
   return {
     id: msg.key?.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     from: msg.key?.remoteJid || null,
@@ -267,6 +308,7 @@ function extractMessageData(msg) {
     text,
     mediaInfo,
     pushName: msg.pushName || null, // sender's display name
+    quoted,
   };
 }
 
@@ -607,10 +649,11 @@ function extractUrls(text) {
  */
 function formatPhoneNumber(jid) {
   if (!jid) return '';
-  if (jid.includes('260593114161297')) {
+  const str = String(jid);
+  if (str.includes('260593114161297')) {
     return '+62 895-7074-91166 (Nomor Anda)';
   }
-  const num = jid.split('@')[0].replace(/[^\d]/g, '');
+  const num = (str.includes('@') ? str.split('@')[0] : str).replace(/[^\d]/g, '');
   if (num.startsWith('62')) {
     return `+62 ${num.slice(2, 5)}-${num.slice(5, 9)}-${num.slice(9)}`;
   }
@@ -942,12 +985,33 @@ function listBackupZips() {
     return files.map(filename => {
       const fp = path.join(backupDir, filename);
       const stat = fs.statSync(fp);
+      let phone = null;
+      let totalMessages = 0;
+      let totalChats = 0;
+      try {
+        const zip = new AdmZip(fp);
+        const infoEntry = zip.getEntry('backup_info.json');
+        if (infoEntry) {
+          const info = JSON.parse(infoEntry.getData().toString('utf8'));
+          phone = info.phone || null;
+          totalMessages = info.summary?.total_messages || 0;
+          totalChats = (info.summary?.chats_with_messages || info.summary?.chats) || 0;
+        }
+      } catch (e) {
+        const match = filename.match(/whatsapp_backup_(\d+)_/);
+        if (match) phone = match[1];
+      }
+
       return {
         filename,
         path: fp,
         size_bytes: stat.size,
         size_formatted: `${(stat.size / 1024).toFixed(1)} KB`,
         created_at: stat.birthtime ? stat.birthtime.toISOString() : stat.mtime.toISOString(),
+        phone,
+        phone_formatted: phone ? formatPhoneNumber(phone) : 'Nomor Tidak Diketahui',
+        total_messages: totalMessages,
+        total_chats: totalChats,
       };
     }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   } catch (err) {
@@ -1035,7 +1099,9 @@ async function inspectBackupZip(zipFilename) {
 
     summaries.push({
       id,
+      chat_id: id,
       name,
+      chat_name: name,
       phone: isDirect ? formatPhoneNumber(id) : null,
       raw_phone: isDirect ? id.split('@')[0] : null,
       type: isGroup ? 'group' : (isChannel ? 'channel' : 'direct'),
@@ -1117,9 +1183,12 @@ async function inspectBackupZip(zipFilename) {
     }
   }
 
+  const phone = backupInfo?.phone || null;
   return {
     filename: path.basename(zipPath),
     backup_info: backupInfo,
+    phone,
+    phone_formatted: phone ? formatPhoneNumber(phone) : 'Nomor Tidak Diketahui',
     summary: {
       total_groups: groups.length,
       total_channels: channels.length,
@@ -1379,6 +1448,148 @@ async function getBackupZipChat(zipFilename, chatId) {
   };
 }
 
+/**
+ * Completely clears live message storage, chats, contacts, LID maps, and session info.
+ * Called when logging out, disconnecting, or changing bot phone number.
+ */
+function clearLiveStore() {
+  ensureDir();
+  myJids.clear();
+  try {
+    if (fs.existsSync(DATA_DIR)) {
+      const files = fs.readdirSync(DATA_DIR);
+      for (const f of files) {
+        if (f.endsWith('.json')) {
+          try {
+            fs.unlinkSync(path.join(DATA_DIR, f));
+          } catch (e) {}
+        }
+      }
+    }
+
+    fs.writeFileSync(CHATS_FILE, JSON.stringify({}, null, 2), 'utf8');
+    fs.writeFileSync(CONTACTS_FILE, JSON.stringify({}, null, 2), 'utf8');
+    if (fs.existsSync(LID_MAP_FILE)) {
+      fs.writeFileSync(LID_MAP_FILE, JSON.stringify({}, null, 2), 'utf8');
+    }
+    if (fs.existsSync(SESSION_INFO_FILE)) {
+      try {
+        fs.unlinkSync(SESSION_INFO_FILE);
+      } catch (e) {}
+    }
+    console.log('🧹 [MessageStore] Penyimpanan percakapan live berhasil dikosongkan.');
+  } catch (err) {
+    console.error('❌ [MessageStore] Gagal membersihkan penyimpanan live:', err.message);
+  }
+}
+
+/**
+ * Creates an automatic safety backup ZIP of the current live data before clearing/resetting.
+ * Returns the backup filename or null if no messages existed.
+ */
+function createSafetyBackup(botPhone = null) {
+  try {
+    ensureDir();
+    const stats = getMessageStats();
+    if (!stats || stats.total_messages === 0) {
+      console.log('ℹ️ [MessageStore] Tidak ada riwayat pesan yang perlu dicadangkan.');
+      return null;
+    }
+
+    const backupDir = path.join(__dirname, '..', '..', 'backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const safePhone = botPhone ? String(botPhone).replace(/[^\d]/g, '') : 'auto';
+    const zipFilename = `whatsapp_backup_${safePhone}_${timestamp}.zip`;
+    const zipPath = path.join(backupDir, zipFilename);
+
+    const zip = new AdmZip();
+
+    // 1. Contacts
+    const contacts = getContacts();
+    if (contacts && Object.keys(contacts).length > 0) {
+      zip.addFile('contacts.json', Buffer.from(JSON.stringify(contacts, null, 2), 'utf8'));
+    }
+
+    // 2. Chats
+    const chats = getStoredChats();
+    if (chats && Object.keys(chats).length > 0) {
+      zip.addFile('chats.json', Buffer.from(JSON.stringify(chats, null, 2), 'utf8'));
+    }
+
+    // 3. Messages
+    const allMsgs = getAllMessages();
+    const messageIndex = [];
+    for (const [chatId, messages] of Object.entries(allMsgs)) {
+      if (!messages || messages.length === 0) continue;
+      const safeId = sanitizeId(chatId);
+      const filename = `messages/${safeId}.json`;
+      let chatName = contacts[chatId]?.name || chatId;
+      if (!chatName || chatName === chatId) {
+        const first = messages.find(m => !m.fromMe && m.pushName);
+        if (first) chatName = first.pushName;
+      }
+
+      messageIndex.push({
+        chat_id: chatId,
+        chat_name: chatName,
+        message_count: messages.length,
+        file: filename,
+        oldest: messages[0]?.timestamp ? new Date(messages[0].timestamp * 1000).toISOString() : null,
+        newest: messages[messages.length - 1]?.timestamp ? new Date(messages[messages.length - 1].timestamp * 1000).toISOString() : null,
+      });
+
+      zip.addFile(filename, Buffer.from(JSON.stringify(messages, null, 2), 'utf8'));
+    }
+
+    messageIndex.sort((a, b) => b.message_count - a.message_count);
+    zip.addFile('messages/_index.json', Buffer.from(JSON.stringify(messageIndex, null, 2), 'utf8'));
+
+    // 4. Backup Info
+    const summary = {
+      created_at: new Date().toISOString(),
+      phone: botPhone || safePhone,
+      auto_backup: true,
+      reason: 'session_reset_or_change_number',
+      summary: {
+        groups: 0,
+        channels: 0,
+        contacts: Object.keys(contacts || {}).length,
+        chats: Object.keys(chats || {}).length,
+        chats_with_messages: Object.keys(allMsgs || {}).length,
+        total_messages: stats.total_messages,
+      }
+    };
+    zip.addFile('backup_info.json', Buffer.from(JSON.stringify(summary, null, 2), 'utf8'));
+
+    zip.writeZip(zipPath);
+    console.log(`🛡️ [MessageStore] Cadangan otomatis berhasil disimpan: ${zipFilename} (${stats.total_messages} pesan)`);
+    return zipFilename;
+  } catch (err) {
+    console.error('❌ [MessageStore] Gagal membuat cadangan otomatis:', err.message);
+    return null;
+  }
+}
+
+function getSessionInfo() {
+  try {
+    if (fs.existsSync(SESSION_INFO_FILE)) {
+      return JSON.parse(fs.readFileSync(SESSION_INFO_FILE, 'utf8'));
+    }
+  } catch (e) {}
+  return null;
+}
+
+function saveSessionInfo(data) {
+  try {
+    ensureDir();
+    fs.writeFileSync(SESSION_INFO_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {}
+}
+
 export default {
   handleMessagesUpsert,
   handleHistorySync,
@@ -1405,6 +1616,10 @@ export default {
   getBackupZipChat,
   extractUrls,
   formatPhoneNumber,
+  clearLiveStore,
+  createSafetyBackup,
+  getSessionInfo,
+  saveSessionInfo,
 };
 
 

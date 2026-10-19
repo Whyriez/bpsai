@@ -122,16 +122,54 @@ async function connectToWhatsApp() {
         } else {
           currentQr = null;
           currentQrDataUrl = null;
+          console.log('❌ [WhatsApp] Sesi keluar (Logged out). Membersihkan data lokal sesi lama...');
+          try {
+            const lastSession = messageStore.getSessionInfo();
+            const botPhone = lastSession?.phone || (sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null);
+            messageStore.createSafetyBackup(botPhone);
+            messageStore.clearLiveStore();
+            liveChatSessionService.clearSessions();
+            const authDir = path.join(__dirname, 'auth_info_baileys');
+            if (fs.existsSync(authDir)) {
+              fs.rmSync(authDir, { recursive: true, force: true });
+              fs.mkdirSync(authDir, { recursive: true });
+            }
+          } catch (cleanErr) {
+            console.warn('Catatan pembersihan sesi logout:', cleanErr.message);
+          }
           console.log('❌ [WhatsApp] Sesi keluar (Logged out). Klik Ganti Nomor di dashboard atau reset sesi untuk scan ulang.');
         }
       } else if (connection === 'open') {
         isConnected = true;
         currentQr = null;
         currentQrDataUrl = null;
+        const senderNum = sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : 'Aktif';
+
+        // Cek apakah nomor yang terhubung berbeda dengan nomor bot sesi sebelumnya
+        try {
+          const lastSession = messageStore.getSessionInfo();
+          if (lastSession?.phone && senderNum && senderNum !== 'Aktif' && lastSession.phone !== senderNum) {
+            console.log(`⚠️  [Gateway] Nomor bot baru terhubung (${senderNum}) berbeda dari sesi sebelumnya (${lastSession.phone})!`);
+            console.log('🛡️  [Gateway] Mengarsipkan dan mengosongkan riwayat lama agar tidak tercampur ke nomor baru...');
+            messageStore.createSafetyBackup(lastSession.phone);
+            messageStore.clearLiveStore();
+            liveChatSessionService.clearSessions();
+          }
+          if (senderNum && senderNum !== 'Aktif') {
+            messageStore.saveSessionInfo({
+              phone: senderNum,
+              phone_formatted: messageStore.formatPhoneNumber(senderNum),
+              connected_at: new Date().toISOString(),
+              status: 'CONNECTED'
+            });
+          }
+        } catch (sessErr) {
+          console.warn('Catatan verifikasi nomor sesi:', sessErr.message);
+        }
+
         if (sock?.user?.id || sock?.user?.lid) {
           messageStore.setMyJid(sock.user.id, sock.user.lid);
         }
-        const senderNum = sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : 'Aktif';
         console.log('\n=============================================================');
         console.log(`✅ [WhatsApp] GATEWAY BERHASIL TERHUBUNG!`);
         console.log(`📱 Nomor Bot: ${senderNum}`);
@@ -286,6 +324,13 @@ app.post(['/reset-session', '/logout', '/change-number'], async (req, res) => {
   try {
     console.log('\n🔄 [Gateway] Menerima permintaan reset sesi / ganti nomor WhatsApp bot...');
     
+    // Ambil nomor bot yang sedang aktif sebelum terputus untuk penamaan arsip
+    let botPhone = null;
+    try {
+      const lastSession = messageStore.getSessionInfo();
+      botPhone = (sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null) || lastSession?.phone;
+    } catch (e) {}
+
     isConnected = false;
     currentQr = null;
     currentQrDataUrl = null;
@@ -302,6 +347,16 @@ app.post(['/reset-session', '/logout', '/change-number'], async (req, res) => {
       sock = null;
     }
 
+    // 1. Amankan riwayat pesan nomor saat ini ke arsip cadangan (ZIP)
+    console.log('🛡️  [Gateway] Mengamankan riwayat obrolan nomor aktif ke arsip ZIP...');
+    const backupName = messageStore.createSafetyBackup(botPhone);
+
+    // 2. Bersihkan penyimpanan pesan, kontak, obrolan, dan sesi live agar nomor baru mulai bersih
+    console.log('🧹 [Gateway] Mengosongkan data live percakapan & sesi...');
+    messageStore.clearLiveStore();
+    liveChatSessionService.clearSessions();
+
+    // 3. Hapus kredensial sesi lama
     const authDir = path.join(__dirname, 'auth_info_baileys');
     if (fs.existsSync(authDir)) {
       console.log('🗑️  [Gateway] Menghapus kredensial sesi lama di:', authDir);
@@ -318,6 +373,7 @@ app.post(['/reset-session', '/logout', '/change-number'], async (req, res) => {
     return res.json({
       success: true,
       message: 'Sesi WhatsApp berhasil direset. Silakan scan QR code baru.',
+      backup_created: backupName || null,
       status: 'RESETTING'
     });
   } catch (err) {

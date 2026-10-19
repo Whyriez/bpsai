@@ -111,6 +111,17 @@ function saveSessions() {
   }
 }
 
+export function clearSessions() {
+  sessions = {};
+  try {
+    ensureDataDir();
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify({}, null, 2), 'utf8');
+    console.log('🧹 [LiveChat] Sesi percakapan live berhasil dikosongkan.');
+  } catch (e) {
+    console.error('❌ [LiveChat] Gagal mengosongkan sessions:', e.message);
+  }
+}
+
 // Inisialisasi awal
 loadSettings();
 loadSessions();
@@ -887,5 +898,6 @@ export default {
   setSocketGetter,
   checkAndAutoTerminateSessions,
   isCourtesyOrAcknowledgmentMessage,
-  isTerminationClosingText
+  isTerminationClosingText,
+  clearSessions
 };
