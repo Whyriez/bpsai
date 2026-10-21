@@ -14,9 +14,11 @@ const SETTINGS_FILE = path.join(__dirname, '..', '..', 'data', 'live_settings.js
 const DEFAULT_SETTINGS = {
   autoGreetingEnabled: true,
   timezoneOffsetHours: 8, // WITA (Gorontalo)
-  inactivityTimeoutMinutes: 10, // Sesi dianggap selesai / reset setelah 10 menit tidak aktif
-  autoTerminateOnTimeout: true, // Otomatis terminasi sesi setelah 10 menit tanpa respon
-  sendAutoTerminationMessage: true, // Kirim pesan penutup terminasi & survei SKD saat timeout 10 menit
+  scheduledTerminationEnabled: true, // Otomatis terminasi terjadwal pada jam operasional
+  scheduledTerminationTimes: ['14:00', '15:30'], // Pukul 14.00 WITA (sesi siang) dan 15.30 WITA (tutup layanan)
+  sendAutoTerminationMessage: true, // Kirim pesan penutup terminasi resmi PST BPS Gorontalo
+  inactivityTimeoutMinutes: 0, // Dinonaktifkan (sebelumnya 10 menit menyebabkan narasi berulang)
+  autoTerminateOnTimeout: false, // Dinonaktifkan
   operatingHours: {
     // 0: Minggu, 1: Senin, ..., 5: Jumat, 6: Sabtu
     1: { name: 'Senin', open: '08:00', close: '15:30', active: true },
@@ -72,6 +74,15 @@ function loadSettings() {
     if (fs.existsSync(SETTINGS_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
       settings = { ...DEFAULT_SETTINGS, ...parsed };
+
+      // Migrasi dari pengaturan lama (inactivity timeout 10 menit) ke terminasi terjadwal 14:00 & 15:30 WITA
+      if (settings.inactivityTimeoutMinutes === 10 || settings.autoTerminateOnTimeout === true || !settings.scheduledTerminationTimes) {
+        settings.inactivityTimeoutMinutes = 0;
+        settings.autoTerminateOnTimeout = false;
+        settings.scheduledTerminationEnabled = true;
+        settings.scheduledTerminationTimes = ['14:00', '15:30'];
+        saveSettings();
+      }
       return;
     }
   } catch (e) {
@@ -277,6 +288,45 @@ Terima kasih banyak atas pengertiannya Kak 😊`
 }
 
 /**
+ * 6b. Pesan Penutup Sesi Siang (Pukul 14.00 WITA) -> TERMINASI JADWAL SIANG
+ */
+export function buildClosing1400Message(topic = 'konsultasi data') {
+  const cleanTopic = (topic || 'konsultasi data').trim();
+  const surveyUrl = settings.links?.surveyUrl || 'https://s.bps.go.id/skd75';
+  return (
+`Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Sesi konsultasi terkait ${cleanTopic} pada pukul 14.00 WITA kami akhiri ya Kak.
+
+Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: ${surveyUrl}
+
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`
+  );
+}
+
+/**
+ * 6c. Pesan Penutup Keterlambatan Layanan (Jika pesan belum sempat dibalas petugas hingga tutup jam layanan)
+ * Menghindari situasi canggung/fatal meminta survei kepuasan SKD padahal pengunjung belum sempat dilayani!
+ */
+export function buildUnansweredEndOfDayMessage(nextSchedule = null) {
+  const schedule = nextSchedule || getNextOperatingSchedule();
+  const sigapUrl = settings.links?.sigapUrl || 'https://sigap.bps7500.my.id';
+  const bpsUrl = settings.links?.bpsWebsiteUrl || 'https://gorontalo.bps.go.id';
+
+  return (
+`Selamat sore, Kak.
+Mohon maaf yang sebesar-besarnya atas keterlambatan respons kami dikarenakan padatnya antrean layanan konsultasi hari ini.
+
+Mengingat jam operasional layanan PST BPS Provinsi Gorontalo telah berakhir pada pukul 15.30 WITA, pesan dan pertanyaan Kakak telah kami catat dalam antrean prioritas dan akan segera kami tindaklanjuti kembali pada ${schedule} saat jam layanan dibuka kembali.
+
+Untuk kebutuhan data statistik secara mandiri, Kakak dapat mengakses:
+• SIGAP: ${sigapUrl}
+• Website BPS Provinsi Gorontalo: ${bpsUrl}
+
+Terima kasih banyak atas kesabaran dan pengertian Kakak 🙏 😊`
+  );
+}
+
+
+/**
  * Ekstraksi otomatis data pengunjung (Nama, Pekerjaan, Instansi) dari pesan chat
  */
 export function extractVisitorDataFromText(text) {
@@ -355,6 +405,14 @@ export function getOrCreateSession(chatId) {
         status: 'waiting_admin', // 'waiting_admin' | 'admin_active' | 'delayed' | 'closed'
         autoGreeted: false,
         autoGreetedAt: null,
+        lastGreetedDate: null, // 'YYYY-MM-DD'
+        lastOutOfHoursGreetedDate: null, // 'YYYY-MM-DD'
+        lastTerminationKey: null, // Mencegah duplikasi terminasi terjadwal
+        confirmation1400Sent: false, // Apakah trigger bertanya kembali 14.00 sudah terkirim
+        confirmation1400SentAt: null,
+        confirmation1400Date: null,
+        confirmation1400Replied: false, // Apakah pengguna membalas trigger 14.00
+        confirmation1400RepliedAt: null,
         createdAt: Math.floor(Date.now() / 1000),
         lastActivityAt: Math.floor(Date.now() / 1000),
         adminTakenOverAt: null,
@@ -363,11 +421,244 @@ export function getOrCreateSession(chatId) {
         consultationTopic: null,
         terminationType: null,
         closedAt: null,
-        messageCount: 0
+        messageCount: 0,
+        aiAnalysis: null,
+        aiIntent: null,
+        aiTopic: null,
+        aiSuggestedReply: null,
+        aiAnalyzedAt: null
       };
     }
   }
   return sessions[canonicalId];
+}
+
+/**
+ * Menyimpan hasil analisis intent cerdas Gemini AI ke dalam sesi
+ */
+export function saveAiAnalysis(chatId, aiData = {}) {
+  const canonicalId = messageStore.resolveLidToPhone(chatId) || chatId;
+  const session = getOrCreateSession(canonicalId);
+  session.aiAnalysis = aiData;
+  session.aiIntent = aiData.intent || null;
+  session.aiTopic = aiData.topic || session.consultationTopic || null;
+  session.aiSuggestedReply = aiData.suggested_reply || null;
+  session.aiAnalyzedAt = Math.floor(Date.now() / 1000);
+
+  if (aiData.topic && !session.consultationTopic) {
+    session.consultationTopic = aiData.topic;
+  }
+
+  if (aiData.visitor_info) {
+    session.visitorData = {
+      ...(session.visitorData || {}),
+      ...(aiData.visitor_info.nama ? { nama: aiData.visitor_info.nama } : {}),
+      ...(aiData.visitor_info.pekerjaan ? { pekerjaan: aiData.visitor_info.pekerjaan } : {}),
+      ...(aiData.visitor_info.instansi ? { instansi: aiData.visitor_info.instansi } : {}),
+    };
+  }
+
+  // Jika Gemini mendeteksi percakapan lanjutan (CONTINUATION) atau kesantunan:
+  if (aiData.is_continuation || aiData.should_skip_opening_greeting) {
+    session.autoGreeted = true;
+  }
+
+  saveSessions();
+  return session;
+}
+
+/**
+ * Analisis intent secara lokal (fallback cerdas 0ms jika backend Gemini offline atau lambat)
+ */
+export function analyzeIntentLocally(incomingText = '', recentMsgs = [], session = {}) {
+  const text = (incomingText || '').trim().toLowerCase();
+  const sessionStatus = session?.status || 'waiting_admin';
+  const isDelayed = Boolean(session?.flag_3days || session?.delayed_3days || sessionStatus === 'delayed');
+  const delayedTopic = session?.delayedTopic || session?.consultationTopic || '';
+  const visitorName = session?.visitorData?.nama || null;
+
+  // 1. Deteksi Kesantunan / Terima Kasih
+  if (isCourtesyOrAcknowledgmentMessage(text)) {
+    return {
+      intent: 'COURTESY_THANKS',
+      is_continuation: true,
+      should_skip_opening_greeting: true,
+      topic: session?.consultationTopic || 'Layanan PST BPS',
+      visitor_info: { nama: visitorName, pekerjaan: null, instansi: null },
+      summary: 'Pengunjung menyampaikan ucapan terima kasih / kesantunan penutup',
+      suggested_reply: 'Sama-sama Kak, senang dapat melayani Anda. Jika masih ada data yang dibutuhkan di kemudian hari, jangan ragu untuk menghubungi PST BPS Provinsi Gorontalo kembali ya Kak 😊',
+      confidence: 0.95
+    };
+  }
+
+  // 2. Deteksi Follow-up Penundaan (3 Hari Kerja)
+  const delayKeywords = [
+    'kemarin', 'tindak lanjut', 'kelanjutan', 'lanjutan', 'progres', 'progress', 'berkas',
+    'apakah sudah siap', 'apakah sudah ada', 'sudah siap', 'sudah ada', 'gimana data',
+    'bagaimana data', 'janji', '3 hari', 'tiga hari', 'kabari'
+  ];
+  const hasDelayKeyword = delayKeywords.some(kw => text.includes(kw));
+
+  if (isDelayed || (hasDelayKeyword && (session?.delayed_3days || session?.flag_3days))) {
+    return {
+      intent: 'DELAY_FOLLOWUP',
+      is_continuation: true,
+      should_skip_opening_greeting: true,
+      topic: delayedTopic || session?.consultationTopic || 'Permintaan Data Teknis',
+      visitor_info: { nama: visitorName, pekerjaan: null, instansi: null },
+      summary: `Pengunjung menindaklanjuti data tertunda (${delayedTopic || 'Data teknis 3 hari'})`,
+      suggested_reply: `Halo Kak, terkait data ${delayedTopic ? `mengenai ${delayedTopic}` : 'yang Kakak butuhkan'} saat ini masih dalam proses penyiapan oleh tim teknis kami. Kami pastikan segera mengabari Kakak kembali begitu data siap. Terima kasih atas kesabarannya ya Kak 😊`,
+      confidence: 0.92
+    };
+  }
+
+  // 3. Deteksi Percakapan Lanjutan (Continuation)
+  const continuationKeywords = [
+    'kemarin', 'tadi', 'soal itu', 'maksud saya', 'maksudnya', 'maksud sy', 'yang tadi',
+    'lanjutan', 'kelanjutan', 'tambahan', 'ini datanya', 'berikut data', 'sudah dikirim',
+    'sudah saya kirim', 'ini berkas', 'minta tolong', 'mengenai', 'tentang', 'apakah bisa',
+    'bagaimana kalau', 'terus', 'lalu', 'mau nanya lagi', 'mau tanya lagi', 'masih ada',
+    'belum selesai', 'kirim ke mana', 'formatnya', 'ini nama saya', 'nama saya'
+  ];
+  const hasContinuationKeyword = continuationKeywords.some(kw => text.includes(kw));
+  const hasHistory = (recentMsgs && recentMsgs.length > 1) || Boolean(visitorName) || (session?.messageCount && session.messageCount > 1);
+
+  if (hasContinuationKeyword || (hasHistory && !text.match(/^(halo|hai|pagi|siang|sore|malam|assalamu|ping|p)$/i))) {
+    return {
+      intent: 'CONTINUATION',
+      is_continuation: true,
+      should_skip_opening_greeting: true,
+      topic: session?.consultationTopic || 'Konsultasi Data PST',
+      visitor_info: { nama: visitorName, pekerjaan: null, instansi: null },
+      summary: 'Pengunjung melanjutkan percakapan yang sedang berjalan',
+      suggested_reply: 'Baik Kak, pesan Kakak sudah kami terima dan sedang kami tindaklanjuti. Mohon ditunggu sebentar ya Kak 😊',
+      confidence: 0.88
+    };
+  }
+
+  // 4. Deteksi Permintaan Data Statistik Spesifik (Data Inquiry)
+  const statsKeywords = [
+    'inflasi', 'kemiskinan', 'pdrb', 'ipm', 'pertumbuhan ekonomi', 'sensus', 'pertanian',
+    'penduduk', 'ekspor', 'impor', 'ketenagakerjaan', 'pengangguran', 'gubernur',
+    'bps', 'publikasi', 'tabel', 'angka', 'data', 'rilis', 'brs'
+  ];
+  const foundStatsWord = statsKeywords.find(kw => text.includes(kw));
+
+  if (foundStatsWord) {
+    const topicGuess = `Data ${foundStatsWord.toUpperCase()}`;
+    return {
+      intent: 'DATA_INQUIRY',
+      is_continuation: hasHistory,
+      should_skip_opening_greeting: hasHistory,
+      topic: session?.consultationTopic || topicGuess,
+      visitor_info: { nama: visitorName, pekerjaan: null, instansi: null },
+      summary: `Pengunjung menanyakan informasi terkait ${topicGuess}`,
+      suggested_reply: hasHistory
+        ? `Baik Kak, terkait informasi ${topicGuess} tersebut sedang kami siapkan ya Kak. Mohon ditunggu sebentar 😊`
+        : `Selamat datang di PST BPS Gorontalo Kak! Terkait informasi ${topicGuess} akan kami bantu carikan. Mohon kesediaannya melengkapi data pengunjung terlebih dahulu ya Kak 😊`,
+      confidence: 0.85
+    };
+  }
+
+  // 5. Deteksi Sapaan Baru (GREETING_NEW)
+  const greetingKeywords = [
+    'halo', 'hai', 'assalamu', 'assalamualaikum', 'selamat pagi', 'selamat siang',
+    'selamat sore', 'selamat malam', 'permisi', 'pagi', 'siang', 'sore', 'malam', 'ping', 'tes', 'test', 'p'
+  ];
+  const isGreeting = greetingKeywords.some(kw => text.startsWith(kw) || text === kw);
+
+  if (isGreeting && !hasHistory) {
+    return {
+      intent: 'GREETING_NEW',
+      is_continuation: false,
+      should_skip_opening_greeting: false,
+      topic: 'Konsultasi Layanan PST',
+      visitor_info: { nama: null, pekerjaan: null, instansi: null },
+      summary: 'Pengunjung baru menyapa untuk memulai layanan PST',
+      suggested_reply: 'Halo Selamat datang di Layanan PST BPS Provinsi Gorontalo! Ada yang bisa kami bantu hari ini? 😊',
+      confidence: 0.90
+    };
+  }
+
+  // Default
+  if (hasHistory) {
+    return {
+      intent: 'CONTINUATION',
+      is_continuation: true,
+      should_skip_opening_greeting: true,
+      topic: session?.consultationTopic || 'Konsultasi Data PST',
+      visitor_info: { nama: visitorName, pekerjaan: null, instansi: null },
+      summary: 'Pengunjung melanjutkan percakapan sebelumnya',
+      suggested_reply: 'Baik Kak, pesan Kakak sudah kami terima dan sedang kami proses ya Kak 😊',
+      confidence: 0.80
+    };
+  }
+
+  return {
+    intent: 'GREETING_NEW',
+    is_continuation: false,
+    should_skip_opening_greeting: false,
+    topic: 'Konsultasi Layanan PST',
+    visitor_info: { nama: null, pekerjaan: null, instansi: null },
+    summary: 'Pengunjung baru memulai konsultasi',
+    suggested_reply: 'Selamat datang di Layanan PST BPS Provinsi Gorontalo Kak! Ada yang bisa kami bantu terkait kebutuhan data statistik hari ini? 😊',
+    confidence: 0.75
+  };
+}
+
+/**
+ * Mendeteksi intent pesan masuk menggunakan Gemini AI dengan fallback lokal cerdas
+ */
+export async function detectIncomingMessageIntent(chatId, incomingText, session) {
+  const canonicalId = messageStore.resolveLidToPhone(chatId) || chatId;
+  const currentSession = session || getOrCreateSession(canonicalId);
+  const detail = messageStore.getChatDetail(canonicalId);
+  const recentMsgs = (detail?.messages || []).slice(-8).map(m => ({
+    text: m.text || '',
+    fromMe: Boolean(m.fromMe),
+    timestamp: m.timestamp || Math.floor(Date.now() / 1000)
+  }));
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    const res = await fetch('http://127.0.0.1:5000/api/documents/bps/whatsapp-explorer/ai-detect-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: canonicalId,
+        incoming_text: incomingText,
+        recent_messages: recentMsgs,
+        session_meta: {
+          status: currentSession?.status,
+          delayed_3days: Boolean(currentSession?.delayed_3days || currentSession?.flag_3days),
+          delayed_topic: currentSession?.delayedTopic || currentSession?.consultationTopic,
+          visitor_data: currentSession?.visitorData,
+          topic: currentSession?.consultationTopic
+        }
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.success && data.analysis) {
+        saveAiAnalysis(canonicalId, data.analysis);
+        console.log(`🤖 [LiveChat AI Gemini] Intent untuk ${canonicalId}: ${data.analysis.intent} (Skip Greeting: ${data.analysis.should_skip_opening_greeting}, Continuation: ${data.analysis.is_continuation}, Topik: "${data.analysis.topic}")`);
+        return data.analysis;
+      }
+    }
+  } catch (err) {
+    // Timeout atau backend python offline: beralih ke analisis lokal
+  }
+
+  // Fallback ke analisis lokal cerdas
+  const localAnalysis = analyzeIntentLocally(incomingText, recentMsgs, currentSession);
+  saveAiAnalysis(canonicalId, localAnalysis);
+  console.log(`🧠 [LiveChat AI Local] Intent untuk ${canonicalId}: ${localAnalysis.intent} (Skip Greeting: ${localAnalysis.should_skip_opening_greeting}, Continuation: ${localAnalysis.is_continuation}, Topik: "${localAnalysis.topic}")`);
+  return localAnalysis;
 }
 
 /**
@@ -435,8 +726,11 @@ export async function handleIncomingMessage(sock, msg) {
 
   try {
     let session = getOrCreateSession(chatId);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const localDate = getLocalGorontaloDate();
+    const todayDateStr = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
 
-    // Cek apakah data pengunjung ada di pesan ini
+    // Ekstraksi data pengunjung (Nama, Pekerjaan, Instansi) jika ada dalam pesan
     if (incomingText) {
       const extracted = extractVisitorDataFromText(incomingText);
       if (extracted) {
@@ -447,146 +741,185 @@ export async function handleIncomingMessage(sock, msg) {
       }
     }
 
-    const timeoutMinutes = settings.inactivityTimeoutMinutes || 10;
-    const timeoutSec = timeoutMinutes * 60;
+    // Cek apakah pesan ini merupakan balasan dari pengguna terhadap konfirmasi jam 14.00 WITA
+    if (session.confirmation1400Sent && session.confirmation1400Date === todayDateStr) {
+      session.confirmation1400Replied = true;
+      session.confirmation1400RepliedAt = nowSec;
+      console.log(`💬 [LiveChat] Pengguna ${chatId} telah membalas trigger konfirmasi jam 14.00 WITA.`);
+    }
+
     const isSessionClosed = session.status === 'closed';
+    const isSessionDelayed = session.status === 'delayed' || Boolean(session.delayed_3days) || Boolean(session.flag_3days);
 
-    // Waktu referensi aktivitas terakhir atau waktu penutupan sesi
-    const lastRefTime = isSessionClosed
-      ? (session.closedAt || session.lastActivityAt || session.createdAt || 0)
-      : (session.lastActivityAt || session.createdAt || 0);
+    // =========================================================================
+    // KHUSUS STATUS PENUNDAAN / TERMINASI 3 HARI KERJA (FLAG AKTIF):
+    // Data sedang disiapkan tim teknis BPS (maksimal 3 hari kerja).
+    // TIDAK BOLEH muncul narasi pembuka (salam/form nama) dan TIDAK BOLEH muncul penutup!
+    // Pengunjung tetap bisa mengirim pesan dan admin bisa mereach-out kapan saja.
+    // =========================================================================
+    if (isSessionDelayed) {
+      console.log(`📌 [LiveChat] Pesan baru diterima dari ${chatId} saat sesi dalam status Flag Terminasi 3 Hari. Sesi dipertahankan tetap flagged tanpa mengirim pesan pembuka/penutup otomatis.`);
+      session.status = 'delayed';
+      session.delayed_3days = true;
+      session.flag_3days = true;
+      session.autoGreeted = true; // Kunci permanen agar tidak ada auto-greeting
+      session.lastActivityAt = nowSec;
+      session.messageCount = (session.messageCount || 0) + 1;
+      session.customerRepliedAfterFlag = true;
+      session.customerRepliedAt = nowSec;
 
-    const idleTime = lastRefTime > 0 ? (nowSec - lastRefTime) : 0;
-    const isPastTerminationTimeout = lastRefTime > 0 && idleTime >= timeoutSec;
+      // Jalankan AI intent detection untuk menyiapkan draf balasan bagi admin/petugas
+      await detectIncomingMessageIntent(chatId, incomingText, session);
+      saveSessions();
+      return;
+    }
 
-    // 1. Jika sesi sebelumnya sudah diterminasi / closed:
+    // =========================================================================
+    // DETEKSI INTENT CERDAS DENGAN GEMINI AI (AWAITED):
+    // Membedakan secara cerdas dan akurat:
+    // - Sapaan baru (GREETING_NEW)
+    // - Percakapan lanjutan / tanggapan pengunjung (CONTINUATION)
+    // - Follow-up penundaan data (DELAY_FOLLOWUP)
+    // - Ucapan terima kasih / kesantunan (COURTESY_THANKS)
+    // - Permintaan data statistik langsung (DATA_INQUIRY)
+    // =========================================================================
+    const aiAnalysis = await detectIncomingMessageIntent(chatId, incomingText, session);
+
+    // 1. Jika pesan pengunjung merupakan kesantunan / ucapan terima kasih:
+    if (aiAnalysis?.intent === 'COURTESY_THANKS' || isCourtesyOrAcknowledgmentMessage(incomingText)) {
+      session.lastActivityAt = nowSec;
+      session.autoGreeted = true;
+      if (isSessionClosed) {
+        console.log(`💬 [LiveChat AI] Pesan santun/terima kasih pasca-terminasi dari ${chatId} ("${(incomingText || '').trim()}"). Sesi tetap closed tanpa bot reply.`);
+        saveSessions();
+        return;
+      }
+      console.log(`💬 [LiveChat AI] Pesan santun/terima kasih dari ${chatId}. Sesi dipertahankan tanpa pesan pembuka bot.`);
+      saveSessions();
+      return;
+    }
+
+    // 2. Jika terdeteksi sebagai percakapan lanjutan (melanjutkan percakapan sebelumnya / follow-up):
+    // JANGAN PERNAH mengirim form pembuka berulang! Aktifkan kembali sesi ke 'waiting_admin'.
+    const isContinuation = Boolean(
+      aiAnalysis?.is_continuation ||
+      aiAnalysis?.should_skip_opening_greeting ||
+      aiAnalysis?.intent === 'CONTINUATION' ||
+      aiAnalysis?.intent === 'DELAY_FOLLOWUP' ||
+      session.lastGreetedDate === todayDateStr ||
+      session.visitorData?.nama ||
+      (session.messageCount && session.messageCount > 1)
+    );
+
+    if (isContinuation) {
+      console.log(`🔄 [LiveChat AI] Pengunjung ${chatId} melanjutkan percakapan (Intent: ${aiAnalysis?.intent || 'CONTINUATION'}, Topik: "${aiAnalysis?.topic || session.consultationTopic || '-'}"). Melewatkan form pembuka otomatis.`);
+      session.status = 'waiting_admin';
+      session.closedAt = null;
+      session.terminationType = null;
+      session.terminationMessage = null;
+      session.lastActivityAt = nowSec;
+      session.messageCount = (session.messageCount || 0) + 1;
+      session.autoGreeted = true; // KUNCI agar narasi pembuka / form nama TIDAK terkirim ulang!
+      if (aiAnalysis?.topic && !session.consultationTopic) {
+        session.consultationTopic = aiAnalysis.topic;
+      }
+      saveSessions();
+      return;
+    }
+
+    // 3. Jika admin sedang aktif menangani sesi
+    if (session.status === 'admin_active') {
+      session.lastActivityAt = nowSec;
+      session.messageCount = (session.messageCount || 0) + 1;
+      saveSessions();
+      return;
+    }
+
+    // 4. Jika auto-greeting dinonaktifkan dalam konfigurasi
+    if (!settings.autoGreetingEnabled) {
+      session.lastActivityAt = nowSec;
+      session.messageCount = (session.messageCount || 0) + 1;
+      saveSessions();
+      return;
+    }
+
+    // 5. Sesi benar-benar baru di hari baru (GREETING_NEW murni):
     if (isSessionClosed) {
-      // Jika pesan pengunjung hanya ucapan terima kasih / acknowledgment sopan, pertahankan sesi tertutup
-      // agar tidak memicu form pembuka konsultasi baru dan loop auto-terminasi berulang!
-      if (isCourtesyOrAcknowledgmentMessage(incomingText)) {
-        console.log(`💬 [LiveChat] Pesan dari ${chatId} adalah ucapan terima kasih/sopan santun pasca-terminasi ("${(incomingText || '').trim()}"). Sesi tetap closed.`);
-        session.lastActivityAt = nowSec;
-        saveSessions();
-        return;
-      }
-
-      if (isPastTerminationTimeout) {
-        // SUDAH LEWAT DARI 10 MENIT PASCA TERMINASI:
-        // Sesuai aturan terminasi BPS Gorontalo: SIGAP bisa chat duluan lagi untuk konsultasi baru!
-        console.log(`🔄 [LiveChat] Sesi sebelumnya diterminasi dan sudah lewat ${Math.round(idleTime / 60)} menit (>= ${timeoutMinutes} menit). Memulai sesi baru agar SIGAP bisa otomatis chat duluan.`);
-        session = {
-          chatId,
-          status: 'waiting_admin',
-          autoGreeted: false,
-          autoGreetedAt: null,
-          createdAt: nowSec,
-          lastActivityAt: nowSec,
-          adminTakenOverAt: null,
-          adminName: null,
-          visitorData: session.visitorData || null, // Pertahankan data pengunjung yang sudah pernah ada
-          consultationTopic: null,
-          terminationType: null,
-          closedAt: null,
-          messageCount: 1
-        };
-        sessions[chatId] = session;
-      } else {
-        // BELUM LEWAT DARI 10 MENIT PASCA TERMINASI:
-        // SIGAP TIDAK chat lagi! Sesi tetap closed agar tidak spam salam pembuka ke pengunjung.
-        console.log(`⏳ [LiveChat] Chat masuk ke sesi tertutup tapi belum lewat 10 menit (${Math.round(idleTime)}s < ${timeoutSec}s). SIGAP tidak memicu sapaan ulang.`);
-        session.lastActivityAt = nowSec;
-        saveSessions();
-        return;
-      }
-    } else if (isPastTerminationTimeout) {
-      // 2. SESI SEBELUMNYA MASIH AKTIF/WAITING TAPI SUDAH TIDAK AKTIF > 10 MENIT:
-      // Dianggap kedaluwarsa sesuai batas terminasi 10 menit. Reset sesi baru agar SIGAP chat duluan.
-      console.log(`🔄 [LiveChat] Sesi lama tidak aktif selama ${Math.round(idleTime / 60)} menit (>= ${timeoutMinutes} menit). Reset sesi baru agar SIGAP chat duluan.`);
-      session = {
-        chatId,
-        status: 'waiting_admin',
-        autoGreeted: false,
-        autoGreetedAt: null,
-        createdAt: nowSec,
-        lastActivityAt: nowSec,
-        adminTakenOverAt: null,
-        adminName: null,
-        visitorData: session.visitorData || null,
-        consultationTopic: null,
-        terminationType: null,
-        closedAt: null,
-        messageCount: 1
-      };
-      sessions[chatId] = session;
+      console.log(`🌅 [LiveChat] Pengunjung ${chatId} menyapa pertama kali di hari baru (${todayDateStr}). Menyiapkan sesi baru.`);
+      session.status = 'waiting_admin';
+      session.autoGreeted = false;
+      session.autoGreetedAt = null;
+      session.createdAt = nowSec;
+      session.lastActivityAt = nowSec;
+      session.closedAt = null;
+      session.terminationType = null;
+      session.terminationMessage = null;
+      session.messageCount = 1;
     } else {
-      // 3. Sesi aktif & masih dalam rentang 10 menit
       session.lastActivityAt = nowSec;
       session.messageCount = (session.messageCount || 0) + 1;
     }
 
-    // Jika admin sudah mengambil alih pada sesi aktif (< 10 menit), jangan ganggu percakapan
-    if (session.status === 'admin_active') {
-      saveSessions();
-      return;
-    }
-
-    // Jika auto-greeting dinonaktifkan dalam settings
-    if (!settings.autoGreetingEnabled) {
-      saveSessions();
-      return;
-    }
-
-    // JIKA BELUM PERNAH AUTO-GREET PADA SESI INI -> Kirim pesan otomatis duluan!
-    if (!session.autoGreeted) {
-      const localDate = getLocalGorontaloDate();
-      const inOperatingHours = isWithinOperatingHours(localDate);
-      const greetingWord = getTimeGreeting(localDate);
-
-      let replyText = '';
-      let replyType = '';
-
-      if (inOperatingHours) {
-        replyText = buildOpeningMessage(greetingWord);
-        replyType = 'opening_message';
-        console.log(`🟢 [LiveChat] Mengirim Pesan Pembuka PST BPS Gorontalo ke ${chatId}`);
-      } else {
-        replyText = buildOutOfHoursMessage(greetingWord);
-        replyType = 'out_of_hours_message';
-        console.log(`🟡 [LiveChat] Mengirim Pesan Luar Jam Layanan PST BPS Gorontalo ke ${chatId}`);
-      }
-
-      // Kirim balasan otomatis via Baileys WhatsApp Socket ke JID pengirim asal
-      const sent = await sock.sendMessage(rawChatId, { text: replyText });
-      if (sent?.key?.id) {
-        registerBotMessageId(sent.key.id);
-      }
-
-      // Simpan balasan bot ke pesan lokal messageStore agar muncul di UI explorer
-      const botOutgoingMsg = {
-        key: {
-          id: sent?.key?.id || `bot-${Date.now()}`,
-          remoteJid: chatId,
-          fromMe: true,
-        },
-        message: {
-          conversation: replyText,
-        },
-        messageTimestamp: Math.floor(Date.now() / 1000),
-        pushName: 'PST BPS Gorontalo (Otomatis)',
-      };
-      messageStore.saveMessages(chatId, [botOutgoingMsg]);
-
-      // Update state sesi
+    // CEK ANTI-REPETISI TAMBAHAN: Jika sudah autoGreeted atau sudah disapa hari ini
+    if (session.autoGreeted || session.lastGreetedDate === todayDateStr) {
       session.autoGreeted = true;
-      session.autoGreetedAt = Math.floor(Date.now() / 1000);
-      session.status = 'waiting_admin';
-      session.lastGreetingType = replyType;
+      session.lastGreetedDate = todayDateStr;
       saveSessions();
-    } else {
-      // Sudah pernah di-auto-greet, biarkan user mengetik kelanjutan (nama/pertanyaan)
-      // tanpa di-spam pesan pembuka berulang kali.
-      saveSessions();
+      return;
     }
+
+    const inOperatingHours = isWithinOperatingHours(localDate);
+    const greetingWord = getTimeGreeting(localDate);
+
+    let replyText = '';
+    let replyType = '';
+
+    if (inOperatingHours) {
+      replyText = buildOpeningMessage(greetingWord);
+      replyType = 'opening_message';
+      console.log(`🟢 [LiveChat] Mengirim Pesan Pembuka PST BPS Gorontalo ke ${chatId}`);
+    } else {
+      // Di luar jam operasional: cek apakah sudah pernah dikirim sapaan luar jam hari ini
+      if (session.lastOutOfHoursGreetedDate === todayDateStr) {
+        console.log(`⏳ [LiveChat] Pesan luar jam layanan sudah pernah dikirim ke ${chatId} hari ini. Tidak mengirim ulang.`);
+        saveSessions();
+        return;
+      }
+      replyText = buildOutOfHoursMessage(greetingWord);
+      replyType = 'out_of_hours_message';
+      session.lastOutOfHoursGreetedDate = todayDateStr;
+      console.log(`🟡 [LiveChat] Mengirim Pesan Luar Jam Layanan PST BPS Gorontalo ke ${chatId}`);
+    }
+
+    // TANDAI SECARA SINKRON SEBELUM AWAIT PENGIRIMAN:
+    // Mencegah duplicate send saat pengunjung mengirim 2-3 pesan beruntun cepat dalam beberapa detik
+    session.autoGreeted = true;
+    session.autoGreetedAt = nowSec;
+    session.lastGreetedDate = todayDateStr;
+    session.lastGreetingType = replyType;
+    session.status = 'waiting_admin';
+    saveSessions();
+
+    // Kirim balasan otomatis via Baileys WhatsApp Socket ke JID pengirim asal
+    const sent = await sock.sendMessage(rawChatId, { text: replyText });
+    if (sent?.key?.id) {
+      registerBotMessageId(sent.key.id);
+    }
+
+    // Simpan balasan bot ke pesan lokal messageStore agar muncul di UI explorer
+    const botOutgoingMsg = {
+      key: {
+        id: sent?.key?.id || `bot-${Date.now()}`,
+        remoteJid: chatId,
+        fromMe: true,
+      },
+      message: {
+        conversation: replyText,
+      },
+      messageTimestamp: Math.floor(Date.now() / 1000),
+      pushName: 'PST BPS Gorontalo (Otomatis)',
+    };
+    messageStore.saveMessages(chatId, [botOutgoingMsg]);
   } catch (err) {
     console.error(`❌ [LiveChat] Error saat memproses incoming message untuk ${chatId}:`, err);
   } finally {
@@ -598,6 +931,49 @@ export async function handleIncomingMessage(sock, msg) {
  * Handle saat Admin mengirim pesan (dari Dashboard atau HP tertaut)
  * Menandakan admin telah mengambil alih sesi secara aktif atau menutup sesi jika pesan penutup.
  */
+/**
+ * Mengecek apakah admin/petugas (baik via HP WhatsApp mobile maupun via Dashboard SIGAP)
+ * sudah pernah membalas chat ini pada hari ini.
+ * Mencegah bot mengirim konfirmasi "apakah penjelasan sudah cukup jelas" pada jam 14.00
+ * padahal admin belum pernah memberikan penjelasan sama sekali!
+ */
+export function hasAdminRepliedToday(chatId, session = null, todayStr = null) {
+  if (!chatId) return false;
+  const localDate = getLocalGorontaloDate();
+  const currentTodayStr = todayStr || `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
+
+  const currentSession = session || getSession(chatId);
+  if (currentSession?.adminRepliedToday === currentTodayStr) {
+    return true;
+  }
+  if (currentSession?.hasAdminEverReplied && currentSession?.adminLastRepliedAt) {
+    const replyDate = getLocalGorontaloDate(new Date(currentSession.adminLastRepliedAt * 1000));
+    const replyDateStr = `${replyDate.getFullYear()}-${String(replyDate.getMonth() + 1).padStart(2, '0')}-${String(replyDate.getDate()).padStart(2, '0')}`;
+    if (replyDateStr === currentTodayStr) return true;
+  }
+
+  // Cek langsung dari riwayat pesan chat di messageStore (mencakup pesan keluar yang diketik admin dari HP)
+  const canonicalId = messageStore.resolveLidToPhone(chatId) || chatId;
+  const messages = messageStore.readChatMessages(canonicalId) || [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.fromMe && !isBotMessage(m.id)) {
+      const msgDate = getLocalGorontaloDate(new Date(m.timestamp * 1000));
+      const msgDateStr = `${msgDate.getFullYear()}-${String(msgDate.getMonth() + 1).padStart(2, '0')}-${String(msgDate.getDate()).padStart(2, '0')}`;
+      if (msgDateStr === currentTodayStr) {
+        if (currentSession) {
+          currentSession.hasAdminEverReplied = true;
+          currentSession.adminRepliedToday = currentTodayStr;
+          currentSession.adminLastRepliedAt = m.timestamp;
+        }
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export function handleAdminMessageSent(chatId, adminName = 'Admin PST', msgId = null, msgText = '') {
   if (!chatId) return;
   // Abaikan pesan otomatis yang dikirim oleh sistem / bot SIGAP
@@ -605,6 +981,15 @@ export function handleAdminMessageSent(chatId, adminName = 'Admin PST', msgId = 
     return;
   }
   const session = getOrCreateSession(chatId);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const localDate = getLocalGorontaloDate();
+  const todayStr = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
+
+  // Tandai aktivitas respons admin (baik diketik dari HP maupun dari Dashboard SIGAP)
+  session.hasAdminEverReplied = true;
+  session.adminRepliedToday = todayStr;
+  session.adminLastRepliedAt = nowSec;
+  session.adminMessageCount = (session.adminMessageCount || 0) + 1;
 
   // Jika pesan admin mengandung teks penutup / terminasi resmi PST BPS:
   // Otomatis tandai sesi sebagai closed agar detektor auto-terminasi tidak mengirim penutup ganda 10 menit kemudian!
@@ -616,6 +1001,8 @@ export function handleAdminMessageSent(chatId, adminName = 'Admin PST', msgId = 
     session.closedBy = adminName;
     session.terminationMessage = msgText;
     session.terminationType = msgText.toLowerCase().includes('operasional') ? 'end_of_day' : 'completed';
+    session.delayed_3days = false;
+    session.flag_3days = false;
     saveSessions();
     return;
   }
@@ -624,6 +1011,24 @@ export function handleAdminMessageSent(chatId, adminName = 'Admin PST', msgId = 
   if (session.status === 'closed') {
     return;
   }
+
+  // Jika sesi sedang dalam status Flag Terminasi / Penundaan 3 Hari dan Admin mengirim pesan (mereach-out):
+  if (session.delayed_3days || session.flag_3days || session.status === 'delayed') {
+    console.log(`💬 [LiveChat] Admin "${adminName}" mereach-out pelanggan ${chatId} yang tertanda Flag Terminasi 3 Hari.`);
+    session.reachedOutAt = Math.floor(Date.now() / 1000);
+    session.reachedOutBy = adminName;
+    // Pertahankan status delayed & flag 3 hari agar pesan balasan dari pelanggan
+    // TIDAK memicu narasi pembuka atau terminasi otomatis 14.00/15.30!
+    session.status = 'delayed';
+    session.delayed_3days = true;
+    session.flag_3days = true;
+    session.autoGreeted = true;
+    session.adminName = adminName;
+    session.lastActivityAt = Math.floor(Date.now() / 1000);
+    saveSessions();
+    return;
+  }
+
   session.status = 'admin_active';
   session.adminTakenOverAt = Math.floor(Date.now() / 1000);
   session.adminName = adminName;
@@ -645,47 +1050,178 @@ export function takeoverSession(chatId, adminName = 'Admin PST') {
 }
 
 /**
- * Menandai sesi dengan status Penundaan (3 hari kerja)
+ * Hitung perkiraan batas akhir 3 hari kerja ke depan (eksklusif akhir pekan Sabtu & Minggu)
  */
-export function delaySession(chatId, adminName = 'Admin PST') {
+export function getThreeWorkingDaysTarget(startDate = new Date()) {
+  const cur = new Date(startDate);
+  let addedDays = 0;
+  while (addedDays < 3) {
+    cur.setDate(cur.getDate() + 1);
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) { // Bukan Minggu (0) dan bukan Sabtu (6)
+      addedDays++;
+    }
+  }
+  const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const monthNames = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
+  return {
+    targetTimestamp: Math.floor(cur.getTime() / 1000),
+    targetDateFormatted: `${dayNames[cur.getDay()]}, ${cur.getDate()} ${monthNames[cur.getMonth()]} ${cur.getFullYear()}`,
+    daysRemaining: 3
+  };
+}
+
+/**
+ * Menandai sesi dengan status Penundaan (3 hari kerja)
+ * Diberikan flag `delayed_3days = true` agar tidak muncul pesan pembuka dan penutup otomatis
+ */
+export function delaySession(chatId, options = {}) {
+  const {
+    adminName = 'Admin PST',
+    topic = '',
+    note = ''
+  } = typeof options === 'string' ? { adminName: options } : options;
+
   const session = getOrCreateSession(chatId);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const target = getThreeWorkingDaysTarget(new Date());
+
   session.status = 'delayed';
+  session.delayed_3days = true; // FLAG UTAMA PENUNDAAN 3 HARI KERJA
+  session.flag_3days = true; // Alias flag eksplisit untuk terminasi 3 hari
+  session.delayedAt = nowSec;
+  session.delayedUntil = target.targetTimestamp;
+  session.delayedUntilFormatted = target.targetDateFormatted;
+  session.delayedTopic = topic || session.consultationTopic || session.visitorData?.topic || 'penyiapan data teknis';
+  session.delayedNote = note || '';
+  session.delayedBy = adminName;
   session.adminName = adminName;
-  session.lastActivityAt = Math.floor(Date.now() / 1000);
+  session.lastActivityAt = nowSec;
+
+  // Kunci agar narasi pembuka TIDAK terkirim
+  session.autoGreeted = true;
+
+  // Reset status konfirmasi 14.00 agar tidak memicu terminasi penutup otomatis
+  session.confirmation1400Sent = false;
+  session.confirmation1400Date = null;
+  session.confirmation1400Replied = false;
+  session.closedAt = null;
+  session.terminationType = 'delayed_3days';
+  session.terminationMessage = null;
+
   saveSessions();
+  console.log(`📌 [LiveChat] Sesi ${chatId} ditandai Penundaan 3 Hari Kerja (Batas: ${target.targetDateFormatted}). Flag delayed_3days & flag_3days aktif.`);
   return session;
 }
 
 /**
- * Buka kembali sesi yang telah ditutup
+ * Buka kembali sesi atau lepas status penundaan 3 hari
  */
-export function reopenSession(chatId) {
+export function reopenSession(chatId, adminName = 'Admin PST') {
   const session = getOrCreateSession(chatId);
   session.status = 'admin_active';
+  session.delayed_3days = false; // Lepas flag 3 hari
+  session.flag_3days = false;
+  session.delayedAt = null;
+  session.delayedUntil = null;
+  session.delayedUntilFormatted = null;
   session.closedAt = null;
   session.terminationType = null;
+  session.terminationMessage = null;
+  session.adminName = adminName;
+  session.lastActivityAt = Math.floor(Date.now() / 1000);
   saveSessions();
+  console.log(`🔄 [LiveChat] Sesi ${chatId} dibuka kembali/dilepas dari flag penundaan menjadi admin_active.`);
   return session;
 }
 
 /**
  * Terminasi Sesi Live Chat mengikuti panduan PST BPS Gorontalo
  * @param {string} chatId - Target JID
- * @param {object} payload - { type: 'completed' | 'end_of_day', topic, nextSchedule, message, adminName, sendWhatsappMessage: true }
+ * @param {object} payload - { type: 'completed' | 'end_of_day' | 'midday_1400' | 'delayed_3days', topic, nextSchedule, message, adminName, sendWhatsappMessage: true, note }
  * @param {function} sendFn - Callback pengiriman WhatsApp sock.sendMessage
  */
 export async function terminateSession(chatId, payload = {}, sendFn = null) {
   const {
-    type = 'completed', // 'completed' | 'end_of_day'
+    type = 'completed', // 'completed' | 'end_of_day' | 'midday_1400' | 'delayed_3days'
     topic = '',
     nextSchedule = '',
     message = '',
     adminName = 'Admin PST',
-    sendWhatsappMessage = true
+    sendWhatsappMessage = true,
+    note = ''
   } = payload;
 
   const session = getOrCreateSession(chatId);
   const nowSec = Math.floor(Date.now() / 1000);
+
+  // KHUSUS TIPE TERMINASI 3 HARI / PENUNDAAN (Maksimal 3 Hari Kerja):
+  // Diberi FLAG agar narasi pembuka (sapaan/form) & penutup otomatis (14.00/15.30) TIDAK MUNCUL,
+  // sehingga admin dapat mereach-out kembali kapan pun data siap diserahkan!
+  if (type === 'delayed_3days' || type === 'delayed') {
+    const target = getThreeWorkingDaysTarget(new Date());
+    let delayMsgText = message;
+    if (!delayMsgText) {
+      delayMsgText = buildDelayMessage();
+    }
+
+    session.status = 'delayed';
+    session.delayed_3days = true; // FLAG UTAMA 3 HARI
+    session.flag_3days = true;
+    session.delayedAt = nowSec;
+    session.delayedUntil = target.targetTimestamp;
+    session.delayedUntilFormatted = target.targetDateFormatted;
+    session.delayedTopic = topic || session.consultationTopic || session.visitorData?.topic || 'penyiapan data teknis';
+    session.delayedNote = note || '';
+    session.delayedBy = adminName;
+    session.adminName = adminName;
+    session.lastActivityAt = nowSec;
+    session.autoGreeted = true; // Kunci permanen narasi pembuka
+    session.confirmation1400Sent = false;
+    session.confirmation1400Date = null;
+    session.confirmation1400Replied = false;
+    session.closedAt = null;
+    session.terminationType = 'delayed_3days';
+    session.terminationMessage = delayMsgText;
+    saveSessions();
+
+    let sentResult = null;
+    if (sendWhatsappMessage && sendFn) {
+      try {
+        sentResult = await sendFn(chatId, delayMsgText);
+        if (sentResult?.key?.id) {
+          registerBotMessageId(sentResult.key.id);
+        }
+        const outMsg = {
+          key: {
+            id: sentResult?.key?.id || `delay-${Date.now()}`,
+            remoteJid: chatId,
+            fromMe: true,
+          },
+          message: {
+            conversation: delayMsgText,
+          },
+          messageTimestamp: Math.floor(Date.now() / 1000),
+          pushName: `${adminName} (Terminasi 3 Hari Kerja)`,
+        };
+        messageStore.saveMessages(chatId, [outMsg]);
+        console.log(`📌 [LiveChat] Flag Terminasi 3 Hari berhasil diaktifkan & pesan terkirim ke ${chatId}`);
+      } catch (sendErr) {
+        console.error(`❌ [LiveChat] Gagal mengirim pesan terminasi 3 hari ke WhatsApp:`, sendErr);
+        throw sendErr;
+      }
+    }
+
+    return {
+      success: true,
+      session,
+      messageSent: Boolean(sentResult),
+      messageId: sentResult?.key?.id || null
+    };
+  }
 
   // Jika sesi sudah berstatus closed dan baru saja ditutup (< 90 detik lalu), cegah pengiriman ganda
   if (session.status === 'closed' && session.closedAt && (nowSec - session.closedAt < 90)) {
@@ -703,6 +1239,10 @@ export async function terminateSession(chatId, payload = {}, sendFn = null) {
   if (!terminationText) {
     if (type === 'end_of_day') {
       terminationText = buildClosingEndOfDayMessage(nextSchedule);
+    } else if (type === 'unanswered_eod') {
+      terminationText = buildUnansweredEndOfDayMessage(nextSchedule);
+    } else if (type === 'midday_1400') {
+      terminationText = buildClosing1400Message(topic || session.consultationTopic || 'konsultasi data');
     } else {
       terminationText = buildClosingCompletedMessage(topic || session.consultationTopic || 'konsultasi data');
     }
@@ -711,6 +1251,11 @@ export async function terminateSession(chatId, payload = {}, sendFn = null) {
   // Set status sesi menjadi 'closed' SEBELUM pengiriman pesan ke Baileys
   // Hal ini krusial untuk mencegah race condition event Baileys messages.upsert yang memicu handleAdminMessageSent
   session.status = 'closed';
+  session.delayed_3days = false; // Sesi selesai, bersihkan flag penundaan 3 hari
+  session.flag_3days = false;
+  session.delayedAt = null;
+  session.delayedUntil = null;
+  session.delayedUntilFormatted = null;
   session.terminationType = type;
   session.consultationTopic = topic || session.consultationTopic;
   session.closedAt = nowSec;
@@ -796,81 +1341,216 @@ export function updateLiveSettings(newSettings) {
   return getLiveSettings();
 }
 
-/**
- * Background Auto-Terminator:
- * Otomatis menterminasi sesi yang sudah tidak aktif selama 10 menit
- * Mengirim pesan terminasi resmi + link survei SKD ke WhatsApp pelanggan.
- */
-export async function checkAndAutoTerminateSessions() {
-  if (!settings.autoTerminateOnTimeout) return;
-  const timeoutMinutes = settings.inactivityTimeoutMinutes || 10;
-  const timeoutSec = timeoutMinutes * 60;
-  const nowSec = Math.floor(Date.now() / 1000);
+// Set pelacak eksekusi jadwal hari ini (format: 'YYYY-MM-DD_HH:mm')
+const executedSchedules = new Set();
 
-  for (const [chatId, session] of Object.entries(sessions)) {
-    // Hanya proses sesi yang masih aktif (waiting_admin, admin_active)
-    // Sesi 'closed' dan sesi 'delayed' (penundaan hingga 3 hari kerja) TIDAK boleh diterminasi timeout 10 menit!
-    if (session.status === 'closed' || session.status === 'delayed') continue;
-    if (
-      chatId.endsWith('@g.us') ||
-      chatId.endsWith('@newsletter') ||
-      chatId.includes('status@broadcast') ||
-      chatId.endsWith('@broadcast') ||
-      messageStore.isSelfJid(chatId)
-    ) {
+/**
+ * Auto-Terminator Terjadwal:
+ * Menjalankan terminasi otomatis tepat pada pukul 14.00 WITA (sesi siang) dan 15.30 WITA (tutup layanan)
+ * Dipastikan HANYA berjalan 1x per jadwal per hari dan TIDAK BERULANG.
+ */
+export async function checkScheduledTerminations() {
+  if (settings.scheduledTerminationEnabled === false) return;
+
+  const localDate = getLocalGorontaloDate();
+  const day = localDate.getDay();
+  // Hanya beroperasi pada hari aktif layanan (Senin - Jumat)
+  const schedule = settings.operatingHours?.[day];
+  if (!schedule || !schedule.active) return;
+
+  const hours = localDate.getHours();
+  const minutes = localDate.getMinutes();
+  const todayStr = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
+
+  const targetTimes = settings.scheduledTerminationTimes || ['14:00', '15:30'];
+
+  for (const timeTarget of targetTimes) {
+    const [tHour, tMin] = timeTarget.split(':').map(Number);
+
+    // Cek apakah waktu saat ini berada di rentang waktu target (toleransi jendela 2 menit)
+    const isTargetTime = (hours === tHour && minutes >= tMin && minutes <= tMin + 2);
+    if (!isTargetTime) continue;
+
+    const scheduleKey = `${todayStr}_${timeTarget}`;
+    if (executedSchedules.has(scheduleKey)) {
+      // Jadwal jam ini untuk hari ini SUDAH selesai dieksekusi. Lewati agar tidak berulang!
       continue;
     }
 
-    const lastTime = session.lastActivityAt || session.createdAt || nowSec;
-    const idle = nowSec - lastTime;
+    // Kunci eksekusi secara langsung agar interval berikutnya tidak memicu duplikasi
+    executedSchedules.add(scheduleKey);
 
-    if (idle >= timeoutSec) {
-      console.log(`⏱️ [LiveChat Auto-Terminator] Sesi ${chatId} tidak aktif selama ${Math.round(idle / 60)} menit (>= ${timeoutMinutes} menit). Menjalankan terminasi otomatis.`);
+    console.log(`\n⏰ [LiveChat] Menjalankan Auto-Terminasi Terjadwal Pukul ${timeTarget} WITA (${todayStr})...`);
 
-      const sock = _sockGetter();
-      const isConn = _isConnectedGetter();
-      const shouldSendMsg = settings.sendAutoTerminationMessage && sock && isConn;
+    const is1400Trigger = timeTarget === '14:00';
+    const is1530Closing = timeTarget === '15:30' || timeTarget >= '15:00';
+    const sock = _sockGetter();
+    const isConn = _isConnectedGetter();
+    const shouldSendMsg = settings.sendAutoTerminationMessage && sock && isConn;
+    const nowSec = Math.floor(Date.now() / 1000);
 
-      const topic = session.consultationTopic || session.visitorData?.topic || 'layanan konsultasi online PST';
-      const surveyUrl = settings.links?.surveyUrl || 'https://s.bps.go.id/skd75';
+    let processedCount = 0;
 
-      const terminationMsg =
-`Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Mengingat tidak ada aktivitas lebih lanjut selama ${timeoutMinutes} menit, konsultasi terkait ${topic} kami akhiri ya Kak.
+    for (const [chatId, session] of Object.entries(sessions)) {
+      // Hanya proses sesi yang saat ini aktif (waiting_admin atau admin_active)
+      // JANGAN proses sesi yang sudah 'closed' atau 'delayed' (penundaan 3 hari kerja)!
+      if (session.status !== 'waiting_admin' && session.status !== 'admin_active') {
+        continue;
+      }
+      if (session.status === 'delayed' || Boolean(session.delayed_3days) || Boolean(session.flag_3days)) {
+        continue;
+      }
 
-Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: ${surveyUrl}
+      if (
+        chatId.endsWith('@g.us') ||
+        chatId.endsWith('@newsletter') ||
+        chatId.includes('status@broadcast') ||
+        chatId.endsWith('@broadcast') ||
+        messageStore.isSelfJid(chatId)
+      ) {
+        continue;
+      }
 
-Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`;
+      // Pastikan hanya memproses sesi yang aktif dalam 24 jam terakhir
+      const lastActivity = session.lastActivityAt || session.createdAt || 0;
+      const hasRecentActivity = (nowSec - lastActivity) < 86400;
 
+      const topic = session.consultationTopic || session.visitorData?.topic || 'konsultasi data';
       const sendTarget = session.lid || chatId;
-      const sendFn = shouldSendMsg ? async (target, text) => await sock.sendMessage(sendTarget, { text }) : null;
+      const canSendMsg = Boolean(shouldSendMsg && hasRecentActivity);
 
-      try {
-        await terminateSession(
-          chatId,
-          {
-            type: 'completed',
-            topic: topic,
-            message: terminationMsg,
-            adminName: 'Sistem SIGAP (Auto-Terminasi 10 Menit)',
-            sendWhatsappMessage: Boolean(shouldSendMsg)
-          },
-          sendFn
-        );
-      } catch (err) {
-        console.error(`❌ [LiveChat Auto-Terminator] Gagal auto-terminate ${chatId}:`, err.message);
+      if (is1400Trigger) {
+        // =========================================================================
+        // JADWAL 14.00 WITA: BERTANYA KEMBALI APAKAH MASIH ADA YANG PERLU DITANYAKAN
+        // (Sesuai Pesan Konfirmasi Buku Panduan Resmi PST BPS Gorontalo Hal 1)
+        // Sesi TETAP AKTIF dan TIDAK DI-CLOSED! Menunggu balasan hingga 15.30 WITA.
+        // =========================================================================
+        if (session.confirmation1400Date === todayStr) {
+          continue; // Sudah dikirimi pesan konfirmasi hari ini
+        }
+
+        // CEK KRUSIAL: Apakah admin/petugas SUDAH PERNAH membalas chat ini hari ini (baik via SIGAP maupun via HP)?
+        const adminHasReplied = hasAdminRepliedToday(chatId, session, todayStr);
+        if (!adminHasReplied) {
+          console.log(`⚠️ [LiveChat] Sesi ${chatId} belum pernah dibalas oleh admin/petugas hari ini. Melewati trigger konfirmasi 14.00 WITA agar tidak membingungkan pengunjung.`);
+          continue;
+        }
+
+        const confirmMsg = buildConfirmationMessage(topic);
+
+        if (canSendMsg) {
+          try {
+            const sent = await sock.sendMessage(sendTarget, { text: confirmMsg });
+            if (sent?.key?.id) {
+              registerBotMessageId(sent.key.id);
+            }
+            // Simpan ke message store agar tampil di explorer dashboard
+            messageStore.saveMessages(chatId, [{
+              key: {
+                id: sent?.key?.id || `confirm-${Date.now()}`,
+                remoteJid: chatId,
+                fromMe: true,
+              },
+              message: {
+                conversation: confirmMsg,
+              },
+              messageTimestamp: nowSec,
+              pushName: 'PST BPS Gorontalo (Konfirmasi 14.00 WITA)',
+            }]);
+          } catch (sendErr) {
+            console.error(`❌ [LiveChat] Gagal mengirim konfirmasi 14.00 WITA ke ${chatId}:`, sendErr.message);
+          }
+        }
+
+        session.confirmation1400Sent = true;
+        session.confirmation1400SentAt = nowSec;
+        session.confirmation1400Date = todayStr;
+        session.confirmation1400Replied = false;
+        session.lastActivityAt = nowSec;
+        processedCount++;
+        console.log(`❓ [LiveChat] Pesan konfirmasi 14.00 WITA terkirim ke ${chatId}: Bertanya apakah penjelasan sudah cukup jelas / masih ada yang perlu ditanyakan.`);
+
+      } else if (is1530Closing) {
+        // =========================================================================
+        // JADWAL 15.30 WITA: TERMINASI PENUTUP
+        // Aturan: Jika trigger jam 14.00 masih belum dibalas oleh pengguna layanan,
+        // lakukan terminasi penutup resmi PST BPS Gorontalo (+ Survei SKD) & tutup sesi!
+        // =========================================================================
+        if (session.lastTerminationKey === scheduleKey) {
+          continue; // Sudah diterminasi pada jadwal ini hari ini
+        }
+
+        const sendFn = canSendMsg
+          ? async (target, text) => await sock.sendMessage(sendTarget, { text })
+          : null;
+
+        // Cek apakah admin/petugas sudah pernah membalas hari ini (baik via SIGAP maupun via HP)
+        const adminHasReplied = hasAdminRepliedToday(chatId, session, todayStr);
+
+        // Cek apakah trigger jam 14.00 pernah terkirim hari ini dan BELUM DIBALAS
+        const isTrigger1400Unreplied = (session.confirmation1400Sent && session.confirmation1400Date === todayStr && !session.confirmation1400Replied);
+
+        let terminationType = 'end_of_day';
+        let terminationMsg = '';
+        let adminName = '';
+
+        if (!adminHasReplied) {
+          // KASUS KRUSIAL: Admin/petugas lupa balas hingga jam kantor tutup pukul 15.30 WITA
+          // JANGAN PERNAH mengirim survei kepuasan SKD! (Pengunjung belum dilayani!)
+          // Kirim permohonan maaf atas antrean padat & jaminan prioritas besok hari.
+          terminationType = 'unanswered_eod';
+          terminationMsg = buildUnansweredEndOfDayMessage();
+          adminName = 'Sistem SIGAP (Tutup Jam Layanan - Antrean Belum Dibalas)';
+          console.log(`⚠️ [LiveChat] Sesi ${chatId} belum pernah dibalas admin hingga 15.30 WITA. Mengirim pesan permohonan maaf keterlambatan respons.`);
+        } else if (isTrigger1400Unreplied) {
+          // Trigger jam 14.00 belum dibalas sampai 15.30 -> Pesan Penutup Layanan Selesai (+Survei SKD)
+          terminationType = 'completed';
+          terminationMsg = buildClosingCompletedMessage(topic);
+          adminName = 'Sistem SIGAP (Auto-Terminasi Konfirmasi 14.00 Tidak Dibalas)';
+        } else {
+          // Jam operasional harian telah selesai pukul 15.30 -> Pesan Penutup Jam Layanan Telah Selesai
+          terminationType = 'end_of_day';
+          terminationMsg = buildClosingEndOfDayMessage();
+          adminName = 'Sistem SIGAP (Tutup Jam Layanan 15.30 WITA)';
+        }
+
+        try {
+          await terminateSession(
+            chatId,
+            {
+              type: terminationType,
+              topic: topic,
+              message: terminationMsg,
+              adminName: adminName,
+              sendWhatsappMessage: canSendMsg
+            },
+            sendFn
+          );
+          session.lastTerminationKey = scheduleKey;
+          processedCount++;
+          console.log(`🔒 [LiveChat] Sesi ${chatId} berhasil diterminasi penutup pada 15.30 WITA (Tipe: ${terminationType}).`);
+        } catch (err) {
+          console.error(`❌ [LiveChat] Gagal auto-terminate 15.30 WITA ${chatId}:`, err.message);
+        }
       }
     }
+
+    saveSessions();
+    console.log(`✅ [LiveChat] Eksekusi jadwal ${timeTarget} WITA selesai. Total sesi diproses: ${processedCount}\n`);
   }
 }
 
-// Background checker timer setiap 30 detik
+// Background checker timer setiap 25 detik
 setInterval(() => {
   try {
-    checkAndAutoTerminateSessions();
+    checkScheduledTerminations();
   } catch (e) {
-    console.warn('⚠️ [LiveChat Interval] Warning:', e.message);
+    console.warn('⚠️ [LiveChat Scheduled Interval] Warning:', e.message);
   }
-}, 30000);
+}, 25000);
+
+// Backward compatibility alias
+export const checkAndAutoTerminateSessions = checkScheduledTerminations;
 
 export default {
   getLocalGorontaloDate,
@@ -882,9 +1562,16 @@ export default {
   buildDelayMessage,
   buildConfirmationMessage,
   buildClosingCompletedMessage,
+  buildClosing1400Message,
   buildClosingEndOfDayMessage,
+  buildUnansweredEndOfDayMessage,
+  hasAdminRepliedToday,
+  getThreeWorkingDaysTarget,
   extractVisitorDataFromText,
   getOrCreateSession,
+  saveAiAnalysis,
+  analyzeIntentLocally,
+  detectIncomingMessageIntent,
   handleIncomingMessage,
   handleAdminMessageSent,
   takeoverSession,
@@ -896,6 +1583,7 @@ export default {
   getLiveSettings,
   updateLiveSettings,
   setSocketGetter,
+  checkScheduledTerminations,
   checkAndAutoTerminateSessions,
   isCourtesyOrAcknowledgmentMessage,
   isTerminationClosingText,

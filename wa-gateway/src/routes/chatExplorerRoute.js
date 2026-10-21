@@ -157,14 +157,31 @@ router.get('/chats', async (req, res) => {
       if (s.is_direct) {
         const session = liveChatSessionService.getSession(s.id);
         s.session_status = session?.status || 'waiting_admin';
+        s.flag_3days = Boolean(session?.flag_3days || session?.delayed_3days || session?.status === 'delayed');
+        s.delayed_3days = s.flag_3days;
+        s.delayed_at = session?.delayedAt || null;
+        s.delayed_until = session?.delayedUntil || null;
+        s.delayed_until_formatted = session?.delayedUntilFormatted || null;
+        s.delayed_topic = session?.delayedTopic || session?.consultationTopic || null;
+        s.delayed_by = session?.delayedBy || null;
+        s.delayed_note = session?.delayedNote || null;
+        s.reached_out_at = session?.reachedOutAt || null;
+        s.reached_out_by = session?.reachedOutBy || null;
+        s.customer_replied_after_flag = Boolean(session?.customerRepliedAfterFlag);
         s.auto_greeted = Boolean(session?.autoGreeted);
         s.auto_greeted_at = session?.autoGreetedAt || null;
         s.visitor_data = session?.visitorData || null;
         s.termination_type = session?.terminationType || null;
         s.consultation_topic = session?.consultationTopic || null;
         s.closed_at = session?.closedAt || null;
+        s.ai_intent = session?.aiIntent || null;
+        s.ai_topic = session?.aiTopic || null;
+        s.ai_suggested_reply = session?.aiSuggestedReply || null;
+        s.ai_analyzed_at = session?.aiAnalyzedAt || null;
+        s.has_admin_replied_today = liveChatSessionService.hasAdminRepliedToday(s.id, session);
       } else {
         s.session_status = 'group';
+        s.delayed_3days = false;
       }
     }
 
@@ -257,7 +274,24 @@ router.get('/chats/:chatId', async (req, res) => {
     const session = liveChatSessionService.getSession(chatId);
     detail.session = session || null;
     detail.session_status = session?.status || (detail.is_direct ? 'waiting_admin' : 'group');
+    detail.flag_3days = Boolean(session?.flag_3days || session?.delayed_3days || session?.status === 'delayed');
+    detail.delayed_3days = detail.flag_3days;
+    detail.delayed_at = session?.delayedAt || null;
+    detail.delayed_until = session?.delayedUntil || null;
+    detail.delayed_until_formatted = session?.delayedUntilFormatted || null;
+    detail.delayed_topic = session?.delayedTopic || session?.consultationTopic || null;
+    detail.delayed_by = session?.delayedBy || null;
+    detail.delayed_note = session?.delayedNote || null;
+    detail.reached_out_at = session?.reachedOutAt || null;
+    detail.reached_out_by = session?.reachedOutBy || null;
+    detail.customer_replied_after_flag = Boolean(session?.customerRepliedAfterFlag);
     detail.visitor_data = session?.visitorData || null;
+    detail.ai_analysis = session?.aiAnalysis || null;
+    detail.ai_intent = session?.aiIntent || null;
+    detail.ai_topic = session?.aiTopic || null;
+    detail.ai_suggested_reply = session?.aiSuggestedReply || null;
+    detail.ai_analyzed_at = session?.aiAnalyzedAt || null;
+    detail.has_admin_replied_today = liveChatSessionService.hasAdminRepliedToday(chatId, session);
 
     res.json({
       success: true,
@@ -467,8 +501,8 @@ router.post('/sessions/:chatId/takeover', (req, res) => {
 router.post('/sessions/:chatId/delay', async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { adminName = 'Admin PST', sendMessage = true } = req.body || {};
-    const session = liveChatSessionService.delaySession(chatId, adminName);
+    const { adminName = 'Admin PST', topic = '', note = '', sendMessage = true } = req.body || {};
+    const session = liveChatSessionService.delaySession(chatId, { adminName, topic, note });
 
     if (sendMessage) {
       const sock = _getSock();
@@ -517,12 +551,13 @@ router.post('/sessions/:chatId/terminate', async (req, res) => {
   try {
     const { chatId } = req.params;
     const {
-      type = 'completed', // 'completed' | 'end_of_day'
+      type = 'completed', // 'completed' | 'end_of_day' | 'midday_1400' | 'delayed_3days'
       topic = '',
       nextSchedule = '',
       message = '',
       adminName = 'Admin PST',
-      sendWhatsappMessage = true
+      sendWhatsappMessage = true,
+      note = ''
     } = req.body || {};
 
     const sock = _getSock();
@@ -542,20 +577,39 @@ router.post('/sessions/:chatId/terminate', async (req, res) => {
 
     const result = await liveChatSessionService.terminateSession(
       jid,
-      { type, topic, nextSchedule, message, adminName, sendWhatsappMessage },
+      { type, topic, nextSchedule, message, adminName, sendWhatsappMessage, note },
       sendFn
     );
 
+    let resMsg = 'Sesi konsultasi berhasil diterminasi dan survei SKD dikirim';
+    if (type === 'end_of_day') {
+      resMsg = 'Sesi berhasil diterminasi (Jam Layanan Berakhir)';
+    } else if (type === 'midday_1400') {
+      resMsg = 'Sesi 14.00 WITA berhasil diterminasi & survei SKD dikirim';
+    } else if (type === 'delayed_3days' || type === 'delayed') {
+      resMsg = 'Flag Terminasi 3 Hari berhasil diaktifkan. Auto-pembuka dan penutup dinonaktifkan agar kontak dapat direach-out kembali.';
+    }
+
     res.json({
       success: true,
-      message: type === 'end_of_day'
-        ? 'Sesi berhasil diterminasi (Jam Layanan Berakhir)'
-        : 'Sesi konsultasi berhasil diterminasi dan survei SKD dikirim',
+      message: resMsg,
       result
     });
   } catch (err) {
     console.error('❌ [Explorer] Error terminating session:', err);
     res.status(500).json({ success: false, error: `Gagal terminasi sesi: ${err.message}` });
+  }
+});
+
+// POST /whatsapp/explorer/sessions/:chatId/ai-analysis — simpan hasil analisis intent AI
+router.post('/sessions/:chatId/ai-analysis', (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const body = req.body || {};
+    const updated = liveChatSessionService.saveAiAnalysis(chatId, body);
+    res.json({ success: true, session: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -629,8 +683,15 @@ router.get('/templates', (req, res) => {
           description: 'Terminasi konsultasi selesai dengan konfirmasi & link survei SKD'
         },
         {
+          id: 'termination_midday_1400',
+          title: 'Pesan Penutup: Sesi Siang (Pukul 14.00 WITA)',
+          category: 'terminasi',
+          text: liveChatSessionService.buildClosing1400Message(topic),
+          description: 'Terminasi sesi konsultasi siang pukul 14.00 WITA (+ link survei SKD)'
+        },
+        {
           id: 'termination_end_of_day',
-          title: 'Pesan Penutup: Jam Layanan Telah Selesai',
+          title: 'Pesan Penutup: Jam Layanan Telah Selesai (Pukul 15.30 WITA)',
           category: 'terminasi',
           text: liveChatSessionService.buildClosingEndOfDayMessage(schedule),
           description: 'Terminasi saat jam operasional hari ini berakhir (+ link SIGAP & Web BPS)'

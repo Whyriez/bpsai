@@ -2299,10 +2299,13 @@ def backup_whatsapp_data():
         res = requests.post(backup_url, json={"scope": scope}, timeout=60)
         if res.status_code == 200:
             res_json = res.json()
-            # Rewrite downloadUrl to point through the gateway
-            download_url = res_json.get('downloadUrl', '')
-            if download_url:
-                res_json['downloadUrl'] = f"{base_url}{download_url}"
+            # Hindari redirect ke localhost gateway! Buat URL relatif ke proxy Flask backend
+            raw_download_url = res_json.get('downloadUrl', '')
+            import os
+            filename = os.path.basename(raw_download_url) if raw_download_url else ''
+            if filename:
+                res_json['filename'] = filename
+                res_json['downloadUrl'] = f"/api/documents/bps/whatsapp-backup/download/{filename}"
             return jsonify(res_json), 200
         else:
             return jsonify({
@@ -2319,6 +2322,73 @@ def backup_whatsapp_data():
             "success": False,
             "error": f"Gagal membuat backup WhatsApp: {str(e)}"
         }), 200
+
+
+@document_bp.route('/bps/whatsapp-backup/download/<path:filename>', methods=['GET'])
+@document_bp.route('/bps/whatsapp-explorer/backups/download/<path:filename>', methods=['GET'])
+def download_whatsapp_backup(filename):
+    """Mengunduh berkas backup ZIP WhatsApp melalui proxy Flask backend (aman dari redirect localhost)."""
+    import os
+    import requests
+    from flask import Response, stream_with_context, send_file
+
+    clean_filename = os.path.basename(filename)
+    if not clean_filename or not clean_filename.endswith('.zip'):
+        return jsonify({"success": False, "error": "Nama berkas backup tidak valid"}), 400
+
+    # 1. Coba langsung dari filesystem lokal jika backend dan gateway berada di server yang sama
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    possible_paths = [
+        os.path.join(current_dir, '..', '..', '..', 'wa-gateway', 'backups', clean_filename),
+        os.path.join(os.path.abspath(os.getcwd()), 'wa-gateway', 'backups', clean_filename),
+        os.path.join(os.path.abspath(os.getcwd()), '..', 'wa-gateway', 'backups', clean_filename)
+    ]
+    for p in possible_paths:
+        norm_p = os.path.normpath(p)
+        if os.path.isfile(norm_p):
+            return send_file(
+                norm_p,
+                mimetype='application/zip',
+                as_attachment=True,
+                download_name=clean_filename
+            )
+
+    # 2. Jika tidak ada di lokal (misal gateway berjalan di container / remote), stream dari gateway via HTTP
+    base_url = _get_wa_gateway_base_url()
+    gateway_url = f"{base_url}/backups/{clean_filename}"
+
+    try:
+        req = requests.get(gateway_url, stream=True, timeout=60)
+        if req.status_code == 200:
+            def generate():
+                for chunk in req.iter_content(chunk_size=16384):
+                    if chunk:
+                        yield chunk
+
+            headers = {
+                'Content-Disposition': f'attachment; filename="{clean_filename}"',
+                'Access-Control-Expose-Headers': 'Content-Disposition',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+            }
+            if req.headers.get('content-length'):
+                headers['Content-Length'] = req.headers.get('content-length')
+
+            return Response(
+                stream_with_context(generate()),
+                status=200,
+                content_type=req.headers.get('content-type', 'application/zip'),
+                headers=headers
+            )
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Berkas tidak ditemukan di WhatsApp Gateway (HTTP {req.status_code})"
+            }), req.status_code
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Gagal mengunduh berkas backup WhatsApp: {str(e)}"
+        }), 500
 
 
 # ===================================================================
@@ -2419,6 +2489,13 @@ def get_whatsapp_explorer_backups():
     base_url = _get_wa_gateway_base_url()
     try:
         res = requests.get(f"{base_url}/whatsapp/explorer/backups", timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            for b in data.get('backups', []):
+                fn = b.get('filename')
+                if fn:
+                    b['downloadUrl'] = f"/api/documents/bps/whatsapp-explorer/backups/download/{fn}"
+            return jsonify(data), 200
         return jsonify(res.json()), res.status_code
     except requests.exceptions.ConnectionError:
         return jsonify({"success": False, "backups": [], "total": 0, "error": "Gateway tidak terhubung"}), 503
@@ -2569,6 +2646,21 @@ def post_whatsapp_explorer_terminate(chat_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@document_bp.route('/bps/whatsapp-explorer/sessions/<path:chat_id>/ai-analysis', methods=['POST'])
+def post_whatsapp_explorer_ai_analysis(chat_id):
+    """Menyimpan hasil analisis intent AI ke sesi live chat di gateway."""
+    import requests
+    base_url = _get_wa_gateway_base_url()
+    body = request.get_json() if request.is_json else {}
+    try:
+        res = requests.post(f"{base_url}/whatsapp/explorer/sessions/{chat_id}/ai-analysis", json=body, timeout=10)
+        return jsonify(res.json()), res.status_code
+    except requests.exceptions.ConnectionError:
+        return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @document_bp.route('/bps/whatsapp-explorer/sessions-settings', methods=['GET', 'POST'])
 def handle_whatsapp_explorer_sessions_settings():
     """Mengambil atau menyimpan konfigurasi sesi & jam operasional live chat."""
@@ -2600,6 +2692,158 @@ def get_whatsapp_explorer_templates():
         return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@document_bp.route('/bps/whatsapp-explorer/ai-detect-intent', methods=['POST'])
+def ai_detect_whatsapp_intent():
+    """
+    Menggunakan Gemini AI untuk mendeteksi niat (intent) pesan WhatsApp secara cerdas:
+    1. Mengklasifikasikan pesan:
+       - 'GREETING_NEW': Pengunjung baru menyapa / memulai konsultasi pertama kali
+       - 'CONTINUATION': Melanjutkan percakapan sebelumnya / merespons pesan admin
+       - 'DELAY_FOLLOWUP': Menanyakan progres data yang ditunda 3 hari kerja
+       - 'COURTESY_THANKS': Ucapan terima kasih / kesantunan penutup
+       - 'DATA_INQUIRY': Permintaan data statistik spesifik
+    2. Mendeteksi apakah sistem harus melewatkan form pembuka (should_skip_opening_greeting).
+    3. Mengekstrak topik dan data pengunjung jika disebutkan.
+    4. Menyediakan draf saran balasan AI (AI Suggested Reply) yang ramah & profesional.
+    """
+    import json
+    import re
+
+    data = request.get_json() or {}
+    chat_id = data.get('chat_id', '')
+    incoming_text = (data.get('incoming_text') or '').strip()
+    recent_messages = data.get('recent_messages', []) or []
+    session_meta = data.get('session_meta', {}) or {}
+
+    if not incoming_text and not recent_messages:
+        return jsonify({"success": False, "error": "Teks pesan atau riwayat percakapan diperlukan"}), 400
+
+    # Format ringkasan pesan terakhir untuk konteks Gemini
+    dialogue_snippets = []
+    for m in recent_messages[-8:]:
+        role = "Pengunjung" if not m.get('fromMe') else "Admin/Sistem"
+        text = (m.get('text') or '').strip()
+        if text:
+            dialogue_snippets.append(f"[{role}]: {text}")
+    dialogue_context = "\n".join(dialogue_snippets) if dialogue_snippets else "(Tidak ada pesan sebelumnya)"
+
+    session_status = session_meta.get('status', 'waiting_admin')
+    is_delayed = bool(session_meta.get('delayed_3days') or session_status == 'delayed')
+    delayed_topic = session_meta.get('delayed_topic') or session_meta.get('topic') or ''
+    visitor_name = (session_meta.get('visitor_data') or {}).get('nama', '')
+
+    prompt = f"""Kamu adalah asisten AI Pelayanan Statistik Terpadu (PST) BPS Provinsi Gorontalo yang sangat cerdas dan berempati tinggi.
+Tugasmu adalah menganalisis pesan WhatsApp terbaru dari pengunjung dan memahami konteks percakapan secara akurat.
+
+=== INFORMASI SESI SAAT INI ===
+- Status Sesi: {session_status}
+- Sedang dalam Penundaan 3 Hari Kerja: {"Ya, topik: " + delayed_topic if is_delayed else "Tidak"}
+- Nama Pengunjung yang Dikenal: {visitor_name if visitor_name else "Belum diketahui"}
+
+=== RIWAYAT PERCAKAPAN TERAKHIR ===
+{dialogue_context}
+
+=== PESAN TERBARU PENGUNJUNG ===
+"{incoming_text}"
+
+=== INSTRUKSI ANALISIS ===
+Klasifikasikan pesan terbaru tersebut:
+1. "intent":
+   - "GREETING_NEW" -> Pengunjung baru datang dan baru pertama kali menyapa (contoh: "Halo", "Selamat pagi", "Permisi").
+   - "CONTINUATION" -> Pengunjung melanjutkan percakapan yang sudah berjalan, merespons pertanyaan admin, memberikan data tambahan, atau memperjelas pertanyaannya.
+   - "DELAY_FOLLOWUP" -> Pengunjung menanyakan atau membahas progres data yang sedang disiapkan (terkait penundaan 3 hari kerja).
+   - "COURTESY_THANKS" -> Pengunjung hanya mengucapkan terima kasih, salam santun, atau konfirmasi paham (contoh: "Terima kasih banyak pak", "Siap kak", "Baik makasih", "Sama-sama").
+   - "DATA_INQUIRY" -> Pengunjung langsung menanyakan data statistik tertentu (contoh: data inflasi, kemiskinan, PDRB, IPM).
+
+2. "is_continuation": boolean.
+   - Set true jika pesan merupakan kelanjutan dari percakapan sebelumnya, atau jika pengunjung menanggapi balasan sebelumnya, atau jika sesi sedang berjalan/delayed.
+   - Set false HANYA jika pengunjung benar-benar baru pertama kali menyapa tanpa riwayat konteks.
+
+3. "should_skip_opening_greeting": boolean.
+   - True jika sistem/bot TIDAK BOLEH mengirim form identitas pembuka ("Nama: Pekerjaan: Instansi:") karena percakapan sudah berjalan, pengunjung sudah memperkenalkan diri, atau hanya sekadar kesantunan/lanjutan.
+
+4. "topic": string (Topik data statistik atau keperluan pengunjung, singkat maks 5 kata. Jika belum jelas, tulis topik dari pesan sebelumnya atau "Konsultasi Data").
+
+5. "visitor_info": {{ "nama": null, "pekerjaan": null, "instansi": null }} (Ekstrak jika pengunjung menyebutkan nama, pekerjaan, atau instansinya di dalam pesan).
+
+6. "summary": string (Ringkasan 1 kalimat yang menjelaskan maksud pengunjung secara jelas).
+
+7. "suggested_reply": string (Draf balasan resmi beretika PST BPS Gorontalo. Gaya bahasa ramah, sopan, menggunakan panggilan 'Kak', santun, dan menyertakan emoji 😊. Jika intent CONTINUATION atau DATA_INQUIRY, berikan tanggapan yang relevan. Jika COURTESY_THANKS, berikan jawaban sopan seperti 'Sama-sama Kak, senang bisa membantu 😊'. Jika DELAY_FOLLOWUP, berikan kepastian bahwa data sedang diproses tim teknis).
+
+8. "confidence": float antara 0.70 sampai 0.99.
+
+Keluarkan HANYA JSON valid tanpa teks pengantar atau markdown block (tanpa ```json):
+{{
+  "intent": "...",
+  "is_continuation": true,
+  "should_skip_opening_greeting": true,
+  "topic": "...",
+  "visitor_info": {{ "nama": null, "pekerjaan": null, "instansi": null }},
+  "summary": "...",
+  "suggested_reply": "...",
+  "confidence": 0.95
+}}"""
+
+    # Coba eksekusi dengan Gemini AI
+    try:
+        gemini_service = GeminiService()
+        raw_response = gemini_service.generate_content(prompt)
+        if raw_response:
+            cleaned_json = raw_response.strip()
+            if cleaned_json.startswith("```"):
+                cleaned_json = re.sub(r"^```(?:json)?\s*", "", cleaned_json, flags=re.IGNORECASE)
+                cleaned_json = re.sub(r"\s*```$", "", cleaned_json)
+            parsed = json.loads(cleaned_json)
+            return jsonify({"success": True, "analysis": parsed, "source": "gemini"}), 200
+    except Exception as e:
+        current_app.logger.warning(f"Gemini intent detection fallback triggered: {e}")
+
+    # Fallback Heuristik Cerdas jika Gemini limit/error
+    lower_text = incoming_text.lower().strip()
+    courtesy_keywords = ['terima kasih', 'makasih', 'terimakasih', 'thanks', 'siap', 'sama-sama', 'baik pak', 'baik kak', 'oke', 'ok']
+    is_courtesy = any(k in lower_text for k in courtesy_keywords) and len(lower_text) < 40
+
+    if is_courtesy:
+        intent = "COURTESY_THANKS"
+        is_cont = True
+        skip_greet = True
+        summary = "Pengunjung menyampaikan ucapan terima kasih / kesantunan"
+        reply = "Sama-sama Kak, senang dapat melayani Anda. Jika masih ada data yang dibutuhkan di kemudian hari, jangan ragu untuk menghubungi PST BPS Provinsi Gorontalo kembali ya Kak 😊"
+    elif is_delayed:
+        intent = "DELAY_FOLLOWUP"
+        is_cont = True
+        skip_greet = True
+        summary = f"Pengunjung menindaklanjuti data tertunda ({delayed_topic or 'Data teknis'})"
+        reply = f"Halo Kak, terkait data {delayed_topic or 'yang Kakak butuhkan'} saat ini masih dalam proses penyiapan oleh tim teknis kami. Kami pastikan segera mengabari Kakak kembali begitu data siap. Terima kasih banyak atas kesabarannya menunggu ya Kak 😊"
+    elif len(recent_messages) > 1 or visitor_name:
+        intent = "CONTINUATION"
+        is_cont = True
+        skip_greet = True
+        summary = "Pengunjung melanjutkan percakapan yang sedang berjalan"
+        reply = "Baik Kak, pesan Kakak sudah kami terima dan sedang kami tindaklanjuti. Mohon ditunggu sebentar ya Kak 😊"
+    else:
+        greeting_words = ['halo', 'assalamu', 'pagi', 'siang', 'sore', 'malam', 'permisi', 'hai']
+        is_greet = any(w in lower_text for w in greeting_words)
+        intent = "GREETING_NEW" if is_greet else "DATA_INQUIRY"
+        is_cont = False
+        skip_greet = False
+        summary = "Pengunjung baru memulai konsultasi layanan BPS"
+        reply = "Selamat datang di Layanan PST BPS Provinsi Gorontalo Kak! Ada yang bisa kami bantu terkait kebutuhan data statistik hari ini? 😊"
+
+    fallback_analysis = {
+        "intent": intent,
+        "is_continuation": is_cont,
+        "should_skip_opening_greeting": skip_greet,
+        "topic": delayed_topic or "Konsultasi Data PST",
+        "visitor_info": {"nama": visitor_name or None, "pekerjaan": None, "instansi": None},
+        "summary": summary,
+        "suggested_reply": reply,
+        "confidence": 0.82
+    }
+    return jsonify({"success": True, "analysis": fallback_analysis, "source": "heuristic_fallback"}), 200
+
 
 
 # ===================================================================
@@ -2777,4 +3021,4 @@ def upload_manual_pdf():
         "auto_process": auto_process,
         "job_id": job_id
     }), 201
-
+

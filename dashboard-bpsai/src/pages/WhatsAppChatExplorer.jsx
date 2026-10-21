@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
-import apiFetch from "../services/api";
+import apiFetch, { API_BASE_URL } from "../services/api";
 
 // --- High-Quality SVG Icons ---
 const WhatsAppIcon = ({ className = "w-5 h-5" }) => (
@@ -193,6 +193,17 @@ const ReplyIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+const SparklesIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.286L13 21l-2.286-6.857L5 12l5.714-2.286L13 3z"
+    />
+  </svg>
+);
+
 // --- Official PST BPS Gorontalo Templates (Conforming to Uploaded Guide) ---
 const OFFICIAL_TEMPLATES = [
   {
@@ -225,13 +236,27 @@ Asal Instansi : `
   },
   {
     id: "penundaan",
-    name: "Penundaan (3 Hari)",
-    category: "LAYANAN",
-    badge: "Maks. 3 Hari Kerja",
-    description: "Jika permintaan data butuh penyiapan teknis terlebih dahulu",
+    name: "Terminasi 3 Hari (Penundaan)",
+    category: "TERMINASI",
+    badge: "Flag 3 Hari",
+    description: "Tandai penundaan data teknis (maks. 3 hari kerja) & pasang flag agar siap direach-out",
     getText: (greeting = "siang") =>
 `Selamat ${greeting} Kak. Data yang Kakak butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja. Kami akan menghubungi Kakak kembali melalui nomor ini setelah data tersebut siap diserahkan.
 Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`
+  },
+  {
+    id: "reachout_3hari",
+    name: "Reach Out: Penyerahan Data Siap",
+    category: "REACH OUT",
+    badge: "Pasca-3 Hari",
+    description: "Menghubungi kembali kontak tertanda flag saat data teknis telah siap diserahkan tim BPS",
+    getText: (topic = "yang Kakak butuhkan", greeting = "siang") =>
+`Selamat ${greeting} Kak. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan ya Kak.
+
+Berikut informasinya:
+[Tuliskan keterangan / tautan data di sini]
+
+Apabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kepada kami ya Kak 😊`
   },
   {
     id: "konfirmasi",
@@ -255,10 +280,23 @@ Kalau dirasa masih ada poin yang kurang jelas atau ada yang ingin ditanyakan lag
 Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`
   },
   {
-    id: "terminasi_tutup_hari",
-    name: "Terminasi: Jam Tutup",
+    id: "terminasi_siang_1400",
+    name: "Terminasi: Sesi Siang (14.00 WITA)",
     category: "TERMINASI",
-    badge: "Tutup Operasional Sore",
+    badge: "14.00 WITA + SKD",
+    description: "Mengakhiri konsultasi sesi siang pukul 14.00 WITA disertai link survei SKD",
+    getText: (topic = "[Topik Konsultasi]") =>
+`Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Sesi konsultasi terkait ${topic} pada pukul 14.00 WITA kami akhiri ya Kak.
+
+Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: https://s.bps.go.id/skd75
+
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`
+  },
+  {
+    id: "terminasi_tutup_hari",
+    name: "Terminasi: Jam Tutup (15.30 WITA)",
+    category: "TERMINASI",
+    badge: "15.30 WITA Sore",
     description: "Mengakhiri layanan hari ini karena jam operasional berakhir (+ link SIGAP & Web)",
     getText: (schedule = "[hari, tanggal]") =>
 `Selamat sore, Kak.
@@ -304,12 +342,115 @@ const getParticipantColor = (str = "") => {
   return colors[Math.abs(hash) % colors.length];
 };
 
+// Gentle Audio Chime using Web Audio API (Zero external assets needed)
+const playNotificationSound = () => {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(587.33, now); // D5 tone
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.12); // A5 tone
+
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.35);
+  } catch (e) {
+    // User hasn't interacted with document yet
+  }
+};
+
+const requestNotificationPermission = async () => {
+  if (typeof window !== "undefined" && "Notification" in window) {
+    if (Notification.permission === "default") {
+      try {
+        await Notification.requestPermission();
+      } catch (e) {}
+    }
+  }
+};
+
+const showDesktopNotification = (title, body) => {
+  try {
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      new Notification(title, {
+        body,
+        icon: "/favicon.ico",
+        silent: true,
+      });
+    }
+  } catch (e) {}
+};
+
+const getTimeGreeting = () => {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 11) return "pagi";
+  if (h >= 11 && h < 15) return "siang";
+  if (h >= 15 && h < 18) return "sore";
+  return "malam";
+};
+
+// Intent badge configuration based on Gemini AI detection
+const getIntentBadge = (intent) => {
+  switch (intent) {
+    case "CONTINUATION":
+      return {
+        label: "Melanjutkan Percakapan",
+        short: "Lanjutan",
+        bg: "bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800",
+        icon: "🔵",
+      };
+    case "GREETING_NEW":
+      return {
+        label: "Sapaan Baru",
+        short: "Sapaan",
+        bg: "bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800",
+        icon: "🟢",
+      };
+    case "DELAY_FOLLOWUP":
+      return {
+        label: "Tindak Lanjut Penundaan (3 Hari)",
+        short: "Progres 3 Hari",
+        bg: "bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800",
+        icon: "🟡",
+      };
+    case "COURTESY_THANKS":
+      return {
+        label: "Ucapan Terima Kasih",
+        short: "Terima Kasih",
+        bg: "bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800",
+        icon: "🟣",
+      };
+    case "DATA_INQUIRY":
+      return {
+        label: "Permintaan Data Statistik",
+        short: "Tanya Data",
+        bg: "bg-orange-100 dark:bg-orange-950/70 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-800",
+        icon: "📊",
+      };
+    default:
+      return null;
+  }
+};
+
 export default function WhatsAppChatExplorer() {
   // Source: "live" (Gateway Local) or "backup" (Zip file)
   const [sourceMode, setSourceMode] = useState("live");
   const [backupFiles, setBackupFiles] = useState([]);
   const [selectedBackupFilename, setSelectedBackupFilename] = useState("");
   const [selectedBackupMeta, setSelectedBackupMeta] = useState(null);
+  const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
 
   // WhatsApp Gateway Connection Status
   const [waConnectionStatus, setWaConnectionStatus] = useState({
@@ -328,6 +469,11 @@ export default function WhatsAppChatExplorer() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [activeChatDetail, setActiveChatDetail] = useState(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+
+  // Realtime Sync Tracking & Notifications
+  const [lastSyncTime, setLastSyncTime] = useState(null);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [newIncomingChatIds, setNewIncomingChatIds] = useState(new Set());
 
   // Filtering & search
   const [searchQuery, setSearchQuery] = useState("");
@@ -360,6 +506,17 @@ export default function WhatsAppChatExplorer() {
   const [terminationSchedule, setTerminationSchedule] = useState("");
   const [terminationSendWhatsapp, setTerminationSendWhatsapp] = useState(true);
   const [isSubmittingTermination, setIsSubmittingTermination] = useState(false);
+
+  // 3-Day Delay Modal State
+  const [showDelayModal, setShowDelayModal] = useState(false);
+  const [delayTopic, setDelayTopic] = useState("");
+  const [delayNote, setDelayNote] = useState("");
+  const [delaySendWhatsapp, setDelaySendWhatsapp] = useState(true);
+  const [isSubmittingDelay, setIsSubmittingDelay] = useState(false);
+
+  // Gemini AI Smart Intent State
+  const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
+  const [showAiCard, setShowAiCard] = useState(true);
 
   const messagesEndRef = useRef(null);
 
@@ -427,6 +584,14 @@ export default function WhatsAppChatExplorer() {
       setActiveChatDetail(null);
       return;
     }
+    // Hapus badge chat baru untuk obrolan yang sedang dibuka
+    setNewIncomingChatIds((prev) => {
+      if (!prev.has(activeChatId)) return prev;
+      const next = new Set(prev);
+      next.delete(activeChatId);
+      return next;
+    });
+
     if (sourceMode === "live") {
       fetchLiveChatDetail(activeChatId);
     } else if (sourceMode === "backup" && selectedBackupFilename) {
@@ -434,70 +599,81 @@ export default function WhatsAppChatExplorer() {
     }
   }, [activeChatId]);
 
-  // Auto scroll messages to bottom
+  // Auto scroll messages to bottom whenever message count changes
   useEffect(() => {
     if (activeChatDetail?.messages?.length) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [activeChatDetail?.messages]);
+  }, [activeChatDetail?.messages?.length]);
 
-  // 1. Fetch live chats from gateway and settings
-  const fetchLiveChats = async () => {
-    setIsLoadingChats(true);
+  // 1. Fetch live chats from gateway
+  const fetchLiveChats = async (silent = false) => {
+    if (!silent) setIsLoadingChats(true);
     try {
-      const [chatsRes, settingsRes] = await Promise.allSettled([
-        apiFetch("/documents/bps/whatsapp-explorer/chats"),
-        apiFetch("/documents/bps/whatsapp-explorer/sessions-settings")
-      ]);
-
-      if (chatsRes.status === "fulfilled" && chatsRes.value) {
-        const val = chatsRes.value;
-        const isConn = Boolean(val.is_connected);
+      const chatsRes = await apiFetch("/documents/bps/whatsapp-explorer/chats");
+      if (chatsRes) {
+        const isConn = Boolean(chatsRes.is_connected);
         setWaConnectionStatus({
           is_connected: isConn,
-          status: val.status || (isConn ? "CONNECTED" : "DISCONNECTED"),
-          phone: val.phone || null,
-          phone_formatted: val.phone_formatted || null,
+          status: chatsRes.status || (isConn ? "CONNECTED" : "DISCONNECTED"),
+          phone: chatsRes.phone || null,
+          phone_formatted: chatsRes.phone_formatted || null,
         });
 
         if (isConn) {
-          setChats(val.chats || []);
-          setStats(val.stats || null);
-          if (!activeChatId && val.chats && val.chats.length > 0) {
+          const newChats = chatsRes.chats || [];
+
+          setChats((prevChats) => {
+            // Deteksi pesan baru dari chat lain saat silent polling
+            if (silent && prevChats && prevChats.length > 0) {
+              for (const nc of newChats) {
+                const pc = prevChats.find((c) => c.id === nc.id);
+                if (nc.last_message && !nc.last_message.fromMe) {
+                  const isNewMsg =
+                    !pc ||
+                    (nc.last_message.timestamp &&
+                      (!pc.last_message?.timestamp ||
+                        nc.last_message.timestamp > pc.last_message.timestamp));
+
+                  if (isNewMsg && nc.id !== activeChatId) {
+                    playNotificationSound();
+                    showDesktopNotification(
+                      `Pesan baru dari ${nc.name || "Pengunjung"}`,
+                      nc.last_message.text || "Mengirim pesan baru"
+                    );
+                    setNewIncomingChatIds((prev) => new Set([...prev, nc.id]));
+                    break;
+                  }
+                }
+              }
+            }
+            return newChats;
+          });
+
+          setStats(chatsRes.stats || null);
+          setLastSyncTime(new Date());
+
+          if (!activeChatId && newChats.length > 0) {
             if (window.innerWidth >= 768) {
-              setActiveChatId(val.chats[0].id);
+              setActiveChatId(newChats[0].id);
             }
           }
         } else {
-          // Jika nomor bot terputus/logout, kosongkan percakapan live agar riwayat nomor lama tidak bocor
+          // Jika nomor bot terputus/logout
           setChats([]);
           setActiveChatId(null);
           setActiveChatDetail(null);
           setStats(null);
         }
-      } else if (chatsRes.status === "rejected") {
-        setWaConnectionStatus({
-          is_connected: false,
-          status: "DISCONNECTED",
-          phone: null,
-          phone_formatted: null,
-        });
-        setChats([]);
-        setActiveChatId(null);
-        setActiveChatDetail(null);
-      }
-
-      if (settingsRes.status === "fulfilled" && settingsRes.value?.success) {
-        setLiveSettings(settingsRes.value.settings || null);
       }
     } catch (err) {
-      toast.error(`Koneksi gateway gagal: ${err.message}`);
+      if (!silent) toast.error(`Koneksi gateway gagal: ${err.message}`);
     } finally {
-      setIsLoadingChats(false);
+      if (!silent) setIsLoadingChats(false);
     }
   };
 
-  // Fetch settings separately
+  // Fetch settings separately on demand
   const fetchLiveSettings = async () => {
     try {
       const res = await apiFetch("/documents/bps/whatsapp-explorer/sessions-settings");
@@ -508,27 +684,159 @@ export default function WhatsAppChatExplorer() {
   };
 
   // 2. Fetch live chat details
-  const fetchLiveChatDetail = async (chatId) => {
-    setIsLoadingDetail(true);
+  const fetchLiveChatDetail = async (chatId, silent = false) => {
+    if (!chatId) return;
+    if (!silent) setIsLoadingDetail(true);
     try {
       const res = await apiFetch(
         `/documents/bps/whatsapp-explorer/chats/${encodeURIComponent(chatId)}`,
       );
       if (res.success && res.chat) {
-        setActiveChatDetail(res.chat);
+        setActiveChatDetail((prev) => {
+          if (silent && prev && prev.id === res.chat.id) {
+            const prevMsgs = prev.messages || [];
+            const newMsgs = res.chat.messages || [];
+
+            // Jika pesan baru masuk pada chat yang sedang aktif
+            if (newMsgs.length > prevMsgs.length) {
+              const lastMsg = newMsgs[newMsgs.length - 1];
+              if (lastMsg && !lastMsg.fromMe) {
+                playNotificationSound();
+                if (typeof document !== "undefined" && document.hidden) {
+                  showDesktopNotification(
+                    `Pesan baru dari ${res.chat.name || "Pengunjung"}`,
+                    lastMsg.text || "Mengirim pesan baru"
+                  );
+                }
+              }
+            } else if (
+              newMsgs.length === prevMsgs.length &&
+              newMsgs[newMsgs.length - 1]?.id === prevMsgs[prevMsgs.length - 1]?.id &&
+              prev.session_status === res.chat.session_status
+            ) {
+              return prev; // Pertahankan referensi jika tidak ada perubahan
+            }
+          }
+          return res.chat;
+        });
+
+        // Sinkronkan juga ringkasan obrolan di sidebar jika ada pesan baru
+        if (res.chat.messages?.length > 0) {
+          const lastM = res.chat.messages[res.chat.messages.length - 1];
+          setChats((prev) =>
+            prev.map((c) =>
+              c.id === chatId || c.id === res.chat.id
+                ? {
+                    ...c,
+                    message_count: res.chat.messages.length,
+                    last_message: {
+                      text: lastM.text || (lastM.type !== "text" ? `[${lastM.type}]` : ""),
+                      type: lastM.type,
+                      timestamp: lastM.timestamp,
+                      fromMe: lastM.fromMe,
+                    },
+                    session_status: res.chat.session_status || c.session_status,
+                  }
+                : c,
+            ),
+          );
+        }
+
         // If direct chat, prioritize PST tab
-        if (res.chat.is_direct && rightPanelTab !== "media" && rightPanelTab !== "links") {
+        if (!silent && res.chat.is_direct && rightPanelTab !== "media" && rightPanelTab !== "links") {
           setRightPanelTab("pst");
         }
       } else {
-        toast.error(res.error || "Gagal mengambil pesan obrolan");
+        if (!silent) toast.error(res.error || "Gagal mengambil pesan obrolan");
       }
     } catch (err) {
-      toast.error(`Gagal memuat detail obrolan: ${err.message}`);
+      if (!silent) toast.error(`Gagal memuat detail obrolan: ${err.message}`);
     } finally {
-      setIsLoadingDetail(false);
+      if (!silent) setIsLoadingDetail(false);
     }
   };
+
+  // Manual Trigger: Sinkronisasi instan saat tombol segarkan diklik
+  const handleManualSync = async () => {
+    setIsManualSyncing(true);
+    try {
+      await Promise.all([
+        fetchLiveChats(true),
+        activeChatId ? fetchLiveChatDetail(activeChatId, true) : Promise.resolve(),
+      ]);
+      setLastSyncTime(new Date());
+      toast.success("Data percakapan berhasil disegarkan!");
+    } catch (e) {
+      toast.error("Gagal menyinkronkan: " + e.message);
+    } finally {
+      setTimeout(() => setIsManualSyncing(false), 450);
+    }
+  };
+
+  // Realtime Polling: Sinkronisasi pesan dan daftar chat otomatis tanpa perlu refresh browser
+  useEffect(() => {
+    if (sourceMode !== "live") return;
+
+    let isMounted = true;
+    let isSyncingDetail = false;
+    let isSyncingChats = false;
+
+    // Minta izin notifikasi browser desktop sekali saat mount
+    requestNotificationPermission();
+    fetchLiveSettings();
+
+    // 1. Polling pesan aktif setiap 1.0 detik (Realtime Chatting)
+    // Berjalan terus tanpa terhenti oleh status jendela browser
+    const detailTimer = setInterval(async () => {
+      if (!isMounted || !activeChatId || isSyncingDetail) return;
+      isSyncingDetail = true;
+      try {
+        await fetchLiveChatDetail(activeChatId, true);
+      } catch (e) {
+      } finally {
+        isSyncingDetail = false;
+      }
+    }, 1000);
+
+    // 2. Polling daftar obrolan setiap 2.0 detik (Daftar chat baru & badge status)
+    const chatsTimer = setInterval(async () => {
+      if (!isMounted || isSyncingChats) return;
+      isSyncingChats = true;
+      try {
+        await fetchLiveChats(true);
+      } catch (e) {
+      } finally {
+        isSyncingChats = false;
+      }
+    }, 2000);
+
+    // 3. Sinkronisasi instan saat tab browser kembali aktif atau mendapat fokus
+    const handleWindowActive = () => {
+      if (isMounted) {
+        fetchLiveChats(true);
+        if (activeChatId) fetchLiveChatDetail(activeChatId, true);
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", handleWindowActive);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleWindowActive);
+    }
+
+    return () => {
+      isMounted = false;
+      clearInterval(detailTimer);
+      clearInterval(chatsTimer);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", handleWindowActive);
+      }
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleWindowActive);
+      }
+    };
+  }, [sourceMode, activeChatId]);
 
   // Handle Admin Takeover
   const handleTakeover = async (chatId) => {
@@ -549,22 +857,126 @@ export default function WhatsAppChatExplorer() {
     }
   };
 
-  // Handle Delay (3 Hari Kerja)
-  const handleDelay = async (chatId) => {
+  // Handle Buka Modal Penundaan (3 Hari Kerja)
+  const handleOpenDelayModal = (chat = activeChatDetail || activeChat) => {
+    const topic = chat?.visitor_data?.topic || chat?.consultation_topic || chat?.delayed_topic || "";
+    setDelayTopic(topic);
+    setDelayNote(chat?.delayed_note || "");
+    setDelaySendWhatsapp(true);
+    setShowDelayModal(true);
+  };
+
+  // Submit Penundaan (3 Hari Kerja)
+  const handleConfirmDelay = async (e) => {
+    e?.preventDefault();
+    const targetId = activeChatId;
+    if (!targetId) return;
+    setIsSubmittingDelay(true);
     try {
-      const res = await apiFetch(`/documents/bps/whatsapp-explorer/sessions/${encodeURIComponent(chatId)}/delay`, {
+      const res = await apiFetch(`/documents/bps/whatsapp-explorer/sessions/${encodeURIComponent(targetId)}/delay`, {
         method: "POST",
-        body: JSON.stringify({ adminName: "Admin PST", sendMessage: true })
+        body: JSON.stringify({
+          adminName: "Admin PST",
+          topic: delayTopic.trim() || "Penyiapan data statistik",
+          note: delayNote.trim() || "",
+          sendMessage: delaySendWhatsapp,
+        }),
       });
       if (res.success) {
-        toast.success("Status sesi diubah ke Penundaan (Maks. 3 Hari) & pesan terkirim!");
-        fetchLiveChatDetail(chatId);
+        toast.success(
+          `Flag penundaan 3 hari kerja berhasil diaktifkan! ${delaySendWhatsapp ? "Pesan WA terkirim." : ""}`
+        );
+        setShowDelayModal(false);
+        fetchLiveChatDetail(targetId);
         fetchLiveChats();
       } else {
-        toast.error(res.error || "Gagal menandai penundaan data");
+        toast.error(res.error || "Gagal menandai penundaan");
       }
     } catch (err) {
       toast.error(`Error: ${err.message}`);
+    } finally {
+      setIsSubmittingDelay(false);
+    }
+  };
+
+  // Trigger Gemini AI Intent Detection & Suggested Reply
+  const handleAnalyzeAiIntent = async () => {
+    if (!activeChatId || !activeChatDetail) return;
+    setIsAnalyzingAi(true);
+    setShowAiCard(true);
+
+    try {
+      const msgs = activeChatDetail.messages || [];
+      const lastIncoming = [...msgs].reverse().find((m) => !m.fromMe);
+      const incomingText = lastIncoming?.text || (msgs.length > 0 ? msgs[msgs.length - 1]?.text : "");
+
+      const recentMsgs = msgs.slice(-8).map((m) => ({
+        text: m.text || "",
+        fromMe: Boolean(m.fromMe),
+        timestamp: m.timestamp || Math.floor(Date.now() / 1000),
+      }));
+
+      const res = await apiFetch("/documents/bps/whatsapp-explorer/ai-detect-intent", {
+        method: "POST",
+        body: JSON.stringify({
+          chat_id: activeChatId,
+          incoming_text: incomingText,
+          recent_messages: recentMsgs,
+          session_meta: {
+            status: activeChatDetail.session_status,
+            delayed_3days: Boolean(activeChatDetail.delayed_3days),
+            delayed_topic: activeChatDetail.delayed_topic || activeChatDetail.consultation_topic,
+            visitor_data: activeChatDetail.visitor_data,
+            topic: activeChatDetail.consultation_topic,
+          },
+        }),
+      });
+
+      if (res?.success && res.analysis) {
+        const analysis = res.analysis;
+        setActiveChatDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                ai_analysis: analysis,
+                ai_intent: analysis.intent,
+                ai_topic: analysis.topic,
+                ai_suggested_reply: analysis.suggested_reply,
+                ai_analyzed_at: Math.floor(Date.now() / 1000),
+              }
+            : prev
+        );
+
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === activeChatId
+              ? {
+                  ...c,
+                  ai_intent: analysis.intent,
+                  ai_topic: analysis.topic,
+                  ai_suggested_reply: analysis.suggested_reply,
+                  ai_analyzed_at: Math.floor(Date.now() / 1000),
+                }
+              : c
+          )
+        );
+
+        try {
+          await apiFetch(`/documents/bps/whatsapp-explorer/sessions/${encodeURIComponent(activeChatId)}/ai-analysis`, {
+            method: "POST",
+            body: JSON.stringify(analysis),
+          });
+        } catch (e) {}
+
+        const b = getIntentBadge(analysis.intent);
+        toast.success(`✨ Intent: ${b ? b.label : analysis.intent}`);
+      } else {
+        toast.error(res?.error || "Gagal menganalisis obrolan dengan AI");
+      }
+    } catch (err) {
+      toast.error(`Analisis AI gagal: ${err.message}`);
+    } finally {
+      setIsAnalyzingAi(false);
     }
   };
 
@@ -587,10 +999,14 @@ export default function WhatsAppChatExplorer() {
   };
 
   // Open Termination Modal
-  const handleOpenTerminationModal = (chat) => {
-    const topic = chat?.visitor_data?.topic || chat?.consultation_topic || "";
+  const handleOpenTerminationModal = (chat, initialType = null) => {
+    const topic = chat?.visitor_data?.topic || chat?.consultation_topic || chat?.delayed_topic || "";
     setTerminationTopic(topic);
-    setTerminationType("completed");
+    if (initialType) {
+      setTerminationType(initialType);
+    } else if (terminationType !== "delayed_3days") {
+      setTerminationType("completed");
+    }
     setTerminationSchedule(liveSettings?.nextOperatingSchedule || "hari kerja berikutnya pukul 08.00 WITA");
     setTerminationSendWhatsapp(true);
     setShowTerminationModal(true);
@@ -598,7 +1014,13 @@ export default function WhatsAppChatExplorer() {
 
   // Live text preview for termination
   const getTerminationPreviewText = () => {
-    if (terminationType === "end_of_day") {
+    if (terminationType === "delayed_3days") {
+      const greeting = getTimeGreeting();
+      return (
+`Selamat ${greeting} Kak. Data yang Kakak butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja. Kami akan menghubungi Kakak kembali melalui nomor ini setelah data tersebut siap diserahkan.
+Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`
+      );
+    } else if (terminationType === "end_of_day") {
       const sched = terminationSchedule.trim() || liveSettings?.nextOperatingSchedule || "hari kerja berikutnya pukul 08.00 WITA";
       const sigapUrl = liveSettings?.links?.sigapUrl || "https://sigap.bps7500.my.id";
       const bpsUrl = liveSettings?.links?.bpsWebsiteUrl || "https://gorontalo.bps.go.id";
@@ -613,6 +1035,16 @@ Untuk kebutuhan data statistik secara mandiri, Kakak dapat mengakses tautan beri
 Kami akan menghubungi Kakak kembali pada ${sched} untuk menjawab pertanyaan yang belum terselesaikan.
 
 Terima kasih banyak atas pengertiannya Kak 😊`
+      );
+    } else if (terminationType === "midday_1400") {
+      const top = terminationTopic.trim() || "konsultasi data";
+      const surveyUrl = liveSettings?.links?.surveyUrl || "https://s.bps.go.id/skd75";
+      return (
+`Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Sesi konsultasi terkait ${top} pada pukul 14.00 WITA kami akhiri ya Kak.
+
+Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: ${surveyUrl}
+
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`
       );
     } else {
       const top = terminationTopic.trim() || "konsultasi data";
@@ -634,16 +1066,21 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
         method: "POST",
         body: JSON.stringify({
           type: terminationType,
-          topic: terminationTopic.trim() || "konsultasi data",
+          topic: terminationTopic.trim() || "Penyiapan data statistik",
           nextSchedule: terminationSchedule.trim() || liveSettings?.nextOperatingSchedule,
           adminName: "Admin PST",
-          sendWhatsappMessage: terminationSendWhatsapp
+          sendWhatsappMessage: terminationSendWhatsapp,
+          note: delayNote.trim() || ""
         })
       });
       if (res.success) {
         toast.success(
           terminationType === "end_of_day"
-            ? "Sesi ditutup (Jam Layanan Berakhir)!"
+            ? "Sesi ditutup (Jam Layanan Berakhir 15.30 WITA)!"
+            : terminationType === "midday_1400"
+            ? "Sesi 14.00 WITA berhasil diterminasi & survei SKD dikirim!"
+            : terminationType === "delayed_3days"
+            ? "Flag Terminasi 3 Hari berhasil diaktifkan! Kontak masuk ke list untuk direach out."
             : "Sesi berhasil diterminasi & survei SKD dikirim!"
         );
         setShowTerminationModal(false);
@@ -666,14 +1103,26 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
       handleOpenTerminationModal(activeChatDetail);
       return;
     }
+    if (tmpl.id === "terminasi_siang_1400") {
+      setTerminationType("midday_1400");
+      handleOpenTerminationModal(activeChatDetail);
+      return;
+    }
     if (tmpl.id === "terminasi_tutup_hari") {
       setTerminationType("end_of_day");
       handleOpenTerminationModal(activeChatDetail);
       return;
     }
     if (tmpl.id === "penundaan") {
-      const timeGreeting = liveSettings?.currentGreeting || "siang";
-      setReplyText(tmpl.getText(timeGreeting));
+      setTerminationType("delayed_3days");
+      handleOpenTerminationModal(activeChatDetail);
+      return;
+    }
+    if (tmpl.id === "reachout_3hari") {
+      const topic = activeChatDetail?.delayed_topic || activeChatDetail?.visitor_data?.topic || activeChatDetail?.consultation_topic || "yang Kakak butuhkan";
+      const timeGreeting = liveSettings?.currentGreeting || getTimeGreeting();
+      setReplyText(tmpl.getText(topic, timeGreeting));
+      replyInputRef.current?.focus();
       return;
     }
     if (tmpl.id === "konfirmasi") {
@@ -727,6 +1176,42 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
       toast.error(`Gagal memuat daftar backup: ${err.message}`);
     } finally {
       setIsLoadingChats(false);
+    }
+  };
+
+  // Unduh file backup ZIP langsung sebagai Blob (tidak pernah redirect ke localhost atau buka tab baru)
+  const handleDownloadBackup = async (filename) => {
+    if (!filename) return;
+    setIsDownloadingBackup(true);
+    const toastId = toast.loading(`Mengunduh berkas ${filename}...`);
+    try {
+      const token = localStorage.getItem("access_token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const downloadEndpoint = `/documents/bps/whatsapp-explorer/backups/download/${encodeURIComponent(filename)}`;
+      const downloadUrl = `${API_BASE_URL}${downloadEndpoint}`;
+      const response = await fetch(downloadUrl, { headers });
+
+      if (!response.ok) {
+        throw new Error(`Gagal mengunduh berkas backup (HTTP ${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
+
+      toast.success(`Berkas ${filename} berhasil diunduh!`, { id: toastId });
+    } catch (err) {
+      console.error("Gagal mengunduh backup ZIP:", err);
+      toast.error(`Gagal mengunduh: ${err.message}`, { id: toastId });
+    } finally {
+      setIsDownloadingBackup(false);
     }
   };
 
@@ -975,6 +1460,13 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               : c,
           ),
         );
+
+        if (sourceMode === "live") {
+          setTimeout(() => {
+            fetchLiveChatDetail(target, true);
+            fetchLiveChats(true);
+          }, 300);
+        }
       } else {
         toast.error(res.error || "Gagal mengirim balasan WhatsApp");
       }
@@ -997,6 +1489,11 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
     if (chatTypeFilter === "DIRECT" && !c.is_direct) return false;
     if (chatTypeFilter === "GROUP" && !c.is_group) return false;
     if (chatTypeFilter === "CHANNEL" && !c.is_channel) return false;
+    if (
+      (chatTypeFilter === "DELAYED" || chatTypeFilter === "FLAG_3DAYS") &&
+      !(c.flag_3days || c.delayed_3days || c.session_status === "delayed")
+    )
+      return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -1011,6 +1508,11 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
     }
     return true;
   });
+
+  const flaggedChatsCount = chats.filter(
+    (c) => c.flag_3days || c.delayed_3days || c.session_status === "delayed"
+  ).length;
+  const delayedChatsCount = flaggedChatsCount;
 
   const activeChat =
     chats.find((c) => c.id === activeChatId) || activeChatDetail;
@@ -1291,9 +1793,20 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               <WhatsAppIcon className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-ink leading-tight truncate">
-                Live Chat PST BPS
-              </h1>
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-sm font-bold text-ink leading-tight truncate">
+                  Live Chat PST BPS
+                </h1>
+                {sourceMode === "live" && waConnectionStatus?.is_connected && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-[9.5px] font-bold"
+                    title="Realtime sinkronisasi otomatis aktif"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Live</span>
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] font-medium flex items-center gap-1.5 truncate">
                 {sourceMode === "live" ? (
                   waConnectionStatus?.is_connected ? (
@@ -1356,17 +1869,20 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               <SettingsIcon className="w-4 h-4 text-ink" />
             </button>
 
+            {/* Tombol Segarkan Percakapan */}
             <button
               type="button"
               onClick={() =>
-                sourceMode === "live" ? fetchLiveChats() : fetchBackupList()
+                sourceMode === "live" ? handleManualSync() : fetchBackupList()
               }
-              disabled={isLoadingChats}
-              className="p-1.5 text-muted hover:text-ink hover:bg-hover/80 rounded-lg transition-colors cursor-pointer"
-              title="Segarkan daftar obrolan"
+              disabled={isLoadingChats || isManualSyncing}
+              className={`p-1.5 text-muted hover:text-emerald-600 hover:bg-hover/80 rounded-lg transition-colors cursor-pointer ${
+                isManualSyncing ? "opacity-70" : ""
+              }`}
+              title="Segarkan daftar & pesan sekarang (Instan)"
             >
               <RefreshIcon
-                className={`w-4 h-4 ${isLoadingChats ? "animate-spin text-emerald-600" : ""}`}
+                className={`w-4 h-4 ${isLoadingChats || isManualSyncing ? "animate-spin text-emerald-600" : ""}`}
               />
             </button>
           </div>
@@ -1379,17 +1895,29 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               Berkas ZIP:
             </span>
             {backupFiles.length > 0 ? (
-              <select
-                value={selectedBackupFilename}
-                onChange={(e) => setSelectedBackupFilename(e.target.value)}
-                className="w-full text-xs bg-surface border border-blue-300 rounded-lg px-2.5 py-1 font-mono text-ink truncate shadow-2xs focus:ring-1 focus:ring-blue-500 focus:outline-hidden"
-              >
-                {backupFiles.map((b) => (
-                  <option key={b.filename} value={b.filename}>
-                    {b.phone_formatted ? `[${b.phone_formatted}] ` : ""}{b.filename} ({b.total_messages ? `${b.total_messages} pesan, ` : ""}{b.size_formatted})
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-1.5 w-full min-w-0">
+                <select
+                  value={selectedBackupFilename}
+                  onChange={(e) => setSelectedBackupFilename(e.target.value)}
+                  className="w-full text-xs bg-surface border border-blue-300 rounded-lg px-2 py-1 font-mono text-ink truncate shadow-2xs focus:ring-1 focus:ring-blue-500 focus:outline-hidden"
+                >
+                  {backupFiles.map((b) => (
+                    <option key={b.filename} value={b.filename}>
+                      {b.phone_formatted ? `[${b.phone_formatted}] ` : ""}{b.filename} ({b.total_messages ? `${b.total_messages} pesan, ` : ""}{b.size_formatted})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadBackup(selectedBackupFilename)}
+                  disabled={!selectedBackupFilename || isDownloadingBackup}
+                  className="px-2.5 py-1 bg-brand hover:bg-brand-hover text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs shrink-0 cursor-pointer disabled:opacity-50 transition-all"
+                  title="Unduh berkas ZIP arsip ini ke komputer"
+                >
+                  <span>⬇️</span>
+                  <span className="hidden sm:inline">Unduh</span>
+                </button>
+              </div>
             ) : (
               <span className="text-[11px] text-muted italic">
                 Tidak ada file backup
@@ -1439,6 +1967,12 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
             {[
               { id: "ALL", label: "Semua", count: chats.length },
               {
+                id: "FLAG_3DAYS",
+                label: "🚩 Flag 3 Hari",
+                count: flaggedChatsCount,
+                highlight: flaggedChatsCount > 0,
+              },
+              {
                 id: "DIRECT",
                 label: "Pribadi",
                 count: chats.filter((c) => c.is_direct).length,
@@ -1459,16 +1993,22 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                 type="button"
                 onClick={() => setChatTypeFilter(f.id)}
                 className={`px-3 py-1 rounded-full font-medium transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-                  chatTypeFilter === f.id
-                    ? "bg-brand text-white shadow-xs font-semibold"
+                  chatTypeFilter === f.id || (f.id === "FLAG_3DAYS" && chatTypeFilter === "DELAYED")
+                    ? f.id === "FLAG_3DAYS"
+                      ? "bg-amber-600 text-white shadow-xs font-semibold"
+                      : "bg-brand text-white shadow-xs font-semibold"
+                    : f.highlight
+                    ? "bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 animate-pulse font-semibold"
                     : "bg-subtle text-muted hover:bg-hover/80 hover:text-ink"
                 }`}
               >
                 <span>{f.label}</span>
                 <span
                   className={`text-[9px] px-1.5 py-0.2 rounded-full ${
-                    chatTypeFilter === f.id
+                    chatTypeFilter === f.id || (f.id === "FLAG_3DAYS" && chatTypeFilter === "DELAYED")
                       ? "bg-surface/20 text-white font-bold"
+                      : f.highlight
+                      ? "bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 font-bold"
                       : "bg-hover/90 text-ink font-semibold"
                   }`}
                 >
@@ -1478,6 +2018,43 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
             ))}
           </div>
         </div>
+
+        {/* Banner Alert Kontak Tertanda Flag 3 Hari Kerja */}
+        {flaggedChatsCount > 0 && chatTypeFilter !== "FLAG_3DAYS" && chatTypeFilter !== "DELAYED" && (
+          <div className="px-3.5 py-2.5 bg-gradient-to-r from-amber-50 to-indigo-50 dark:from-amber-950/40 dark:to-indigo-950/40 border-b border-indigo-200/80 dark:border-indigo-800/60 flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-base shrink-0 animate-bounce">🚩</span>
+              <p className="text-[11.5px] text-indigo-950 dark:text-indigo-200 truncate">
+                <strong className="font-bold text-indigo-900 dark:text-indigo-100">{flaggedChatsCount} kontak</strong> tertanda <strong>Flag 3 Hari</strong> (Perlu direach out)
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setChatTypeFilter("FLAG_3DAYS")}
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 shadow-2xs transition-all cursor-pointer flex items-center gap-1"
+            >
+              <span>List Flag</span>
+              <span>→</span>
+            </button>
+          </div>
+        )}
+
+        {/* Subheader info saat melihat list FLAG_3DAYS */}
+        {(chatTypeFilter === "FLAG_3DAYS" || chatTypeFilter === "DELAYED") && (
+          <div className="px-3.5 py-2 bg-indigo-50/70 dark:bg-indigo-950/40 border-b border-indigo-100 dark:border-indigo-900/60 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-1.5 text-xs text-indigo-900 dark:text-indigo-200 min-w-0">
+              <span className="shrink-0">🚩</span>
+              <span className="font-bold truncate">List Tertanda Flag 3 Hari ({flaggedChatsCount})</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setChatTypeFilter("ALL")}
+              className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline shrink-0 cursor-pointer"
+            >
+              Lihat Semua
+            </button>
+          </div>
+        )}
 
         {/* Chats List (Scrollable) */}
         <div className="flex-1 overflow-y-auto divide-y divide-line bg-surface">
@@ -1532,6 +2109,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               const isActive = chat.id === activeChatId;
               const isGroup = chat.is_group;
               const isChannel = chat.is_channel;
+              const hasNewIncoming = newIncomingChatIds.has(chat.id) && !isActive;
 
               return (
                 <button
@@ -1541,6 +2119,10 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                   className={`w-full text-left px-3.5 py-3 flex items-center gap-3 transition-colors cursor-pointer border-l-4 ${
                     isActive
                       ? "bg-subtle border-accent"
+                      : hasNewIncoming
+                      ? "bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-500 shadow-2xs"
+                      : (chat.flag_3days || chat.delayed_3days || chat.session_status === "delayed")
+                      ? "bg-amber-50/25 dark:bg-amber-950/20 border-amber-500 hover:bg-amber-50/45"
                       : "hover:bg-subtle border-transparent"
                   }`}
                 >
@@ -1561,6 +2143,9 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                           ? "K"
                           : (chat.name || "U")[0]?.toUpperCase()}
                     </div>
+                    {hasNewIncoming && (
+                      <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-zinc-900 animate-ping"></span>
+                    )}
                   </div>
 
                   {/* Chat Content */}
@@ -1571,30 +2156,88 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                       >
                         {chat.name}
                       </h3>
-                      <span className="text-[11px] text-faint font-normal shrink-0">
-                        {formatTime(chat.last_message?.timestamp)}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {hasNewIncoming && (
+                          <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-500 text-white animate-pulse">
+                            Baru
+                          </span>
+                        )}
+                        <span className="text-[11px] text-faint font-normal">
+                          {formatTime(chat.last_message?.timestamp)}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Session status badge for direct chats */}
                     {chat.is_direct && (
-                      <div className="mb-1">
-                        <span
-                          className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
-                            chat.session_status === "closed"
-                              ? "bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-zinc-300"
-                              : chat.session_status === "admin_active"
-                              ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
-                              : chat.session_status === "delayed"
-                              ? "bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300"
-                              : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 animate-pulse"
-                          }`}
-                        >
-                          {chat.session_status === "closed" && "✅ Selesai"}
-                          {chat.session_status === "admin_active" && "👤 Admin Aktif"}
-                          {chat.session_status === "delayed" && "⏳ Diproses (3 Hari)"}
-                          {chat.session_status === "waiting_admin" && "🤖 Menunggu Admin"}
-                        </span>
+                      <div className="mb-1 flex items-center gap-1.5 flex-wrap">
+                        {chat.flag_3days || chat.delayed_3days || chat.session_status === "delayed" ? (
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span
+                              className="text-[9.5px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 border border-amber-300 dark:border-amber-700 shadow-2xs"
+                              title={`Tertanda Flag Terminasi 3 Hari (s.d. ${chat.delayed_until_formatted || "3 hari kerja"})`}
+                            >
+                              <span>🚩 Flag 3 Hari</span>
+                              {chat.delayed_until_formatted && (
+                                <span className="font-normal opacity-90 truncate max-w-[110px]">
+                                  • {chat.delayed_until_formatted.split(",")[0]}
+                                </span>
+                              )}
+                            </span>
+                            {chat.reached_out_at ? (
+                              <span className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-300">
+                                ✓ Direach-out
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-300 animate-pulse">
+                                🕒 Siap Reach-Out
+                              </span>
+                            )}
+                            {chat.customer_replied_after_flag && (
+                              <span className="text-[9px] font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 px-1.5 py-0.2 rounded border border-sky-300 animate-pulse">
+                                💬 Pelanggan Balas
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span
+                            className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                              chat.session_status === "closed"
+                                ? "bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-zinc-300"
+                                : chat.session_status === "admin_active"
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
+                                : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 animate-pulse"
+                            }`}
+                          >
+                            {chat.session_status === "closed" && (
+                              chat.termination_type === "unanswered_eod"
+                                ? "⏳ Belum Terbalas (Tutup)"
+                                : "✅ Selesai"
+                            )}
+                            {chat.session_status === "admin_active" && "👤 Admin Aktif"}
+                            {chat.session_status === "waiting_admin" && (
+                              chat.has_admin_replied_today === false
+                                ? "🚨 Belum Dibalas"
+                                : "🤖 Menunggu Admin"
+                            )}
+                          </span>
+                        )}
+
+                        {/* AI Intent Tag jika terdeteksi */}
+                        {chat.ai_intent && (() => {
+                          const badge = getIntentBadge(chat.ai_intent);
+                          if (!badge) return null;
+                          return (
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md border ${badge.bg}`}
+                              title={`AI Intent: ${badge.label} (${chat.ai_topic || ""})`}
+                            >
+                              <span>
+                                {badge.icon} {badge.short}
+                              </span>
+                            </span>
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -1686,6 +2329,16 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                       {activeChat.name}
                     </h2>
 
+                    {sourceMode === "live" && waConnectionStatus?.is_connected && (
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 flex items-center gap-1 shrink-0"
+                        title="Percakapan ini tersinkronisasi secara otomatis setiap detik"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>Live Sync</span>
+                      </span>
+                    )}
+
                     {sourceMode === "backup" ? (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 flex items-center gap-1 shrink-0">
                         <span>📦 Arsip Cadangan</span>
@@ -1694,22 +2347,59 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                         )}
                       </span>
                     ) : activeChat.is_direct ? (
-                      <span
-                        className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 ${
-                          activeChatDetail?.session_status === "closed"
-                            ? "bg-gray-100 text-gray-800 dark:bg-zinc-800 dark:text-zinc-200"
-                            : activeChatDetail?.session_status === "admin_active"
-                            ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
-                            : activeChatDetail?.session_status === "delayed"
-                            ? "bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300"
-                            : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
-                        }`}
-                      >
-                        {activeChatDetail?.session_status === "closed" && "✅ Sesi Diterminasi"}
-                        {activeChatDetail?.session_status === "admin_active" && "👤 Ditangani Admin"}
-                        {activeChatDetail?.session_status === "delayed" && "⏳ Diproses (3 Hari)"}
-                        {activeChatDetail?.session_status === "waiting_admin" && "🤖 Menunggu Admin"}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {activeChatDetail?.flag_3days || activeChatDetail?.delayed_3days || activeChatDetail?.session_status === "delayed" ? (
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 border border-amber-300 dark:border-amber-700 shadow-2xs"
+                            title={`Tertanda Flag Terminasi 3 Hari (s.d. ${activeChatDetail?.delayed_until_formatted || "3 hari kerja"})`}
+                          >
+                            <span>🚩 Flag 3 Hari</span>
+                            {activeChatDetail?.delayed_until_formatted && (
+                              <span className="font-normal opacity-90 truncate max-w-[130px]">
+                                • s.d. {activeChatDetail.delayed_until_formatted.split(",")[0]}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span
+                            className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 ${
+                              activeChatDetail?.session_status === "closed"
+                                ? "bg-gray-100 text-gray-800 dark:bg-zinc-800 dark:text-zinc-200"
+                                : activeChatDetail?.session_status === "admin_active"
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
+                                : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                            }`}
+                          >
+                            {activeChatDetail?.session_status === "closed" && (
+                              activeChatDetail?.termination_type === "unanswered_eod"
+                                ? "⏳ Ditutup: Antrean Belum Terbalas"
+                                : "✅ Sesi Diterminasi"
+                            )}
+                            {activeChatDetail?.session_status === "admin_active" && "👤 Ditangani Admin"}
+                            {activeChatDetail?.session_status === "waiting_admin" && (
+                              activeChatDetail?.has_admin_replied_today === false
+                                ? "🚨 Belum Dibalas Hari Ini"
+                                : "🤖 Menunggu Admin"
+                            )}
+                          </span>
+                        )}
+
+                        {/* Gemini AI Intent Badge */}
+                        {activeChatDetail?.ai_intent && (() => {
+                          const badge = getIntentBadge(activeChatDetail.ai_intent);
+                          if (!badge) return null;
+                          return (
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 flex items-center gap-1 ${badge.bg}`}
+                              title={`AI Intent: ${badge.label} (${activeChatDetail.ai_topic || ""})`}
+                            >
+                              <span>
+                                {badge.icon} {badge.label}
+                              </span>
+                            </span>
+                          );
+                        })()}
+                      </div>
                     ) : (
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
@@ -1731,6 +2421,70 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
 
               {/* Action Toolbar with PST Termination Controls */}
               <div className="flex items-center gap-1.5 md:gap-2 shrink-0 flex-wrap">
+                {/* Tombol Analisis Konteks Obrolan dengan Gemini AI */}
+                {activeChat.is_direct && (
+                  <button
+                    type="button"
+                    onClick={handleAnalyzeAiIntent}
+                    disabled={isAnalyzingAi}
+                    className="px-2.5 md:px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Menganalisis pesan masuk dengan Gemini AI (apakah sapaan baru, kelanjutan topik, penundaan, dll)"
+                  >
+                    <SparklesIcon className={`w-3.5 h-3.5 ${isAnalyzingAi ? "animate-spin text-indigo-600" : "text-indigo-600"}`} />
+                    <span className="hidden sm:inline">{isAnalyzingAi ? "Menganalisis..." : "✨ Analisis AI"}</span>
+                  </button>
+                )}
+
+                {/* Tombol Khusus Saat Kontak Tertanda Flag 3 Hari */}
+                {activeChat.is_direct &&
+                  (activeChatDetail?.flag_3days ||
+                    activeChatDetail?.delayed_3days ||
+                    activeChatDetail?.session_status === "delayed") && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const topic = activeChatDetail?.delayed_topic || "yang Kakak butuhkan";
+                          const timeGreeting = liveSettings?.currentGreeting || getTimeGreeting();
+                          setReplyText(
+                            `Selamat ${timeGreeting} Kak. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan ya Kak.\n\nBerikut informasinya:\n[Tuliskan keterangan / tautan berkas di sini]\n\nApabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kepada kami ya Kak 😊`
+                          );
+                          replyInputRef.current?.focus();
+                          toast.success("Draf pesan reach out disiapkan!");
+                        }}
+                        className="px-2.5 md:px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
+                        title="Siapkan pesan reach out kepada pengunjung"
+                      >
+                        <span>💬 Reach Out</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTerminationModal(activeChatDetail, "completed")}
+                        className="px-2.5 md:px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
+                        title="Akhiri sesi & kirim survei SKD jika penyerahan data selesai"
+                      >
+                        <CheckDoubleIcon className="w-3.5 h-3.5" />
+                        <span>Selesai (+SKD)</span>
+                      </button>
+                    </>
+                  )}
+
+                {/* Tombol Tandai Flag Terminasi 3 Hari Kerja */}
+                {activeChat.is_direct &&
+                  activeChatDetail?.session_status !== "closed" &&
+                  !activeChatDetail?.flag_3days &&
+                  !activeChatDetail?.delayed_3days &&
+                  activeChatDetail?.session_status !== "delayed" && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTerminationModal(activeChatDetail, "delayed_3days")}
+                      className="px-2.5 md:px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-lg shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
+                      title="Tandai Flag Terminasi 3 Hari Kerja (Pesan pembuka & penutup dinonaktifkan agar bisa direach out lagi)"
+                    >
+                      <span>🚩 Flag 3 Hari</span>
+                    </button>
+                  )}
+
                 {/* Tombol Ambil Alih (Jika bot sedang handle / menunggu) */}
                 {activeChat.is_direct && activeChatDetail?.session_status === "waiting_admin" && (
                   <button
@@ -1745,17 +2499,21 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                 )}
 
                 {/* Tombol Terminasi Layanan (Sesuai Aturan File Terminasi BPS Gorontalo) */}
-                {activeChat.is_direct && activeChatDetail?.session_status !== "closed" && (
-                  <button
-                    type="button"
-                    onClick={() => handleOpenTerminationModal(activeChat)}
-                    className="px-2.5 md:px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
-                    title="Terminasi sesi konsultasi & kirim survei SKD / penutupan"
-                  >
-                    <StopIcon className="w-3.5 h-3.5" />
-                    <span>Terminasi Sesi</span>
-                  </button>
-                )}
+                {activeChat.is_direct &&
+                  activeChatDetail?.session_status !== "closed" &&
+                  !activeChatDetail?.flag_3days &&
+                  !activeChatDetail?.delayed_3days &&
+                  activeChatDetail?.session_status !== "delayed" && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTerminationModal(activeChat)}
+                      className="px-2.5 md:px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      title="Terminasi sesi konsultasi & kirim survei SKD / penutupan"
+                    >
+                      <StopIcon className="w-3.5 h-3.5" />
+                      <span>Terminasi Sesi</span>
+                    </button>
+                  )}
 
                 {/* Tombol Buka Kembali jika sudah ditutup */}
                 {activeChat.is_direct && activeChatDetail?.session_status === "closed" && (
@@ -1768,6 +2526,21 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                     <span>🔄 Buka Kembali</span>
                   </button>
                 )}
+
+                {/* Tombol Lepas Flag jika sedang dalam penundaan 3 hari */}
+                {activeChat.is_direct &&
+                  (activeChatDetail?.flag_3days ||
+                    activeChatDetail?.delayed_3days ||
+                    activeChatDetail?.session_status === "delayed") && (
+                    <button
+                      type="button"
+                      onClick={() => handleReopen(activeChat.id)}
+                      className="px-2 md:px-2.5 py-1.5 text-xs font-medium text-muted hover:text-ink hover:bg-subtle border border-line rounded-lg transition-colors cursor-pointer"
+                      title="Lepas status flag 3 hari dan kembalikan ke sesi aktif"
+                    >
+                      <span>Lepas Flag</span>
+                    </button>
+                  )}
 
                 <button
                   type="button"
@@ -1813,6 +2586,69 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               </div>
             </div>
 
+            {/* Sticky 3-Day Flag / Delay Banner */}
+            {activeChat.is_direct && (activeChatDetail?.flag_3days || activeChatDetail?.delayed_3days || activeChatDetail?.session_status === "delayed") && (
+              <div className="px-4 md:px-6 py-2.5 bg-gradient-to-r from-amber-500/15 via-indigo-500/15 to-amber-500/10 border-b border-amber-200 dark:border-amber-800/70 flex items-center justify-between gap-3 shrink-0 flex-wrap">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="text-lg shrink-0">🚩</span>
+                  <div className="min-w-0 text-xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-amber-950 dark:text-amber-200">
+                        Kontak Tertanda Flag Terminasi 3 Hari Kerja
+                      </span>
+                      {activeChatDetail.delayed_until_formatted && (
+                        <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-300">
+                          Batas: {activeChatDetail.delayed_until_formatted}
+                        </span>
+                      )}
+                      {activeChatDetail.reached_out_at && (
+                        <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-300">
+                          ✓ Telah direach-out {formatTime(activeChatDetail.reached_out_at)}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-muted block text-[11px] mt-0.5">
+                      Topik: <strong className="font-semibold text-ink">"{activeChatDetail.delayed_topic || "Penyiapan data statistik"}"</strong> • Pesan otomatis pembuka & penutup <u>dinonaktifkan</u> agar Anda leluasa mereach-out kembali.
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const topic = activeChatDetail?.delayed_topic || "yang Kakak butuhkan";
+                      const timeGreeting = liveSettings?.currentGreeting || getTimeGreeting();
+                      setReplyText(
+                        `Selamat ${timeGreeting} Kak. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan ya Kak.\n\nBerikut informasinya:\n[Tuliskan keterangan / tautan berkas di sini]\n\nApabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kepada kami ya Kak 😊`
+                      );
+                      replyInputRef.current?.focus();
+                      toast.success("Draf pesan reach out disalin ke kolom input!");
+                    }}
+                    className="px-2.5 py-1 text-xs font-bold text-indigo-700 bg-white hover:bg-indigo-50 dark:bg-indigo-900/80 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-700 rounded-md transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                    title="Siapkan pesan reach out tindak lanjut data siap"
+                  >
+                    <span>💬 Reach Out Sekarang</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenTerminationModal(activeChat, "completed")}
+                    className="px-2.5 py-1 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 rounded-md transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                    title="Data telah siap dan diserahkan, akhiri sesi & kirim survei SKD"
+                  >
+                    <span>✅ Data Siap & Selesaikan (SKD)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleReopen(activeChat.id)}
+                    className="px-2 py-1 text-xs font-medium text-muted hover:text-ink hover:bg-hover rounded-md transition-colors cursor-pointer"
+                    title="Lepas status flag dan kembalikan ke sesi aktif normal"
+                  >
+                    <span>↩️ Lepas Flag</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Mode Backup Banner */}
             {sourceMode === "backup" && (
               <div className="px-4 md:px-6 py-2 bg-blue-50/90 dark:bg-blue-950/40 border-b border-blue-200/80 dark:border-blue-900/50 flex items-center justify-between text-xs text-accent shrink-0">
@@ -1828,9 +2664,21 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                     ({selectedBackupFilename})
                   </span>
                 </div>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200">
-                  Mode Baca Saja (Tersimpan)
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadBackup(selectedBackupFilename)}
+                    disabled={!selectedBackupFilename || isDownloadingBackup}
+                    className="px-2.5 py-1 bg-brand hover:bg-brand-hover text-white rounded-md text-[11px] font-semibold flex items-center gap-1 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                    title="Unduh berkas arsip ZIP aktif ini"
+                  >
+                    <span>⬇️</span>
+                    <span>Unduh ZIP</span>
+                  </button>
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200">
+                    Mode Baca Saja (Tersimpan)
+                  </span>
+                </div>
               </div>
             )}
 
@@ -1861,10 +2709,85 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
             <div className="p-3 md:px-6 bg-subtle border-t border-line shrink-0">
               {sourceMode === "live" ? (
                 <form onSubmit={handleSendReply} className="space-y-2">
+                  {/* Gemini AI Suggested Reply Card */}
+                  {activeChatDetail?.ai_suggested_reply && showAiCard && (
+                    <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/80 to-emerald-50/80 dark:from-zinc-900 dark:via-zinc-850 dark:to-zinc-900 border border-indigo-200 dark:border-indigo-800/80 rounded-xl p-3 shadow-xs animate-fadeIn space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+                            <SparklesIcon className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                            <span>Saran Balasan Cerdas (Gemini AI)</span>
+                          </span>
+                          {activeChatDetail.ai_intent && (() => {
+                            const badge = getIntentBadge(activeChatDetail.ai_intent);
+                            return badge ? (
+                              <span className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full border ${badge.bg}`}>
+                                {badge.icon} {badge.label}
+                              </span>
+                            ) : null;
+                          })()}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleAnalyzeAiIntent}
+                            disabled={isAnalyzingAi}
+                            className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                            title="Minta analisis & saran balasan baru dari Gemini"
+                          >
+                            <span className={isAnalyzingAi ? "animate-spin" : ""}>🔄</span>
+                            <span>Generate Ulang</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowAiCard(false)}
+                            className="text-muted hover:text-ink text-xs p-0.5 rounded cursor-pointer"
+                            title="Tutup kartu saran balasan"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-surface/90 dark:bg-zinc-800/90 p-2.5 rounded-lg border border-line text-xs text-ink leading-relaxed">
+                        <p className="italic">"{activeChatDetail.ai_suggested_reply}"</p>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        <span className="text-[10.5px] text-muted truncate max-w-md">
+                          {activeChatDetail.ai_analysis?.summary || (activeChatDetail.ai_topic ? `Topik: ${activeChatDetail.ai_topic}` : "Draf balasan beretika PST BPS Gorontalo")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplyText(activeChatDetail.ai_suggested_reply);
+                            replyInputRef.current?.focus();
+                            toast.success("Saran balasan AI disalin ke kolom input!");
+                          }}
+                          className="px-3 py-1 bg-brand hover:bg-brand-hover text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                        >
+                          <span>📋 Gunakan Balasan Ini</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Official PST BPS Gorontalo Canned Templates */}
                   <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs text-muted no-scrollbar">
-                    <span className="text-[11px] font-bold text-faint shrink-0 flex items-center gap-1">
-                      <span>📜 Panduan PST:</span>
+                    {/* Tombol Minta Analisis AI */}
+                    <button
+                      type="button"
+                      onClick={handleAnalyzeAiIntent}
+                      disabled={isAnalyzingAi}
+                      className="px-3 py-1 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white whitespace-nowrap cursor-pointer transition-all shadow-xs font-bold flex items-center gap-1 text-[11.5px] shrink-0"
+                      title="Deteksi intent pesan pengunjung & buatkan draf balasan cerdas dengan Gemini AI"
+                    >
+                      <SparklesIcon className={`w-3.5 h-3.5 ${isAnalyzingAi ? "animate-spin" : ""}`} />
+                      <span>{isAnalyzingAi ? "Menganalisis..." : "✨ Analisis Gemini"}</span>
+                    </button>
+
+                    <span className="text-[11px] font-bold text-faint shrink-0 flex items-center gap-1 pl-1">
+                      <span>📜 Panduan:</span>
                     </span>
                     {OFFICIAL_TEMPLATES.map((tmpl) => (
                       <button
@@ -2188,6 +3111,52 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                   </div>
                 </div>
 
+                {/* AI Intent & Context Card */}
+                <div className="p-3.5 bg-gradient-to-br from-indigo-50/70 to-blue-50/50 dark:from-indigo-950/40 dark:to-zinc-900 rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 shadow-2xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                      <SparklesIcon className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span>Analisis Gemini AI</span>
+                    </h5>
+                    <button
+                      type="button"
+                      onClick={handleAnalyzeAiIntent}
+                      disabled={isAnalyzingAi}
+                      className="text-[10.5px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <span className={isAnalyzingAi ? "animate-spin" : ""}>🔄</span>
+                      <span>{isAnalyzingAi ? "Menganalisis..." : "Analisis Ulang"}</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center py-1 border-b border-indigo-100 dark:border-indigo-900/60">
+                      <span className="text-muted">Niat (Intent):</span>
+                      <span className="font-bold text-ink">
+                        {activeChatDetail.ai_intent ? (() => {
+                          const badge = getIntentBadge(activeChatDetail.ai_intent);
+                          return badge ? `${badge.icon} ${badge.label}` : activeChatDetail.ai_intent;
+                        })() : (
+                          <span className="text-faint font-normal">Belum dianalisis</span>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center py-1 border-b border-indigo-100 dark:border-indigo-900/60">
+                      <span className="text-muted">Topik Terdeteksi:</span>
+                      <span className="font-semibold text-ink text-right truncate max-w-[160px]">
+                        {activeChatDetail.ai_topic || activeChatDetail.consultation_topic || "-"}
+                      </span>
+                    </div>
+
+                    {activeChatDetail.ai_analysis?.summary && (
+                      <p className="text-[11px] text-muted italic pt-0.5 leading-relaxed">
+                        "{activeChatDetail.ai_analysis.summary}"
+                      </p>
+                    )}
+                  </div>
+                </div>
+
                 {/* Status Sesi & Terminasi Card */}
                 <div className="p-3.5 bg-surface rounded-xl border border-line shadow-2xs space-y-2.5">
                   <h5 className="text-xs font-bold text-ink">
@@ -2199,10 +3168,39 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                       <span className="font-bold text-ink">
                         {activeChatDetail.session_status === "closed" && "✅ Diterminasi"}
                         {activeChatDetail.session_status === "admin_active" && "👤 Ditangani Admin"}
-                        {activeChatDetail.session_status === "delayed" && "⏳ Diproses (3 Hari)"}
-                        {activeChatDetail.session_status === "waiting_admin" && "🤖 Menunggu Admin"}
+                        {(activeChatDetail.flag_3days || activeChatDetail.delayed_3days || activeChatDetail.session_status === "delayed") && "🚩 Flag 3 Hari (Reach Out)"}
+                        {activeChatDetail.session_status === "waiting_admin" && !activeChatDetail.delayed_3days && !activeChatDetail.flag_3days && "🤖 Menunggu Admin"}
                       </span>
                     </div>
+
+                    {(activeChatDetail.flag_3days || activeChatDetail.delayed_3days || activeChatDetail.session_status === "delayed") && (
+                      <div className="p-2.5 bg-amber-50/80 dark:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-800 text-[11px] space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted">Batas Waktu:</span>
+                          <span className="font-bold text-amber-800 dark:text-amber-200">
+                            {activeChatDetail.delayed_until_formatted || "3 Hari Kerja"}
+                          </span>
+                        </div>
+                        {activeChatDetail.delayed_topic && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted">Topik Data:</span>
+                            <span className="font-semibold text-ink truncate max-w-[150px]">
+                              {activeChatDetail.delayed_topic}
+                            </span>
+                          </div>
+                        )}
+                        {activeChatDetail.reached_out_at && (
+                          <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-300">
+                            <span>Direach-out:</span>
+                            <span className="font-medium">{formatTime(activeChatDetail.reached_out_at)}</span>
+                          </div>
+                        )}
+                        <p className="text-[10px] text-muted italic pt-0.5 border-t border-amber-200/60 dark:border-amber-800/60">
+                          Auto salam pembuka & penutup dinonaktifkan untuk kontak ini.
+                        </p>
+                      </div>
+                    )}
+
                     {activeChatDetail.session?.autoGreetedAt && (
                       <div className="flex justify-between items-center text-[11px]">
                         <span>Pesan Pembuka:</span>
@@ -2214,13 +3212,48 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                   <div className="pt-2 space-y-2 border-t border-line">
                     {activeChatDetail.session_status !== "closed" ? (
                       <>
-                        <button
-                          type="button"
-                          onClick={() => handleDelay(activeChatDetail.id)}
-                          className="w-full py-1.5 px-3 text-xs font-semibold text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors cursor-pointer"
-                        >
-                          ⏳ Tandai Penundaan (3 Hari)
-                        </button>
+                        {activeChatDetail.flag_3days || activeChatDetail.delayed_3days || activeChatDetail.session_status === "delayed" ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const topic = activeChatDetail?.delayed_topic || "yang Kakak butuhkan";
+                                const timeGreeting = liveSettings?.currentGreeting || getTimeGreeting();
+                                setReplyText(
+                                  `Selamat ${timeGreeting} Kak. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan ya Kak.\n\nBerikut informasinya:\n[Tuliskan keterangan / tautan berkas di sini]\n\nApabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kepada kami ya Kak 😊`
+                                );
+                                replyInputRef.current?.focus();
+                                toast.success("Draf pesan reach out disalin ke kolom input!");
+                              }}
+                              className="w-full py-2 px-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                            >
+                              <span>💬 Siapkan Pesan Reach Out</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenTerminationModal(activeChatDetail, "completed")}
+                              className="w-full py-2 px-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                            >
+                              <span>✅ Data Siap & Selesaikan (SKD)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleReopen(activeChatDetail.id)}
+                              className="w-full py-1.5 px-3 text-xs font-semibold text-muted hover:text-ink bg-subtle hover:bg-hover border border-line rounded-lg transition-colors cursor-pointer"
+                            >
+                              ↩️ Lepas Flag 3 Hari
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTerminationModal(activeChatDetail, "delayed_3days")}
+                            className="w-full py-1.5 px-3 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 dark:border-amber-700 rounded-lg transition-colors cursor-pointer"
+                          >
+                            🚩 Pasang Flag Terminasi (3 Hari)
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           onClick={() => handleOpenTerminationModal(activeChatDetail)}
@@ -2445,7 +3478,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
       {/* Official PST BPS Termination Modal */}
       {showTerminationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-surface rounded-2xl shadow-2xl max-w-xl w-full p-6 border border-line overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-2xl w-full p-6 border border-line overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between pb-3 border-b border-line mb-4 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-lg shadow-xs">
@@ -2475,11 +3508,11 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                 <label className="text-xs font-bold text-ink block">
                   Pilih Aturan Terminasi Dokumen BPS:
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                   {/* Opsi A: Selesai */}
                   <div
                     onClick={() => setTerminationType("completed")}
-                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
                       terminationType === "completed"
                         ? "border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-xs"
                         : "border-line bg-subtle hover:border-line-strong"
@@ -2496,15 +3529,40 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                         1. Layanan Selesai
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted leading-relaxed">
-                      Konsultasi selesai setelah konfirmasi. Menyertakan link survei SKD: <b>https://s.bps.go.id/skd75</b>
+                    <p className="text-[10.5px] text-muted leading-relaxed">
+                      Konsultasi selesai. Menyertakan link survei SKD <b>s.bps.go.id/skd75</b>
                     </p>
                   </div>
 
-                  {/* Opsi B: Tutup Jam Layanan */}
+                  {/* Opsi B: Sesi Siang 14.00 WITA */}
+                  <div
+                    onClick={() => setTerminationType("midday_1400")}
+                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                      terminationType === "midday_1400"
+                        ? "border-sky-600 bg-sky-50/50 dark:bg-sky-950/20 shadow-xs"
+                        : "border-line bg-subtle hover:border-line-strong"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <input
+                        type="radio"
+                        checked={terminationType === "midday_1400"}
+                        onChange={() => setTerminationType("midday_1400")}
+                        className="text-sky-600"
+                      />
+                      <span className="text-xs font-bold text-ink">
+                        2. Sesi Siang (14.00)
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-muted leading-relaxed">
+                      Terminasi sesi siang pukul 14.00 WITA disertai survei SKD BPS Gorontalo.
+                    </p>
+                  </div>
+
+                  {/* Opsi C: Tutup Jam Layanan 15.30 WITA */}
                   <div
                     onClick={() => setTerminationType("end_of_day")}
-                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
                       terminationType === "end_of_day"
                         ? "border-amber-600 bg-amber-50/50 dark:bg-amber-950/20 shadow-xs"
                         : "border-line bg-subtle hover:border-line-strong"
@@ -2518,18 +3576,73 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                         className="text-amber-600"
                       />
                       <span className="text-xs font-bold text-ink">
-                        2. Jam Layanan Berakhir
+                        3. Jam Tutup (15.30)
                       </span>
                     </div>
-                    <p className="text-[11px] text-muted leading-relaxed">
-                      Penutupan operasional harian di sore hari. Menyertakan jadwal buka kembali, tautan SIGAP & Web BPS.
+                    <p className="text-[10.5px] text-muted leading-relaxed">
+                      Penutupan operasional harian sore. Jadwal buka kembali + SIGAP & Web.
+                    </p>
+                  </div>
+
+                  {/* Opsi D: Terminasi 3 Hari (Flag Aktif) */}
+                  <div
+                    onClick={() => setTerminationType("delayed_3days")}
+                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                      terminationType === "delayed_3days"
+                        ? "border-amber-600 bg-amber-50/70 dark:bg-amber-950/40 shadow-xs"
+                        : "border-line bg-subtle hover:border-line-strong"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <input
+                        type="radio"
+                        checked={terminationType === "delayed_3days"}
+                        onChange={() => setTerminationType("delayed_3days")}
+                        className="text-amber-600"
+                      />
+                      <span className="text-xs font-bold text-ink">
+                        4. Terminasi 3 Hari
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-muted leading-relaxed">
+                      Penundaan data teknis maks. 3 hari kerja. Flag aktif, tanpa pembuka/penutup agar siap direach-out.
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* Input Variabel Berdasarkan Jenis */}
-              {terminationType === "completed" ? (
+              {terminationType === "delayed_3days" ? (
+                <div className="space-y-3">
+                  <div className="p-3 bg-amber-50/80 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+                    <strong>Kebijakan Flag Terminasi 3 Hari:</strong> Kontak ini akan ditandai dengan flag 3 hari kerja. Narasi pembuka (salam/form nama) dan penutup otomatis (14.00 & 15.30) <u>dinonaktifkan sepenuhnya</u> agar admin leluasa mereach-out kembali kapan pun. Kontak juga otomatis masuk ke list <strong>🚩 Flag 3 Hari</strong> di kolom chat.
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-ink mb-1">
+                      Topik / Jenis Data yang Disiapkan <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={terminationTopic}
+                      onChange={(e) => setTerminationTopic(e.target.value)}
+                      placeholder="Contoh: Data Inflasi Kota Gorontalo 2024 / Kemiskinan Makro"
+                      className="w-full px-3.5 py-2 text-sm bg-subtle border border-line-strong rounded-xl focus:bg-surface focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-ink mb-1">
+                      Catatan Tim Internal (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      value={delayNote}
+                      onChange={(e) => setDelayNote(e.target.value)}
+                      placeholder="Contoh: Berkas Excel sedang diolah tim Nerwilis / IPDS"
+                      className="w-full px-3.5 py-2 text-sm bg-subtle border border-line-strong rounded-xl focus:bg-surface focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+              ) : terminationType === "completed" || terminationType === "midday_1400" ? (
                 <div>
                   <label className="block text-xs font-bold text-ink mb-1">
                     Topik Konsultasi <span className="text-rose-500">*</span>
@@ -2566,7 +3679,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               {/* Pratinjau Teks Pesan */}
               <div>
                 <label className="block text-xs font-bold text-ink mb-1 flex items-center justify-between">
-                  <span>Pratinjau Pesan Penutup yang Dikirim:</span>
+                  <span>Pratinjau Pesan yang Dikirim:</span>
                   <span className="text-[10px] text-faint">Format Dokumen BPS Gorontalo</span>
                 </label>
                 <div className="p-3 bg-subtle rounded-xl border border-line text-xs font-mono whitespace-pre-wrap leading-relaxed text-ink select-all">
@@ -2598,12 +3711,20 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                 type="button"
                 disabled={isSubmittingTermination}
                 onClick={handleExecuteTermination}
-                className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                className={`px-5 py-2 text-xs font-bold text-white disabled:opacity-50 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                  terminationType === "delayed_3days"
+                    ? "bg-amber-600 hover:bg-amber-700"
+                    : "bg-rose-600 hover:bg-rose-700"
+                }`}
               >
                 {isSubmittingTermination ? (
                   <>
                     <RefreshIcon className="w-4 h-4 animate-spin" />
                     <span>Memproses...</span>
+                  </>
+                ) : terminationType === "delayed_3days" ? (
+                  <>
+                    <span>🚩 Konfirmasi & Aktifkan Flag 3 Hari</span>
                   </>
                 ) : (
                   <>
@@ -2613,6 +3734,119 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3-Day Delay Modal (Penundaan Pengolahan Data BPS) */}
+      {showDelayModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-lg w-full p-6 border border-line overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between pb-3 border-b border-line mb-4 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 flex items-center justify-center font-bold text-lg shadow-xs">
+                  📌
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-ink">
+                    Tandai Penundaan Pengolahan Data
+                  </h3>
+                  <p className="text-xs text-muted">
+                    Batas waktu maksimal 3 (tiga) hari kerja sesuai SOP PST BPS
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDelayModal(false)}
+                className="text-faint hover:text-ink text-sm p-1.5 rounded-lg hover:bg-subtle cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmDelay} className="flex-1 overflow-y-auto space-y-4 pr-1">
+              <div className="p-3 bg-indigo-50/80 dark:bg-indigo-950/40 rounded-xl border border-indigo-200/80 dark:border-indigo-800 text-xs text-indigo-900 dark:text-indigo-200 leading-relaxed">
+                <p>
+                  <strong>Catatan Kebijakan:</strong> Selama masa penundaan, narasi pembuka (salam/form nama) dan pesan penutup otomatis (14.00 & 15.30) <u>dinonaktifkan sepenuhnya</u> untuk kontak ini agar petugas dapat mereach-out kembali saat data telah siap.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-ink mb-1">
+                  Topik / Jenis Data yang Disiapkan <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={delayTopic}
+                  onChange={(e) => setDelayTopic(e.target.value)}
+                  placeholder="Contoh: Data PDRB Triwulanan Kab. Gorontalo / Kemiskinan Makro"
+                  className="w-full px-3.5 py-2 text-sm bg-subtle border border-line-strong rounded-xl focus:bg-surface focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-ink mb-1">
+                  Catatan Internal Tim (Opsional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={delayNote}
+                  onChange={(e) => setDelayNote(e.target.value)}
+                  placeholder="Contoh: Berkas Excel sedang diolah tim Nerwilis / Tim IPDS"
+                  className="w-full px-3.5 py-2 text-sm bg-subtle border border-line-strong rounded-xl focus:bg-surface focus:ring-2 focus:ring-indigo-500 focus:outline-hidden resize-none"
+                />
+              </div>
+
+              {/* Pratinjau Pesan WA Penundaan */}
+              <div>
+                <label className="block text-xs font-bold text-ink mb-1 flex items-center justify-between">
+                  <span>Pratinjau Pesan Penundaan Resmi (SOP PST):</span>
+                  <span className="text-[10px] text-faint">Format Panduan BPS</span>
+                </label>
+                <div className="p-3 bg-subtle rounded-xl border border-line text-xs font-mono whitespace-pre-wrap leading-relaxed text-ink select-all">
+{`Selamat ${getTimeGreeting()} Kak. Data yang Kakak butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja. Kami akan menghubungi Kakak kembali melalui nomor ini setelah data tersebut siap diserahkan.
+Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`}
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2.5 text-xs font-semibold text-ink cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={delaySendWhatsapp}
+                  onChange={(e) => setDelaySendWhatsapp(e.target.checked)}
+                  className="rounded-sm text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                />
+                <span>Kirim pesan resmi penundaan ini langsung ke nomor WhatsApp pengunjung</span>
+              </label>
+
+              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-line mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowDelayModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-muted hover:bg-subtle rounded-xl transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDelay}
+                  className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  {isSubmittingDelay ? (
+                    <>
+                      <RefreshIcon className="w-4 h-4 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>📌 Aktifkan Flag (3 Hari)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2677,21 +3911,23 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h4 className="font-bold text-ink text-xs flex items-center gap-1.5">
-                      <span>⏱️</span> Auto-Terminasi 10 Menit Tidak Aktif
+                      <span>⏱️</span> Auto-Terminasi Terjadwal (14.00 & 15.30 WITA)
                     </h4>
                     <p className="text-[11px] text-muted mt-0.5">
-                      Otomatis akhiri sesi jika tidak ada aktivitas percakapan selama 10 menit
+                      Otomatis akhiri sesi percakapan pada pukul 14.00 WITA (sesi siang) dan pukul 15.30 WITA (tutup layanan)
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() =>
                       handleSaveLiveSettings({
-                        autoTerminateOnTimeout: !liveSettings?.autoTerminateOnTimeout,
+                        scheduledTerminationEnabled: !liveSettings?.scheduledTerminationEnabled,
+                        autoTerminateOnTimeout: false,
+                        inactivityTimeoutMinutes: 0,
                       }, true)
                     }
                     className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
-                      liveSettings?.autoTerminateOnTimeout !== false
+                      liveSettings?.scheduledTerminationEnabled !== false
                         ? "bg-emerald-600 justify-end"
                         : "bg-gray-300 dark:bg-zinc-700 justify-start"
                     }`}
@@ -2700,14 +3936,14 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                   </button>
                 </div>
 
-                {/* Sub-toggle: Kirim Pesan Penutup & SKD saat Timeout */}
+                {/* Sub-toggle: Kirim Pesan Penutup & SKD saat Jadwal Tiba */}
                 <div className="pt-2.5 border-t border-line/60 flex items-center justify-between gap-3">
                   <div>
                     <span className="font-semibold text-ink text-[11.5px] block">
-                      Kirim Pesan Penutup Layanan Selesai (Survei SKD)
+                      Kirim Pesan Penutup Resmi & Survei SKD Otomatis
                     </span>
                     <span className="text-[10.5px] text-muted block mt-0.5">
-                      Kirim pesan terminasi resmi BPS Gorontalo + tautan survei SKD (https://s.bps.go.id/skd75) ke WhatsApp pengunjung saat timeout
+                      Kirim pesan terminasi resmi PST BPS Gorontalo + tautan survei SKD (https://s.bps.go.id/skd75) ke WhatsApp pengunjung saat jadwal tiba
                     </span>
                   </div>
                   <button
@@ -2730,13 +3966,13 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                 {/* Info Card: Aturan Chat Ulang SIGAP */}
                 <div className="bg-surface rounded-lg p-2.5 border border-line text-[11px] space-y-1.5 text-muted">
                   <span className="font-bold text-ink block text-[11.5px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                    <span>💡</span> Aturan Chat Ulang SIGAP Sesuai Terminasi:
+                    <span>💡</span> Aturan Terminasi Terjadwal & Anti-Pengulangan:
                   </span>
                   <p className="leading-relaxed">
-                    • <b>Bisa chat lagi setelah 10 menit:</b> Jika sesi telah diterminasi (atau tidak aktif &gt; 10 menit), saat pengunjung mengirim pesan kembali, <b>SIGAP otomatis chat duluan</b> untuk menyambut sesi konsultasi baru.
+                    • <b>Terminasi Pukul 14.00 & 15.30 WITA:</b> Sesi aktif diakhiri tepat pada jadwal tanpa batas waktu 10 menit yang mengganggu obrolan yang sedang berlangsung.
                   </p>
                   <p className="leading-relaxed">
-                    • <b>Mencegah spam sapaan:</b> Jika pengunjung membalas pesan penutup dalam kurun waktu &lt; 10 menit (misal sekadar mengucapkan terima kasih), SIGAP tidak akan mengirim pesan pembuka berulang kali.
+                    • <b>Mencegah Narasi Berulang:</b> Narasi pembuka dan penutup tidak akan terkirim berulang kali kepada pengunjung yang sama saat konsultasi sedang berlangsung.
                   </p>
                 </div>
               </div>

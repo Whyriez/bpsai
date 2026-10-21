@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Link } from "react-router-dom";
-import apiFetch from "../services/api";
+import apiFetch, { API_BASE_URL } from "../services/api";
 import routes from "../routes";
 import toast from "react-hot-toast";
 import useDebounce from "../hooks/useDebounce";
@@ -1043,6 +1043,7 @@ const BpsSyncModal = ({
   };
   const handleBackupWhatsApp = async () => {
     setIsBackingUp(true);
+    const toastId = toast.loading("Membuat arsip cadangan WhatsApp...");
     try {
       const res = await apiFetch("/documents/bps/whatsapp-backup", {
         method: "POST",
@@ -1050,16 +1051,43 @@ const BpsSyncModal = ({
           scope: { chats: true, groups: true, channels: true, media: false },
         }),
       });
-      if (res.success && res.downloadUrl) {
-        toast.success("Backup siap diunduh!");
-        const a = document.createElement("a");
-        a.href = res.downloadUrl;
-        a.click();
+      if (res.success && (res.downloadUrl || res.filename)) {
+        toast.loading("Mengunduh berkas arsip backup...", { id: toastId });
+
+        const filename = res.filename || (res.downloadUrl ? res.downloadUrl.split("/").pop() : "whatsapp_backup.zip");
+        const downloadEndpoint = `/documents/bps/whatsapp-backup/download/${encodeURIComponent(filename)}`;
+
+        try {
+          const token = localStorage.getItem("access_token");
+          const headers = token ? { Authorization: `Bearer ${token}` } : {};
+          const downloadUrl = `${API_BASE_URL}${downloadEndpoint}`;
+          const response = await fetch(downloadUrl, { headers });
+
+          if (!response.ok) {
+            throw new Error(`Gagal mengunduh berkas (HTTP ${response.status})`);
+          }
+
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.style.display = "none";
+          a.href = blobUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
+
+          toast.success("Backup WhatsApp selesai & berhasil diunduh!", { id: toastId });
+        } catch (downloadErr) {
+          console.error("Gagal auto-download backup blob:", downloadErr);
+          toast.error(`Backup selesai tapi gagal mengunduh otomatis: ${downloadErr.message}`, { id: toastId });
+        }
       } else {
-        toast.error(res.error || "Backup gagal");
+        toast.error(res.error || "Backup gagal dibuat", { id: toastId });
       }
     } catch (err) {
-      toast.error(err.message || "Backup gagal");
+      toast.error(err.message || "Backup gagal", { id: toastId });
     } finally {
       setIsBackingUp(false);
     }

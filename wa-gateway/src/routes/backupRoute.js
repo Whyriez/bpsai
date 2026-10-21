@@ -128,7 +128,7 @@ router.post('/backup', async (req, res) => {
 
     const downloadUrl = `/backups/${zipFilename}`;
     console.log(`✅ [Gateway] Backup selesai: ${zipPath} — ${summary.summary.total_messages} pesan, ${summary.summary.groups} grup, ${summary.summary.channels} channel`);
-    res.json({ success: true, downloadUrl, summary: summary.summary });
+    res.json({ success: true, filename: zipFilename, downloadUrl, summary: summary.summary });
 
   } catch (err) {
     console.error('❌ [Gateway] Backup error:', err);
