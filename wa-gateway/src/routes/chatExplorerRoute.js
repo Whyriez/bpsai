@@ -1,6 +1,7 @@
 import express from 'express';
 import messageStore from '../store/messageStore.js';
 import liveChatSessionService from '../services/liveChatSessionService.js';
+import { fetchParticipatingGroups, fetchGroupMetadata } from '../services/whatsappMetadataCache.js';
 
 const router = express.Router();
 
@@ -75,7 +76,7 @@ router.get('/chats', async (req, res) => {
     if (sock && isConn) {
       // 1. Fetch participating groups from WhatsApp Baileys
       try {
-        const rawGroups = await sock.groupFetchAllParticipating();
+        const rawGroups = await fetchParticipatingGroups(sock);
         for (const [id, g] of Object.entries(rawGroups)) {
           if (!existingIds.has(id)) {
             const participants = g.participants || [];
@@ -232,7 +233,7 @@ router.get('/chats/:chatId', async (req, res) => {
     // If it's a group, enrich with live WhatsApp group metadata if available
     if (chatId.endsWith('@g.us') && sock && isConn) {
       try {
-        const meta = await sock.groupMetadata(chatId);
+        const meta = await fetchGroupMetadata(sock, chatId);
         if (meta) {
           detail.name = meta.subject || detail.name;
           detail.participant_count = meta.participants?.length || 0;

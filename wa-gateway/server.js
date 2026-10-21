@@ -1,8 +1,7 @@
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  Browsers
+  fetchLatestBaileysVersion
 } from '@whiskeysockets/baileys';
 import { executeWMexQuery } from '@whiskeysockets/baileys/lib/Socket/mex.js';
 import express from 'express';
@@ -12,12 +11,15 @@ import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'node:module';
 
 import backupRouter, { setBackupService } from './src/routes/backupRoute.js';
 import explorerRouter, { setExplorerSocketGetter } from './src/routes/chatExplorerRoute.js';
 import { createBackupService } from './src/services/whatsappBackupService.js';
 import messageStore from './src/store/messageStore.js';
 import liveChatSessionService from './src/services/liveChatSessionService.js';
+import { createReconnectScheduler, describeDisconnect, describeOutgoingStatus, describeOutgoingReceipt } from './src/services/connectionDiagnostics.js';
+import { metadataCache, fetchParticipatingGroups } from './src/services/whatsappMetadataCache.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -26,12 +28,28 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const logger = pino({ level: 'silent' });
+const require = createRequire(import.meta.url);
+const baileysVersion = require('@whiskeysockets/baileys/package.json').version;
+const logger = pino({
+  level: 'warn',
+  serializers: { err: describeDisconnect },
+  redact: { paths: ['creds', 'keys', 'session', 'node.content', 'node.attrs.jid'], remove: true },
+});
 let sock = null;
 let isConnected = false;
 let currentQr = null;
 let currentQrDataUrl = null;
 let currentQrUpdatedAt = null;
+let connectionGeneration = 0;
+let lastDisconnectInfo = null;
+let protocolVersion = null;
+let protocolSource = null;
+const recentOutgoingStatuses = [];
+const reconnectScheduler = createReconnectScheduler(() => connectToWhatsApp());
+
+function scheduleReconnect(delay) {
+  return reconnectScheduler.schedule(delay);
+}
 
 // Initialize backup service with socket getters
 const backupService = createBackupService(() => sock, () => isConnected, messageStore);
@@ -60,17 +78,31 @@ function formatJid(target) {
 }
 
 async function connectToWhatsApp() {
+  if (isConnected) return;
+  reconnectScheduler.cancel();
+  const generation = ++connectionGeneration;
+  const previousSocket = sock;
+  sock = null;
   try {
+    previousSocket?.end(new Error('Replacing inactive WhatsApp socket'));
     const authDir = path.join(__dirname, 'auth_info_baileys');
     if (!fs.existsSync(authDir)) {
       fs.mkdirSync(authDir, { recursive: true });
     }
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
-    const { version } = await fetchLatestBaileysVersion();
+    if (generation !== connectionGeneration) return;
+    // Restore the version lookup and browser/auth settings used before the
+    // connection regression. Keep the installed legacy library pinned.
+    const versionResult = await fetchLatestBaileysVersion();
+    if (generation !== connectionGeneration) return;
+    protocolVersion = versionResult.version;
+    protocolSource = versionResult.isLatest ? 'latest-baileys' : 'bundled-fallback';
+    console.log(`[WhatsApp] Runtime: Baileys ${baileysVersion}; protocol ${protocolVersion.join('.')}; source ${protocolSource}; linked_identity=${Boolean(state.creds.me?.id)}; registered=${Boolean(state.creds.registered)}`);
+    if (versionResult.error) console.warn('[WhatsApp] Pencarian versi gagal:', versionResult.error.message);
 
     sock = makeWASocket({
-      version,
+      version: protocolVersion,
       auth: state,
       logger,
       printQRInTerminal: false,
@@ -78,16 +110,34 @@ async function connectToWhatsApp() {
       shouldSyncHistoryMessage: () => true,
       browser: ['SIGAP BPS Gateway', 'Chrome', '1.0.0'],
       getMessage: async (key) => {
-        // Required for message retries & media decryption
-        const msgs = messageStore.readChatMessages(key.remoteJid);
-        const found = msgs.find(m => m.id === key.id);
-        if (found?.rawMessage) return found.rawMessage;
-        if (found?.text) return { conversation: found.text };
+        const message = messageStore.readChatMessages(key.remoteJid).find((item) => item.id === key.id);
+        if (message?.rawMessage) return message.rawMessage;
+        if (message?.text) return { conversation: message.text };
         return undefined;
-      }
+      },
+    });
+    const connectionSocket = sock;
+    const isCurrentSocket = () => generation === connectionGeneration && sock === connectionSocket;
+    recentOutgoingStatuses.length = 0;
+    const recordOutgoingStatus = (record) => {
+      if (!isCurrentSocket() || !record || messageStore.isSelfJid(record.chat_id)) return;
+      const previous = recentOutgoingStatuses.at(-1);
+      if (previous && previous.message_id === record.message_id && previous.status === record.status &&
+          previous.recipient_id === record.recipient_id && previous.error_code === record.error_code) return;
+      const event = { ...record, at: new Date().toISOString() };
+      recentOutgoingStatuses.push(event);
+      if (recentOutgoingStatuses.length > 20) recentOutgoingStatuses.shift();
+      console.log('[WhatsApp] Status kiriman:', JSON.stringify(event));
+    };
+    sock.ev.on('messages.update', (updates) => {
+      for (const update of updates || []) recordOutgoingStatus(describeOutgoingStatus(update));
+    });
+    sock.ev.on('message-receipt.update', (updates) => {
+      for (const update of updates || []) recordOutgoingStatus(describeOutgoingReceipt(update));
     });
 
     sock.ev.on('connection.update', async (update) => {
+      if (!isCurrentSocket()) return;
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
@@ -95,7 +145,9 @@ async function connectToWhatsApp() {
         currentQr = qr;
         currentQrUpdatedAt = new Date().toISOString();
         try {
-          currentQrDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 7 });
+          const qrDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 7 });
+          if (!isCurrentSocket()) return;
+          currentQrDataUrl = qrDataUrl;
         } catch (qrErr) {
           console.error('Gagal generate QR Data URL:', qrErr.message);
         }
@@ -112,13 +164,14 @@ async function connectToWhatsApp() {
 
       if (connection === 'close') {
         isConnected = false;
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        lastDisconnectInfo = { ...describeDisconnect(lastDisconnect?.error), at: new Date().toISOString() };
+        const statusCode = lastDisconnectInfo.statusCode;
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        console.log(`⚠️  [WhatsApp] Terputus (alasan: ${statusCode || lastDisconnect?.error?.message || 'Unknown'})`);
+        console.warn('[WhatsApp] Koneksi ditutup:', JSON.stringify(lastDisconnectInfo));
 
         if (shouldReconnect) {
-          console.log('🔄 [WhatsApp] Menghubungkan ulang dalam 5 detik...');
-          setTimeout(connectToWhatsApp, 5000);
+          const delay = scheduleReconnect();
+          console.log(`🔄 [WhatsApp] Menghubungkan ulang dalam ${delay / 1000} detik (percobaan ${reconnectScheduler.attempts})...`);
         } else {
           currentQr = null;
           currentQrDataUrl = null;
@@ -140,6 +193,8 @@ async function connectToWhatsApp() {
           console.log('❌ [WhatsApp] Sesi keluar (Logged out). Klik Ganti Nomor di dashboard atau reset sesi untuk scan ulang.');
         }
       } else if (connection === 'open') {
+        reconnectScheduler.reset();
+        lastDisconnectInfo = null;
         isConnected = true;
         currentQr = null;
         currentQrDataUrl = null;
@@ -177,23 +232,24 @@ async function connectToWhatsApp() {
         console.log('=============================================================\n');
 
         setTimeout(async () => {
+          if (!isCurrentSocket() || !isConnected) return;
           // Trigger App State resync
           try {
             console.log('🔄 [Gateway] Sinkronisasi App State WhatsApp...');
-            await sock.resyncAppState(['critical_block', 'critical_unblock_low', 'regular_high', 'regular_low', 'regular'], false);
+            await connectionSocket.resyncAppState(['critical_block', 'critical_unblock_low', 'regular_high', 'regular_low', 'regular'], false);
           } catch (e) {
             console.warn('Catatan resyncAppState:', e.message);
           }
 
           // Request History Sync on demand from phone
           try {
-            if (sock.sendPeerDataOperationMessage) {
+            if (isCurrentSocket() && isConnected && connectionSocket.sendPeerDataOperationMessage) {
               console.log('🔄 [Gateway] Mengirim permintaan riwayat chat ke HP utama...');
-              await sock.sendPeerDataOperationMessage({
+              await connectionSocket.sendPeerDataOperationMessage({
                 peerDataOperationRequestType: 6, // FULL_HISTORY_SYNC_ON_DEMAND
                 fullHistorySyncOnDemandRequest: {
                   requestMetadata: {
-                    requestId: sock.generateMessageTag()
+                    requestId: connectionSocket.generateMessageTag()
                   }
                 }
               });
@@ -204,19 +260,18 @@ async function connectToWhatsApp() {
       }
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', () => {
+      if (isCurrentSocket()) return saveCreds();
+    });
 
     // Message store: capture all incoming & outgoing messages
     sock.ev.on('messages.upsert', (upsert) => {
+      if (!isCurrentSocket()) return;
       console.log(`\n📩 [Gateway] Event messages.upsert: tipe=${upsert.type}, jumlah=${upsert.messages?.length || 0}`);
       for (const m of (upsert.messages || [])) {
         const jid = m.key?.remoteJid;
         const direction = m.key?.fromMe ? 'Keluar (dari HP/saya)' : 'Masuk (dari luar)';
         console.log(`   💬 [${direction}] Chat: ${jid} | ID: ${m.key?.id} | Nama: ${m.pushName || '-'}`);
-        console.log(`   🔍 [DEBUG FULL M]:`, JSON.stringify(m));
-        if (m.message) {
-          console.log(`   🔍 [DEBUG MSG BODY]:`, JSON.stringify(m.message).slice(0, 300));
-        }
       }
       try {
         messageStore.handleMessagesUpsert(upsert);
@@ -246,35 +301,42 @@ async function connectToWhatsApp() {
 
     // Message store: capture history sync (initial bulk sync)
     sock.ev.on('messaging-history.set', (data) => {
+      if (!isCurrentSocket()) return;
       console.log(`📥 [Gateway] Event messaging-history.set diterima!`);
       messageStore.handleHistorySync(data);
     });
 
     // Contacts tracking
     sock.ev.on('contacts.upsert', (contacts) => {
+      if (!isCurrentSocket()) return;
       messageStore.handleContactsUpsert(contacts);
     });
     sock.ev.on('contacts.update', (contacts) => {
+      if (!isCurrentSocket()) return;
       messageStore.handleContactsUpsert(contacts);
     });
 
     // Chats tracking (all 1-on-1 direct chats & groups)
     sock.ev.on('chats.upsert', (chats) => {
+      if (!isCurrentSocket()) return;
       messageStore.handleChatsUpsert(chats);
     });
     sock.ev.on('chats.update', (updates) => {
+      if (!isCurrentSocket()) return;
       messageStore.handleChatsUpsert(updates);
     });
 
     // Phone number share (mapping between LID and real phone number)
     sock.ev.on('chats.phoneNumberShare', (data) => {
+      if (!isCurrentSocket()) return;
       console.log(`🔗 [Gateway] Nomor telepon dishare untuk LID: ${data.lid} -> ${data.jid}`);
       messageStore.handlePhoneNumberShare(data);
     });
 
   } catch (err) {
+    if (generation !== connectionGeneration) return;
     console.error('Error saat inisialisasi Baileys:', err);
-    setTimeout(connectToWhatsApp, 5000);
+    scheduleReconnect();
   }
 }
 
@@ -292,6 +354,9 @@ function getStatusResponse() {
   return {
     name: 'SIGAP BPS WhatsApp Gateway (Baileys)',
     status: actuallyConnected ? 'CONNECTED' : (currentQr ? 'SCAN_QR' : 'DISCONNECTED'),
+    runtime: { baileys_version: baileysVersion, protocol_version: protocolVersion, protocol_source: protocolSource },
+    recent_outgoing_statuses: recentOutgoingStatuses.slice(),
+    last_disconnect: lastDisconnectInfo,
     is_connected: actuallyConnected,
     phone: actuallyConnected ? rawPhone : null,
     phone_formatted: actuallyConnected ? formattedPhone : null,
@@ -332,17 +397,21 @@ app.post(['/reset-session', '/logout', '/change-number'], async (req, res) => {
     } catch (e) {}
 
     isConnected = false;
+    ++connectionGeneration;
+    reconnectScheduler.reset();
     currentQr = null;
     currentQrDataUrl = null;
 
-    if (sock) {
+    const previousSocket = sock;
+    sock = null;
+    if (previousSocket) {
       try {
-        await sock.logout();
+        await previousSocket.logout();
       } catch (logoutErr) {
         console.log('Catatan logout socket:', logoutErr.message);
       }
       try {
-        sock.end(new Error('Manual session reset requested'));
+        previousSocket.end(new Error('Manual session reset requested'));
       } catch (endErr) {}
       sock = null;
     }
@@ -365,10 +434,7 @@ app.post(['/reset-session', '/logout', '/change-number'], async (req, res) => {
     }
 
     // Picu pembuatan koneksi baru untuk mendapatkan QR Code baru
-    setTimeout(() => {
-      console.log('🚀 [Gateway] Memulai inisialisasi sesi WhatsApp baru...');
-      connectToWhatsApp();
-    }, 1200);
+    scheduleReconnect(1200);
 
     return res.json({
       success: true,
@@ -390,7 +456,7 @@ async function fetchSubscribedNewsletters(currentSock) {
   if (!currentSock?.query || !currentSock?.generateMessageTag) {
     return [];
   }
-  try {
+  return metadataCache.get(currentSock, 'newsletters', async () => {
     const raw = await executeWMexQuery(
       {},
       '6388546374527196',
@@ -421,10 +487,11 @@ async function fetchSubscribedNewsletters(currentSock) {
       }
     }
     return channels;
-  } catch (err) {
-    console.warn('ℹ️  [Gateway] Catatan query Saluran WhatsApp (@newsletter):', err.message);
-    return [];
-  }
+  }, {
+    ttlMs: 300000,
+    fallback: [],
+    onError: (error) => console.warn('[WhatsApp] Daftar saluran ditunda:', error.message),
+  });
 }
 
 // Endpoint untuk mengambil daftar grup dan saluran WhatsApp aktif (untuk pemilihan target di Dashboard)
@@ -443,7 +510,7 @@ app.all(['/groups', '/get-groups', '/channels'], async (req, res) => {
 
     // 1. Ambil seluruh grup WhatsApp & Saluran Pengumuman Komunitas
     try {
-      const rawGroups = await sock.groupFetchAllParticipating();
+      const rawGroups = await fetchParticipatingGroups(sock);
       for (const [id, g] of Object.entries(rawGroups)) {
         const participants = g.participants || [];
         const isAnnounce = Boolean(g.isCommunityAnnounce || g.announce);
