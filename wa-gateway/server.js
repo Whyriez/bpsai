@@ -33,6 +33,20 @@ app.use(express.urlencoded({ extended: true }));
 
 const require = createRequire(import.meta.url);
 const baileysVersion = require('@whiskeysockets/baileys/package.json').version;
+
+// Reduksi logging bising internal libsignal untuk sinkronisasi peer multi-device
+const originalConsoleError = console.error;
+console.error = function (...args) {
+  const msg = typeof args[0] === 'string' ? args[0] : '';
+  if (
+    msg.includes('Failed to decrypt message with any known session') ||
+    msg.includes('Session error:Error: Bad MAC')
+  ) {
+    return;
+  }
+  originalConsoleError.apply(console, args);
+};
+
 const logger = pino({
   level: 'warn',
   serializers: { err: describeDisconnect },
@@ -105,9 +119,9 @@ async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     if (generation !== connectionGeneration) return;
 
-    // Helper untuk membersihkan sesi Signal/ratchet yang korup (mencegah loop Bad MAC)
+    // Helper untuk membersihkan sesi Signal/ratchet yang korup (khusus kontak eksternal, BUKAN bot/primary HP)
     const purgeCorruptedSession = async (remoteJid) => {
-      if (!remoteJid) return;
+      if (!remoteJid || messageStore.isSelfJid(remoteJid)) return;
       try {
         const user = remoteJid.split('@')[0].split(':')[0];
         const sids = [`${user}.0`, `${user}:0`, `${user}.1`, `${user}:1`, user];
@@ -125,7 +139,7 @@ async function connectToWhatsApp() {
             }
           }
         }
-        console.log(`🧹 [Gateway] Berhasil membersihkan sesi kripto corrupted untuk: ${remoteJid}`);
+        console.log(`🧹 [Gateway] Berhasil membersihkan sesi kripto corrupted untuk kontak: ${remoteJid}`);
       } catch (e) {
         console.warn(`Catatan pembersihan sesi:`, e.message);
       }
@@ -330,15 +344,16 @@ async function connectToWhatsApp() {
         if (m.key?.id && m.message) {
           messageMediaCache.set(m.key.id, m.message);
         }
-        // Deteksi jika pesan gagal didekripsi karena Bad MAC / Session error
-        if (m.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT || !m.message) {
+        // Deteksi jika pesan gagal didekripsi karena Bad MAC / Session error (HANYA untuk chat masuk kontak eksternal)
+        const isSelf = m.key?.fromMe || messageStore.isSelfJid(m.key?.remoteJid);
+        if (!isSelf && (m.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT || !m.message)) {
           const stubParam = m.messageStubParameters?.[0] || '';
           if (
             m.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT ||
             stubParam.includes('Bad MAC') ||
             stubParam.includes('No matching sessions')
           ) {
-            console.warn(`⚠️ [Gateway] Pesan ID: ${m.key?.id} gagal didekripsi (${stubParam || 'CIPHERTEXT/Bad MAC'}) dari ${m.key?.remoteJid}. Mereset sesi corrupted...`);
+            console.warn(`⚠️ [Gateway] Pesan ID: ${m.key?.id} gagal didekripsi (${stubParam || 'CIPHERTEXT/Bad MAC'}) dari kontak ${m.key?.remoteJid}. Mereset sesi corrupted...`);
             purgeCorruptedSession(m.key?.remoteJid);
           }
         }
