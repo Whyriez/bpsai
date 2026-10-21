@@ -1,8 +1,11 @@
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
+  proto
 } from '@whiskeysockets/baileys';
+import NodeCache from 'node-cache';
 import { executeWMexQuery } from '@whiskeysockets/baileys/lib/Socket/mex.js';
 import express from 'express';
 import qrcode from 'qrcode-terminal';
@@ -45,6 +48,9 @@ let lastDisconnectInfo = null;
 let protocolVersion = null;
 let protocolSource = null;
 const recentOutgoingStatuses = [];
+// Caches untuk Signal Protocol retry & message keys (mencegah "Waiting for this message")
+const msgRetryCounterCache = new NodeCache({ stdTTL: 7200, checkperiod: 120 });
+const messageMediaCache = new NodeCache({ stdTTL: 7200, checkperiod: 120 });
 const reconnectScheduler = createReconnectScheduler(() => connectToWhatsApp());
 
 function scheduleReconnect(delay) {
