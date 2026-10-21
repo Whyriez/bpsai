@@ -8,14 +8,16 @@ const router = express.Router();
 let _getSock = () => null;
 let _getIsConnected = () => false;
 let _getNewsletters = null;
+let _cacheOutgoingMessage = null;
 
 /**
  * Configure socket getters from server.js
  */
-export function setExplorerSocketGetter(getSock, getIsConnected, getNewsletters) {
+export function setExplorerSocketGetter(getSock, getIsConnected, getNewsletters, cacheOutgoingMessage) {
   _getSock = getSock;
   _getIsConnected = getIsConnected;
   if (getNewsletters) _getNewsletters = getNewsletters;
+  if (cacheOutgoingMessage) _cacheOutgoingMessage = cacheOutgoingMessage;
 }
 
 /**
@@ -397,6 +399,9 @@ router.post('/reply', async (req, res) => {
     }
 
     const sent = await sock.sendMessage(jid, { text: message }, sendOptions);
+    if (sent?.key?.id && sent?.message && _cacheOutgoingMessage) {
+      _cacheOutgoingMessage(sent.key.id, sent.message);
+    }
 
     // Store the outgoing message locally in messageStore as well
     const outgoingMsg = {
@@ -421,6 +426,7 @@ router.post('/reply', async (req, res) => {
         : {
             conversation: message,
           },
+      rawMessage: sent?.message || undefined,
       messageTimestamp: Math.floor(Date.now() / 1000),
       pushName: 'SIGAP BPS Admin',
     };

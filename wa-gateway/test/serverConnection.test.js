@@ -51,6 +51,17 @@ async function fixture() {
       default: makeSocket, DisconnectReason: { loggedOut: 401 },
       useMultiFileAuthState: async () => ({ state, saveCreds: async () => { savedCreds++; } }),
       fetchLatestBaileysVersion: async () => { lookups++; return { version: protocol, isLatest: true }; },
+      makeCacheableSignalKeyStore: (keys) => keys,
+      proto: { Message: { fromObject: () => ({}) } },
+    },
+    'node-cache': {
+      default: class {
+        constructor() { this.map = new Map(); }
+        get(k) { return this.map.get(k); }
+        set(k, v) { this.map.set(k, v); }
+        del(k) { this.map.delete(k); }
+        has(k) { return this.map.has(k); }
+      }
     },
     '@whiskeysockets/baileys/lib/Socket/mex.js': { executeWMexQuery() {} },
     express: { default: express },
@@ -105,7 +116,8 @@ test('startup restores version lookup, original auth/browser and unwrapped sendi
   const env = await fixture();
   assert.equal(env.sockets.length, 1);
   const socket = env.sockets[0];
-  assert.equal(socket.config.auth, env.state);
+  assert.equal(socket.config.auth.creds, env.state.creds);
+  assert.equal(socket.config.auth.keys, env.state.keys);
   assert.equal(socket.config.version, env.protocol);
   assert.deepEqual(Array.from(socket.config.browser), ['SIGAP BPS Gateway', 'Chrome', '1.0.0']);
   assert.equal(socket.sendMessage, socket.originalSend);

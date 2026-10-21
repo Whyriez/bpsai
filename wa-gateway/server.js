@@ -51,6 +51,7 @@ const recentOutgoingStatuses = [];
 // Caches untuk Signal Protocol retry & message keys (mencegah "Waiting for this message")
 const msgRetryCounterCache = new NodeCache({ stdTTL: 7200, checkperiod: 120 });
 const messageMediaCache = new NodeCache({ stdTTL: 7200, checkperiod: 120 });
+const userDevicesCache = new NodeCache({ stdTTL: 7200, checkperiod: 120 });
 const reconnectScheduler = createReconnectScheduler(() => connectToWhatsApp());
 
 function scheduleReconnect(delay) {
@@ -60,7 +61,12 @@ function scheduleReconnect(delay) {
 // Initialize backup service with socket getters
 const backupService = createBackupService(() => sock, () => isConnected, messageStore);
 setBackupService(backupService);
-setExplorerSocketGetter(() => sock, () => isConnected, fetchSubscribedNewsletters);
+setExplorerSocketGetter(
+  () => sock,
+  () => isConnected,
+  fetchSubscribedNewsletters,
+  (id, msg) => messageMediaCache.set(id, msg)
+);
 liveChatSessionService.setSocketGetter(() => sock, () => isConnected);
 
 function formatJid(target) {
@@ -98,6 +104,33 @@ async function connectToWhatsApp() {
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     if (generation !== connectionGeneration) return;
+
+    // Helper untuk membersihkan sesi Signal/ratchet yang korup (mencegah loop Bad MAC)
+    const purgeCorruptedSession = async (remoteJid) => {
+      if (!remoteJid) return;
+      try {
+        const user = remoteJid.split('@')[0].split(':')[0];
+        const sids = [`${user}.0`, `${user}:0`, `${user}.1`, `${user}:1`, user];
+        for (const sid of sids) {
+          try {
+            await state.keys.set({ session: { [sid]: null } });
+          } catch (_) {}
+          const candidateFiles = [
+            path.join(authDir, `session-${sid}.json`),
+            path.join(authDir, `session-${sid.replace(/:/g, '-')}.json`),
+          ];
+          for (const f of candidateFiles) {
+            if (fs.existsSync(f)) {
+              try { fs.unlinkSync(f); } catch (_) {}
+            }
+          }
+        }
+        console.log(`🧹 [Gateway] Berhasil membersihkan sesi kripto corrupted untuk: ${remoteJid}`);
+      } catch (e) {
+        console.warn(`Catatan pembersihan sesi:`, e.message);
+      }
+    };
+
     // Restore the version lookup and browser/auth settings used before the
     // connection regression. Keep the installed legacy library pinned.
     const versionResult = await fetchLatestBaileysVersion();
@@ -109,17 +142,36 @@ async function connectToWhatsApp() {
 
     sock = makeWASocket({
       version: protocolVersion,
-      auth: state,
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, logger),
+      },
       logger,
       printQRInTerminal: false,
       syncFullHistory: true,
       shouldSyncHistoryMessage: () => true,
+      msgRetryCounterCache,
+      userDevicesCache,
       browser: ['SIGAP BPS Gateway', 'Chrome', '1.0.0'],
       getMessage: async (key) => {
-        const message = messageStore.readChatMessages(key.remoteJid).find((item) => item.id === key.id);
-        if (message?.rawMessage) return message.rawMessage;
-        if (message?.text) return { conversation: message.text };
-        return undefined;
+        // 1. Cek dari messageMediaCache (exact proto.IMessage untuk Signal retry handshake)
+        if (key?.id) {
+          const cached = messageMediaCache.get(key.id);
+          if (cached) {
+            console.log(`🔑 [Baileys getMessage] Retry cache HIT untuk pesan ID: ${key.id}`);
+            return cached;
+          }
+        }
+        // 2. Cek dari messageStore lokal (resolve canonical ID jika remoteJid berupa LID)
+        if (key?.remoteJid && key?.id) {
+          const canonicalId = messageStore.resolveLidToPhone(key.remoteJid) || key.remoteJid;
+          const msgs = messageStore.readChatMessages(canonicalId) || [];
+          const found = msgs.find((item) => item.id === key.id);
+          if (found?.rawMessage) return found.rawMessage;
+          if (found?.text) return { conversation: found.text };
+        }
+        // 3. Fallback proto Message kosong agar WhatsApp retry loop tidak deadlock
+        return proto.Message.fromObject({});
       },
     });
     const connectionSocket = sock;
@@ -275,6 +327,21 @@ async function connectToWhatsApp() {
       if (!isCurrentSocket()) return;
       console.log(`\n📩 [Gateway] Event messages.upsert: tipe=${upsert.type}, jumlah=${upsert.messages?.length || 0}`);
       for (const m of (upsert.messages || [])) {
+        if (m.key?.id && m.message) {
+          messageMediaCache.set(m.key.id, m.message);
+        }
+        // Deteksi jika pesan gagal didekripsi karena Bad MAC / Session error
+        if (m.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT || !m.message) {
+          const stubParam = m.messageStubParameters?.[0] || '';
+          if (
+            m.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT ||
+            stubParam.includes('Bad MAC') ||
+            stubParam.includes('No matching sessions')
+          ) {
+            console.warn(`⚠️ [Gateway] Pesan ID: ${m.key?.id} gagal didekripsi (${stubParam || 'CIPHERTEXT/Bad MAC'}) dari ${m.key?.remoteJid}. Mereset sesi corrupted...`);
+            purgeCorruptedSession(m.key?.remoteJid);
+          }
+        }
         const jid = m.key?.remoteJid;
         const direction = m.key?.fromMe ? 'Keluar (dari HP/saya)' : 'Masuk (dari luar)';
         console.log(`   💬 [${direction}] Chat: ${jid} | ID: ${m.key?.id} | Nama: ${m.pushName || '-'}`);
@@ -457,6 +524,36 @@ app.post(['/reset-session', '/logout', '/change-number'], async (req, res) => {
   }
 });
 
+// Endpoint untuk membersihkan sesi Signal/ratchet yang korup (Bad MAC) tanpa perlu logout (QR tetap aktif)
+app.post(['/fix-sessions', '/clear-bad-sessions', '/api/whatsapp/clear-sessions'], async (req, res) => {
+  try {
+    console.log('\n🧹 [Gateway] Permintaan pembersihan sesi Signal corrupted...');
+    const authDir = path.join(__dirname, 'auth_info_baileys');
+    let deletedCount = 0;
+    if (fs.existsSync(authDir)) {
+      const files = fs.readdirSync(authDir);
+      for (const file of files) {
+        if (file.startsWith('session-') && file.endsWith('.json')) {
+          try {
+            fs.unlinkSync(path.join(authDir, file));
+            deletedCount++;
+          } catch (_) {}
+        }
+      }
+    }
+    msgRetryCounterCache.flushAll();
+    console.log(`✅ [Gateway] Berhasil menghapus ${deletedCount} file session Signal. Sesi login creds tetap aman.`);
+    return res.json({
+      success: true,
+      message: `Berhasil membersihkan ${deletedCount} sesi kripto Signal yang rusak. Sesi login WhatsApp Anda tetap aman.`,
+      deleted_sessions: deletedCount,
+    });
+  } catch (err) {
+    console.error('❌ Gagal membersihkan sesi Signal:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Helper untuk mengambil daftar Saluran WhatsApp Resmi (@newsletter)
 async function fetchSubscribedNewsletters(currentSock) {
   if (!currentSock?.query || !currentSock?.generateMessageTag) {
@@ -620,17 +717,26 @@ app.post(['/webhook', '/send'], async (req, res) => {
           image: { url: cleanImageUrl },
           caption: message || ''
         });
+        if (sentResult?.key?.id && sentResult?.message) {
+          messageMediaCache.set(sentResult.key.id, sentResult.message);
+        }
         console.log(`✅ [Gateway] Berhasil mengirim pesan gambar + caption ke: ${jid}`);
       } catch (imgErr) {
         console.warn(`⚠️ [Gateway] Gagal mengirim gambar (${imgErr.message}), fallback kirim teks murni...`);
         sentResult = await sock.sendMessage(jid, {
           text: message || ''
         });
+        if (sentResult?.key?.id && sentResult?.message) {
+          messageMediaCache.set(sentResult.key.id, sentResult.message);
+        }
       }
     } else {
       sentResult = await sock.sendMessage(jid, {
         text: message || ''
       });
+      if (sentResult?.key?.id && sentResult?.message) {
+        messageMediaCache.set(sentResult.key.id, sentResult.message);
+      }
       console.log(`✅ [Gateway] Berhasil mengirim pesan teks ke: ${jid}`);
     }
 
@@ -645,6 +751,7 @@ app.post(['/webhook', '/send'], async (req, res) => {
         message: cleanImageUrl
           ? { imageMessage: { caption: message || '' } }
           : { conversation: message || '' },
+        rawMessage: sentResult?.message || undefined,
         messageTimestamp: Math.floor(Date.now() / 1000),
         pushName: 'SIGAP BPS Admin',
       };
