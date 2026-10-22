@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import apiFetch, { API_BASE_URL } from "../services/api";
+import useWhatsAppSync, { mergeMessages } from "../hooks/useWhatsAppSync";
+import "./WhatsAppChatExplorer.css";
 
 // --- High-Quality SVG Icons ---
 const WhatsAppIcon = ({ className = "w-5 h-5" }) => (
@@ -366,7 +368,7 @@ const playNotificationSound = () => {
 
     osc.start(now);
     osc.stop(now + 0.35);
-  } catch (e) {
+  } catch {
     // User hasn't interacted with document yet
   }
 };
@@ -376,7 +378,7 @@ const requestNotificationPermission = async () => {
     if (Notification.permission === "default") {
       try {
         await Notification.requestPermission();
-      } catch (e) {}
+      } catch { /* Optional notification/settings enrichment may be unavailable. */ }
     }
   }
 };
@@ -390,7 +392,7 @@ const showDesktopNotification = (title, body) => {
         silent: true,
       });
     }
-  } catch (e) {}
+  } catch { /* Optional notification/settings enrichment may be unavailable. */ }
 };
 
 const getTimeGreeting = () => {
@@ -454,7 +456,7 @@ export default function WhatsAppChatExplorer() {
 
   // WhatsApp Gateway Connection Status
   const [waConnectionStatus, setWaConnectionStatus] = useState({
-    is_connected: true,
+    is_connected: false,
     status: "CHECKING",
     phone: null,
     phone_formatted: null,
@@ -462,7 +464,7 @@ export default function WhatsAppChatExplorer() {
 
   // Chats state
   const [chats, setChats] = useState([]);
-  const [isLoadingChats, setIsLoadingChats] = useState(false);
+  const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [stats, setStats] = useState(null);
 
   // Active chat & messages
@@ -472,6 +474,7 @@ export default function WhatsAppChatExplorer() {
 
   // Realtime Sync Tracking & Notifications
   const [lastSyncTime, setLastSyncTime] = useState(null);
+  const [syncError, setSyncError] = useState(null);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [newIncomingChatIds, setNewIncomingChatIds] = useState(new Set());
 
@@ -488,6 +491,7 @@ export default function WhatsAppChatExplorer() {
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [replyingToMessage, setReplyingToMessage] = useState(null);
   const replyInputRef = useRef(null);
+  const [isInputExpanded, setIsInputExpanded] = useState(false);
 
   // New Chat modal state
   const [showNewChatModal, setShowNewChatModal] = useState(false);
@@ -497,7 +501,7 @@ export default function WhatsAppChatExplorer() {
   // Live Chat Sessions & Operating Settings
   const [liveSettings, setLiveSettings] = useState(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [, setIsSavingSettings] = useState(false);
 
   // Termination Modal State
   const [showTerminationModal, setShowTerminationModal] = useState(false);
@@ -519,6 +523,26 @@ export default function WhatsAppChatExplorer() {
   const [showAiCard, setShowAiCard] = useState(true);
 
   const messagesEndRef = useRef(null);
+  const messageFeedRef = useRef(null);
+  const followMessagesRef = useRef(true);
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+  const viewRef = useRef({ sourceMode, activeChatId, selectedBackupFilename });
+  useEffect(() => {
+    viewRef.current = { sourceMode, activeChatId, selectedBackupFilename };
+  });
+
+  const { fetchLiveChats, fetchLiveChatDetail } = useWhatsAppSync({
+    sourceMode, activeChatId, chats, activeChatDetail,
+    setChats, setStats, setActiveChatId, setActiveChatDetail,
+    setIsLoadingChats, setIsLoadingDetail, setWaConnectionStatus,
+    setLastSyncTime, setSyncError, setNewIncomingChatIds, setRightPanelTab,
+    notify: (name, text, active) => {
+      playNotificationSound();
+      if (!active || document.hidden) {
+        showDesktopNotification(`Pesan baru dari ${name || "Pengunjung"}`, text || "Mengirim pesan baru");
+      }
+    },
+  });
 
   const handleStartNewChat = (e) => {
     e?.preventDefault();
@@ -552,7 +576,7 @@ export default function WhatsAppChatExplorer() {
           fromMe: false,
         },
       };
-      setChats([newEntry, ...chats]);
+      setChats((prev) => [newEntry, ...prev]);
     }
     setActiveChatId(jid);
     setShowNewChatModal(false);
@@ -563,11 +587,7 @@ export default function WhatsAppChatExplorer() {
 
   // Load chats on mount or source mode change
   useEffect(() => {
-    if (sourceMode === "live") {
-      fetchLiveChats();
-    } else {
-      fetchBackupList();
-    }
+    if (sourceMode === "backup") fetchBackupList();
   }, [sourceMode]);
 
   // When selected backup changes in backup mode
@@ -575,11 +595,15 @@ export default function WhatsAppChatExplorer() {
     if (sourceMode === "backup" && selectedBackupFilename) {
       inspectBackup(selectedBackupFilename);
     }
-  }, [selectedBackupFilename]);
+  }, [sourceMode, selectedBackupFilename]);
 
   // Load chat detail when activeChatId changes
   useEffect(() => {
     setReplyingToMessage(null);
+    setActiveChatDetail(null);
+    setIsLoadingDetail(sourceMode === "live" && Boolean(activeChatId));
+    followMessagesRef.current = true;
+    setHasUnreadMessages(false);
     if (!activeChatId) {
       setActiveChatDetail(null);
       return;
@@ -592,86 +616,22 @@ export default function WhatsAppChatExplorer() {
       return next;
     });
 
-    if (sourceMode === "live") {
-      fetchLiveChatDetail(activeChatId);
-    } else if (sourceMode === "backup" && selectedBackupFilename) {
+    if (sourceMode === "backup" && selectedBackupFilename) {
       fetchBackupChatDetail(selectedBackupFilename, activeChatId);
     }
-  }, [activeChatId]);
+  }, [activeChatId, sourceMode, selectedBackupFilename]);
 
-  // Auto scroll messages to bottom whenever message count changes
+  // Follow new messages only while the operator is reading the latest messages.
   useEffect(() => {
-    if (activeChatDetail?.messages?.length) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const feed = messageFeedRef.current;
+    if (!feed || !activeChatDetail?.messages?.length || isLoadingDetail) return;
+    if (followMessagesRef.current) {
+      feed.scrollTop = feed.scrollHeight;
+      setHasUnreadMessages(false);
+    } else {
+      setHasUnreadMessages(true);
     }
-  }, [activeChatDetail?.messages?.length]);
-
-  // 1. Fetch live chats from gateway
-  const fetchLiveChats = async (silent = false) => {
-    if (!silent) setIsLoadingChats(true);
-    try {
-      const chatsRes = await apiFetch("/documents/bps/whatsapp-explorer/chats");
-      if (chatsRes) {
-        const isConn = Boolean(chatsRes.is_connected);
-        setWaConnectionStatus({
-          is_connected: isConn,
-          status: chatsRes.status || (isConn ? "CONNECTED" : "DISCONNECTED"),
-          phone: chatsRes.phone || null,
-          phone_formatted: chatsRes.phone_formatted || null,
-        });
-
-        if (isConn) {
-          const newChats = chatsRes.chats || [];
-
-          setChats((prevChats) => {
-            // Deteksi pesan baru dari chat lain saat silent polling
-            if (silent && prevChats && prevChats.length > 0) {
-              for (const nc of newChats) {
-                const pc = prevChats.find((c) => c.id === nc.id);
-                if (nc.last_message && !nc.last_message.fromMe) {
-                  const isNewMsg =
-                    !pc ||
-                    (nc.last_message.timestamp &&
-                      (!pc.last_message?.timestamp ||
-                        nc.last_message.timestamp > pc.last_message.timestamp));
-
-                  if (isNewMsg && nc.id !== activeChatId) {
-                    playNotificationSound();
-                    showDesktopNotification(
-                      `Pesan baru dari ${nc.name || "Pengunjung"}`,
-                      nc.last_message.text || "Mengirim pesan baru"
-                    );
-                    setNewIncomingChatIds((prev) => new Set([...prev, nc.id]));
-                    break;
-                  }
-                }
-              }
-            }
-            return newChats;
-          });
-
-          setStats(chatsRes.stats || null);
-          setLastSyncTime(new Date());
-
-          if (!activeChatId && newChats.length > 0) {
-            if (window.innerWidth >= 768) {
-              setActiveChatId(newChats[0].id);
-            }
-          }
-        } else {
-          // Jika nomor bot terputus/logout
-          setChats([]);
-          setActiveChatId(null);
-          setActiveChatDetail(null);
-          setStats(null);
-        }
-      }
-    } catch (err) {
-      if (!silent) toast.error(`Koneksi gateway gagal: ${err.message}`);
-    } finally {
-      if (!silent) setIsLoadingChats(false);
-    }
-  };
+  }, [activeChatDetail?.messages?.length, activeChatId, isLoadingDetail]);
 
   // Fetch settings separately on demand
   const fetchLiveSettings = async () => {
@@ -680,163 +640,28 @@ export default function WhatsAppChatExplorer() {
       if (res.success) {
         setLiveSettings(res.settings);
       }
-    } catch (e) {}
+    } catch { /* Optional notification/settings enrichment may be unavailable. */ }
   };
 
-  // 2. Fetch live chat details
-  const fetchLiveChatDetail = async (chatId, silent = false) => {
-    if (!chatId) return;
-    if (!silent) setIsLoadingDetail(true);
-    try {
-      const res = await apiFetch(
-        `/documents/bps/whatsapp-explorer/chats/${encodeURIComponent(chatId)}`,
-      );
-      if (res.success && res.chat) {
-        setActiveChatDetail((prev) => {
-          if (silent && prev && prev.id === res.chat.id) {
-            const prevMsgs = prev.messages || [];
-            const newMsgs = res.chat.messages || [];
-
-            // Jika pesan baru masuk pada chat yang sedang aktif
-            if (newMsgs.length > prevMsgs.length) {
-              const lastMsg = newMsgs[newMsgs.length - 1];
-              if (lastMsg && !lastMsg.fromMe) {
-                playNotificationSound();
-                if (typeof document !== "undefined" && document.hidden) {
-                  showDesktopNotification(
-                    `Pesan baru dari ${res.chat.name || "Pengunjung"}`,
-                    lastMsg.text || "Mengirim pesan baru"
-                  );
-                }
-              }
-            } else if (
-              newMsgs.length === prevMsgs.length &&
-              newMsgs[newMsgs.length - 1]?.id === prevMsgs[prevMsgs.length - 1]?.id &&
-              prev.session_status === res.chat.session_status
-            ) {
-              return prev; // Pertahankan referensi jika tidak ada perubahan
-            }
-          }
-          return res.chat;
-        });
-
-        // Sinkronkan juga ringkasan obrolan di sidebar jika ada pesan baru
-        if (res.chat.messages?.length > 0) {
-          const lastM = res.chat.messages[res.chat.messages.length - 1];
-          setChats((prev) =>
-            prev.map((c) =>
-              c.id === chatId || c.id === res.chat.id
-                ? {
-                    ...c,
-                    message_count: res.chat.messages.length,
-                    last_message: {
-                      text: lastM.text || (lastM.type !== "text" ? `[${lastM.type}]` : ""),
-                      type: lastM.type,
-                      timestamp: lastM.timestamp,
-                      fromMe: lastM.fromMe,
-                    },
-                    session_status: res.chat.session_status || c.session_status,
-                  }
-                : c,
-            ),
-          );
-        }
-
-        // If direct chat, prioritize PST tab
-        if (!silent && res.chat.is_direct && rightPanelTab !== "media" && rightPanelTab !== "links") {
-          setRightPanelTab("pst");
-        }
-      } else {
-        if (!silent) toast.error(res.error || "Gagal mengambil pesan obrolan");
-      }
-    } catch (err) {
-      if (!silent) toast.error(`Gagal memuat detail obrolan: ${err.message}`);
-    } finally {
-      if (!silent) setIsLoadingDetail(false);
-    }
-  };
-
-  // Manual Trigger: Sinkronisasi instan saat tombol segarkan diklik
   const handleManualSync = async () => {
     setIsManualSyncing(true);
     try {
-      await Promise.all([
+      const results = await Promise.all([
         fetchLiveChats(true),
-        activeChatId ? fetchLiveChatDetail(activeChatId, true) : Promise.resolve(),
+        activeChatId ? fetchLiveChatDetail(activeChatId, true) : Promise.resolve(true),
       ]);
-      setLastSyncTime(new Date());
-      toast.success("Data percakapan berhasil disegarkan!");
-    } catch (e) {
-      toast.error("Gagal menyinkronkan: " + e.message);
+      if (results.every(Boolean)) toast.success("Data percakapan berhasil disegarkan!");
+      else toast.error("Sinkronisasi belum selesai. Akan dicoba kembali otomatis.");
     } finally {
-      setTimeout(() => setIsManualSyncing(false), 450);
+      setIsManualSyncing(false);
     }
   };
 
-  // Realtime Polling: Sinkronisasi pesan dan daftar chat otomatis tanpa perlu refresh browser
   useEffect(() => {
     if (sourceMode !== "live") return;
-
-    let isMounted = true;
-    let isSyncingDetail = false;
-    let isSyncingChats = false;
-
-    // Minta izin notifikasi browser desktop sekali saat mount
     requestNotificationPermission();
     fetchLiveSettings();
-
-    // 1. Polling pesan aktif setiap 1.0 detik (Realtime Chatting)
-    // Berjalan terus tanpa terhenti oleh status jendela browser
-    const detailTimer = setInterval(async () => {
-      if (!isMounted || !activeChatId || isSyncingDetail) return;
-      isSyncingDetail = true;
-      try {
-        await fetchLiveChatDetail(activeChatId, true);
-      } catch (e) {
-      } finally {
-        isSyncingDetail = false;
-      }
-    }, 1000);
-
-    // 2. Polling daftar obrolan setiap 2.0 detik (Daftar chat baru & badge status)
-    const chatsTimer = setInterval(async () => {
-      if (!isMounted || isSyncingChats) return;
-      isSyncingChats = true;
-      try {
-        await fetchLiveChats(true);
-      } catch (e) {
-      } finally {
-        isSyncingChats = false;
-      }
-    }, 2000);
-
-    // 3. Sinkronisasi instan saat tab browser kembali aktif atau mendapat fokus
-    const handleWindowActive = () => {
-      if (isMounted) {
-        fetchLiveChats(true);
-        if (activeChatId) fetchLiveChatDetail(activeChatId, true);
-      }
-    };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("focus", handleWindowActive);
-    }
-    if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", handleWindowActive);
-    }
-
-    return () => {
-      isMounted = false;
-      clearInterval(detailTimer);
-      clearInterval(chatsTimer);
-      if (typeof window !== "undefined") {
-        window.removeEventListener("focus", handleWindowActive);
-      }
-      if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", handleWindowActive);
-      }
-    };
-  }, [sourceMode, activeChatId]);
+  }, [sourceMode]);
 
   // Handle Admin Takeover
   const handleTakeover = async (chatId) => {
@@ -855,15 +680,6 @@ export default function WhatsAppChatExplorer() {
     } catch (err) {
       toast.error(`Error: ${err.message}`);
     }
-  };
-
-  // Handle Buka Modal Penundaan (3 Hari Kerja)
-  const handleOpenDelayModal = (chat = activeChatDetail || activeChat) => {
-    const topic = chat?.visitor_data?.topic || chat?.consultation_topic || chat?.delayed_topic || "";
-    setDelayTopic(topic);
-    setDelayNote(chat?.delayed_note || "");
-    setDelaySendWhatsapp(true);
-    setShowDelayModal(true);
   };
 
   // Submit Penundaan (3 Hari Kerja)
@@ -966,7 +782,7 @@ export default function WhatsAppChatExplorer() {
             method: "POST",
             body: JSON.stringify(analysis),
           });
-        } catch (e) {}
+        } catch { /* Optional notification/settings enrichment may be unavailable. */ }
 
         const b = getIntentBadge(analysis.intent);
         toast.success(`✨ Intent: ${b ? b.label : analysis.intent}`);
@@ -1163,6 +979,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
     setIsLoadingChats(true);
     try {
       const res = await apiFetch("/documents/bps/whatsapp-explorer/backups");
+      if (viewRef.current.sourceMode !== "backup") return;
       if (res.success && res.backups) {
         setBackupFiles(res.backups);
         if (res.backups.length > 0) {
@@ -1222,6 +1039,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
       const res = await apiFetch(
         `/documents/bps/whatsapp-explorer/backups/inspect?filename=${encodeURIComponent(filename)}`,
       );
+      if (viewRef.current.sourceMode !== "backup" || viewRef.current.selectedBackupFilename !== filename) return;
       if (res.success) {
         setSelectedBackupMeta({
           filename,
@@ -1324,7 +1142,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
     } catch (err) {
       toast.error(`Gagal menginspeksi ZIP: ${err.message}`);
     } finally {
-      setIsLoadingChats(false);
+      if (viewRef.current.sourceMode === "backup" && viewRef.current.selectedBackupFilename === filename) setIsLoadingChats(false);
     }
   };
 
@@ -1335,6 +1153,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
       const res = await apiFetch(
         `/documents/bps/whatsapp-explorer/backups/chat?filename=${encodeURIComponent(filename)}&chatId=${encodeURIComponent(chatId)}`,
       );
+      if (viewRef.current.sourceMode !== "backup" || viewRef.current.selectedBackupFilename !== filename || viewRef.current.activeChatId !== chatId) return;
       if (res.success && res.chat) {
         setActiveChatDetail(res.chat);
       } else {
@@ -1343,7 +1162,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
     } catch (err) {
       toast.error(`Gagal memuat riwayat backup: ${err.message}`);
     } finally {
-      setIsLoadingDetail(false);
+      if (viewRef.current.sourceMode === "backup" && viewRef.current.activeChatId === chatId) setIsLoadingDetail(false);
     }
   };
 
@@ -1389,7 +1208,8 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
     if (!replyText.trim() || !activeChatDetail || isSendingReply) return;
 
     setIsSendingReply(true);
-    const target = activeChatDetail.id;
+    const selectedChatId = activeChatId;
+    const target = activeChatDetail.raw_phone || activeChatDetail.phone || activeChatDetail.id;
     const msg = replyText.trim();
     const quotedPayload = replyingToMessage
       ? {
@@ -1412,8 +1232,12 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
       });
 
       if (res.success) {
-        toast.success(`Pesan terkirim ke ${activeChatDetail.name || target}!`);
-        setReplyText("");
+        toast.success(`Pesan diteruskan ke WhatsApp ${activeChatDetail.name || target}.`);
+        if (viewRef.current.sourceMode === "live" && viewRef.current.activeChatId === selectedChatId) {
+          setReplyText((draft) => draft.trim() === msg ? "" : draft);
+          setReplyingToMessage(null);
+          followMessagesRef.current = true;
+        }
 
         const sentQuoted = replyingToMessage
           ? {
@@ -1423,8 +1247,6 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               sender: replyingToMessage.sender,
             }
           : null;
-        setReplyingToMessage(null);
-
         const newMsg = {
           id: res.message_id || `out-${Date.now()}`,
           fromMe: true,
@@ -1436,15 +1258,15 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
         };
 
         setActiveChatDetail((prev) => {
-          if (!prev) return prev;
+          if (!prev || prev.id !== target || viewRef.current.sourceMode !== "live") return prev;
           return {
             ...prev,
-            messages: [...(prev.messages || []), newMsg],
+            messages: mergeMessages(prev.messages, [newMsg]),
             total_messages: (prev.total_messages || 0) + 1,
           };
         });
 
-        setChats((prev) =>
+        setChats((prev) => viewRef.current.sourceMode !== "live" ? prev :
           prev.map((c) =>
             c.id === target
               ? {
@@ -1461,11 +1283,9 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
           ),
         );
 
-        if (sourceMode === "live") {
-          setTimeout(() => {
-            fetchLiveChatDetail(target, true);
-            fetchLiveChats(true);
-          }, 300);
+        if (viewRef.current.sourceMode === "live") {
+          fetchLiveChatDetail(viewRef.current.activeChatId, true);
+          fetchLiveChats(true);
         }
       } else {
         toast.error(res.error || "Gagal mengirim balasan WhatsApp");
@@ -1512,7 +1332,6 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
   const flaggedChatsCount = chats.filter(
     (c) => c.flag_3days || c.delayed_3days || c.session_status === "delayed"
   ).length;
-  const delayedChatsCount = flaggedChatsCount;
 
   const activeChat =
     chats.find((c) => c.id === activeChatId) || activeChatDetail;
@@ -1742,7 +1561,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                 <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-faint font-medium">
                   <span>{formatTime(m.timestamp)}</span>
                   {isOut && (
-                    <CheckDoubleIcon className="text-sky-500 w-3.5 h-3.5 inline-block" />
+                    <span className="text-muted" title="Diteruskan ke WhatsApp; penerimaan belum dikonfirmasi">✓</span>
                   )}
                   {sourceMode === "live" && (
                     <button
@@ -1777,24 +1596,24 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
 
   return (
     // Outer Container: 100% fit in to parent viewport, zero outer scroll!
-    <div className="w-full h-full flex overflow-hidden bg-canvas  text-ink">
+    <div className="wa-explorer w-full h-full flex overflow-hidden bg-canvas text-ink">
       {/* ======================================================== */}
       {/* COLUMN 1: LEFT SIDEBAR (CHATS LIST) — Proportional Width */}
       {/* ======================================================== */}
       <div
         className={`${
           activeChatId ? "hidden md:flex" : "flex"
-        } w-full md:w-[320px] lg:w-[360px] xl:w-[380px] shrink-0 flex-col bg-surface border-r border-line h-full z-10`}
+        } wa-chat-list w-full md:w-[300px] lg:w-[320px] xl:w-[350px] shrink-0 flex-col bg-surface border-r border-line h-full z-10`}
       >
         {/* Sidebar Header (WhatsApp Web Style) */}
-        <div className="h-16 px-4 bg-subtle border-b border-line flex items-center justify-between gap-3 shrink-0">
+        <div className="wa-list-heading bg-surface border-b border-line shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-white shadow-xs shrink-0 ring-2 ring-emerald-500/20">
               <WhatsAppIcon className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h1 className="text-sm font-bold text-ink leading-tight truncate">
+                <h1 className="text-base font-bold text-ink leading-tight">
                   Live Chat PST BPS
                 </h1>
                 {sourceMode === "live" && waConnectionStatus?.is_connected && (
@@ -1809,7 +1628,9 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               </div>
               <p className="text-[11px] font-medium flex items-center gap-1.5 truncate">
                 {sourceMode === "live" ? (
-                  waConnectionStatus?.is_connected ? (
+                  waConnectionStatus.status === "CHECKING" ? (
+                    <span className="text-muted">Menghubungkan gateway…</span>
+                  ) : waConnectionStatus?.is_connected ? (
                     <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
                       <span className="font-mono">{waConnectionStatus.phone_formatted || waConnectionStatus.phone}</span>
@@ -1830,8 +1651,8 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
           </div>
 
           {/* Mode Switcher & Actions */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="bg-hover/90 p-0.5 rounded-lg flex text-[11px] font-semibold">
+          <div className="wa-list-actions">
+            <div className="wa-source-switch bg-subtle p-0.5 rounded-lg flex text-[11px] font-semibold">
               <button
                 type="button"
                 onClick={() => setSourceMode("live")}
@@ -1926,6 +1747,14 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
           </div>
         )}
 
+        {sourceMode === "live" && (syncError || (!waConnectionStatus.is_connected && waConnectionStatus.status !== "CHECKING")) && (
+          <div className="wa-sync-notice" role="status">
+            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+            <span>{syncError || "WhatsApp terputus. Menunggu koneksi kembali…"}
+              {chats.length > 0 && " Data terakhir tetap ditampilkan."}</span>
+          </div>
+        )}
+
         {/* Search Bar & Action Header */}
         <div className="p-3 bg-surface border-b border-line space-y-2.5 shrink-0">
           <div className="flex items-center gap-2">
@@ -1963,7 +1792,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
           </div>
 
           {/* Filter Pills (WhatsApp Web Category Chips) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto text-[11px] pb-0.5 no-scrollbar">
+          <div className="wa-filters flex flex-wrap items-center gap-1.5 text-[11px]">
             {[
               { id: "ALL", label: "Semua", count: chats.length },
               {
@@ -2058,14 +1887,14 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
 
         {/* Chats List (Scrollable) */}
         <div className="flex-1 overflow-y-auto divide-y divide-line bg-surface">
-          {isLoadingChats ? (
+          {isLoadingChats && chats.length === 0 ? (
             <div className="p-10 text-center text-faint text-xs flex flex-col items-center">
               <RefreshIcon className="w-7 h-7 animate-spin text-[#00a884] mb-2.5" />
               <p className="font-semibold text-muted">
                 Memuat daftar obrolan...
               </p>
             </div>
-          ) : sourceMode === "live" && !waConnectionStatus?.is_connected ? (
+          ) : sourceMode === "live" && !waConnectionStatus?.is_connected && chats.length === 0 ? (
             <div className="p-6 text-center space-y-3">
               <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 flex items-center justify-center mx-auto text-xl shadow-xs">
                 ⚠️
@@ -2244,7 +2073,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs text-muted truncate flex-1 flex items-center gap-1">
                         {chat.last_message?.fromMe && (
-                          <CheckDoubleIcon className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                          <span className="text-muted shrink-0" title="Pesan keluar; penerimaan belum dikonfirmasi">✓</span>
                         )}
                         <span className="truncate">
                           {chat.last_message?.text ||
@@ -2267,6 +2096,11 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
           )}
         </div>
 
+        {sourceMode === "live" && lastSyncTime && (
+          <p className="wa-sync-time text-faint" title="Waktu pembaruan terakhir yang berhasil">
+            Diperbarui {lastSyncTime.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          </p>
+        )}
         {/* Sidebar Status Footer */}
         <div className="h-11 px-4 bg-subtle border-t border-line text-xs text-muted flex items-center justify-between shrink-0">
           <span className="font-medium text-[11px] text-muted">
@@ -2295,8 +2129,8 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
         {activeChat ? (
           <>
             {/* Active Chat Header */}
-            <div className="h-16 px-4 md:px-6 bg-subtle border-b border-line flex items-center justify-between gap-3 shrink-0 z-10 shadow-xs">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="wa-conversation-heading bg-surface border-b border-line shrink-0 z-10">
+              <div className="wa-contact-heading flex items-center gap-3 min-w-0">
                 {/* Back button on mobile */}
                 <button
                   type="button"
@@ -2420,7 +2254,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               </div>
 
               {/* Action Toolbar with PST Termination Controls */}
-              <div className="flex items-center gap-1.5 md:gap-2 shrink-0 flex-wrap">
+              <div className="wa-conversation-actions">
                 {/* Tombol Analisis Konteks Obrolan dengan Gemini AI */}
                 {activeChat.is_direct && (
                   <button
@@ -2431,7 +2265,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                     title="Menganalisis pesan masuk dengan Gemini AI (apakah sapaan baru, kelanjutan topik, penundaan, dll)"
                   >
                     <SparklesIcon className={`w-3.5 h-3.5 ${isAnalyzingAi ? "animate-spin text-indigo-600" : "text-indigo-600"}`} />
-                    <span className="hidden sm:inline">{isAnalyzingAi ? "Menganalisis..." : "✨ Analisis AI"}</span>
+                    <span>{isAnalyzingAi ? "Menganalisis..." : "Analisis AI"}</span>
                   </button>
                 )}
 
@@ -2684,7 +2518,13 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
 
             {/* Messages Feed (WhatsApp Subtle Wallpaper Pattern) */}
             <div
-              className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3"
+              ref={messageFeedRef}
+              onScroll={(event) => {
+                const feed = event.currentTarget;
+                followMessagesRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 100;
+                if (followMessagesRef.current) setHasUnreadMessages(false);
+              }}
+              className="wa-message-feed flex-1 min-h-0 overflow-y-auto p-4 md:p-6 space-y-3"
               style={{
                 backgroundImage: "none",
                 backgroundSize: "40px 40px",
@@ -2705,8 +2545,15 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
               )}
             </div>
 
+            {hasUnreadMessages && (
+              <button type="button" className="wa-new-messages" onClick={() => {
+                followMessagesRef.current = true;
+                messageFeedRef.current?.scrollTo({ top: messageFeedRef.current.scrollHeight, behavior: "smooth" });
+                setHasUnreadMessages(false);
+              }}>Pesan baru ↓</button>
+            )}
             {/* Bottom Chat Input Bar */}
-            <div className="p-3 md:px-6 bg-subtle border-t border-line shrink-0">
+            <div className="wa-composer p-3 md:px-6 bg-surface border-t border-line shrink-0">
               {sourceMode === "live" ? (
                 <form onSubmit={handleSendReply} className="space-y-2">
                   {/* Gemini AI Suggested Reply Card */}
@@ -2838,14 +2685,14 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
 
                   {/* Input & Circular Send Button */}
                   <div className="flex items-end gap-2.5">
-                    <div className="flex-1 bg-surface rounded-2xl border border-line-strong shadow-2xs focus-within:ring-2 focus-within:ring-[#00a884] focus-within:border-transparent transition-all">
+                    <div className="flex-1 min-w-0 bg-surface rounded-2xl border border-line-strong shadow-2xs focus-within:ring-2 focus-within:ring-[#00a884] focus-within:border-transparent transition-all">
                       <textarea
                         ref={replyInputRef}
-                        rows={1}
+                        rows={isInputExpanded ? 4 : 2}
                         value={replyText}
                         onChange={(e) => setReplyText(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
+                          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                             e.preventDefault();
                             handleSendReply();
                           }
@@ -2862,7 +2709,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
 
                     <button
                       type="submit"
-                      disabled={!replyText.trim() || isSendingReply}
+                      disabled={!replyText.trim() || isSendingReply || !activeChatDetail || !waConnectionStatus.is_connected}
                       className="w-11 h-11 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white rounded-full flex items-center justify-center shadow-md transition-transform cursor-pointer shrink-0"
                       title="Kirim pesan melalui WhatsApp Gateway"
                     >
@@ -2871,6 +2718,12 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                       ) : (
                         <SendIcon className="w-5 h-5" />
                       )}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-muted">
+                    <span>Enter untuk kirim · Shift + Enter untuk baris baru</span>
+                    <button type="button" className="shrink-0 hover:text-ink" onClick={() => setIsInputExpanded((value) => !value)}>
+                      {isInputExpanded ? "Ringkas kolom" : "Perluas kolom"}
                     </button>
                   </div>
                 </form>
@@ -2952,7 +2805,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
       {/* COLUMN 3: RIGHT PANEL (MEDIA, LINKS, PARTICIPANTS)       */}
       {/* ======================================================== */}
       {showRightPanel && activeChatDetail && (
-        <div className="w-[300px] lg:w-[330px] shrink-0 flex flex-col bg-surface border-l border-line h-full z-20 shadow-xl transition-all">
+        <div className="wa-info-panel w-[300px] lg:w-[330px] shrink-0 flex flex-col bg-surface border-l border-line h-full z-20 shadow-xl transition-all">
           {/* Header */}
           <div className="h-16 px-4 bg-subtle border-b border-line flex items-center justify-between shrink-0">
             <h3 className="font-bold text-ink text-sm">

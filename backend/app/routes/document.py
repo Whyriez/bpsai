@@ -2461,7 +2461,10 @@ def get_whatsapp_explorer_chats():
     base_url = _get_wa_gateway_base_url()
     try:
         res = requests.get(f"{base_url}/whatsapp/explorer/chats", timeout=15)
-        return jsonify(res.json()), res.status_code
+        resp = jsonify(res.json())
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp, res.status_code
     except requests.exceptions.ConnectionError:
         return jsonify({"success": False, "is_connected": False, "chats": [], "total": 0, "error": "Gateway tidak terhubung"}), 503
     except Exception as e:
@@ -2475,7 +2478,10 @@ def get_whatsapp_explorer_chat_detail(chat_id):
     base_url = _get_wa_gateway_base_url()
     try:
         res = requests.get(f"{base_url}/whatsapp/explorer/chats/{chat_id}", timeout=15)
-        return jsonify(res.json()), res.status_code
+        resp = jsonify(res.json())
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp, res.status_code
     except requests.exceptions.ConnectionError:
         return jsonify({"success": False, "error": "Gateway tidak terhubung"}), 503
     except Exception as e:

@@ -61,6 +61,26 @@ function resolveLidToPhone(lidOrJid) {
       if (map[lidOrJid] && map[lidOrJid].endsWith('@s.whatsapp.net')) return map[lidOrJid];
     }
   } catch (e) {}
+
+  // Fallback: cari dari riwayat pesan tersimpan jika ada sender phone number
+  try {
+    const msgs = readChatMessages(lidOrJid);
+    for (const m of msgs) {
+      if (m.from && m.from.endsWith('@s.whatsapp.net') && !isSelfJid(m.from)) {
+        handlePhoneNumberShare({ lid: lidOrJid, jid: m.from });
+        return m.from;
+      }
+      if (m.participant && m.participant.endsWith('@s.whatsapp.net') && !isSelfJid(m.participant)) {
+        handlePhoneNumberShare({ lid: lidOrJid, jid: m.participant });
+        return m.participant;
+      }
+      if (m.rawMessage?.key?.senderPn && m.rawMessage.key.senderPn.endsWith('@s.whatsapp.net')) {
+        handlePhoneNumberShare({ lid: lidOrJid, jid: m.rawMessage.key.senderPn });
+        return m.rawMessage.key.senderPn;
+      }
+    }
+  } catch (e) {}
+
   return lidOrJid;
 }
 

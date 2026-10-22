@@ -5,6 +5,14 @@ import { fetchParticipatingGroups, fetchGroupMetadata } from '../services/whatsa
 
 const router = express.Router();
 
+// Middleware anti-cache: pastikan respons selalu fresh untuk live chat realtime
+router.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 let _getSock = () => null;
 let _getIsConnected = () => false;
 let _getNewsletters = null;
@@ -26,14 +34,26 @@ export function setExplorerSocketGetter(getSock, getIsConnected, getNewsletters,
 function formatTargetJid(target) {
   let cleaned = String(target || '').trim();
   if (!cleaned) return null;
+
+  // 1. Jika target adalah LID (@lid), SELALU resolve ke nomor telepon asli (@s.whatsapp.net) jika diketahui
+  if (cleaned.endsWith('@lid')) {
+    const resolved = messageStore.resolveLidToPhone(cleaned);
+    if (resolved && resolved.endsWith('@s.whatsapp.net')) {
+      console.log(`🎯 [formatTargetJid] Mengubah target LID ${cleaned} -> nomor telepon ${resolved}`);
+      return resolved;
+    }
+  }
+
+  // 2. Format resmi WhatsApp
   if (
     cleaned.endsWith('@g.us') ||
     cleaned.endsWith('@s.whatsapp.net') ||
-    cleaned.endsWith('@newsletter') ||
-    cleaned.includes('@')
+    cleaned.endsWith('@newsletter')
   ) {
     return cleaned;
   }
+
+  // 3. Format nomor HP standar
   cleaned = cleaned.replace(/[^\d]/g, '');
   if (cleaned.startsWith('0')) {
     cleaned = '62' + cleaned.slice(1);

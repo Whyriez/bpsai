@@ -86,16 +86,25 @@ liveChatSessionService.setSocketGetter(() => sock, () => isConnected);
 function formatJid(target) {
   let cleaned = String(target || '').trim();
   if (!cleaned) return null;
-  // Jika sudah berakhiran format WhatsApp valid (@g.us, @s.whatsapp.net, @newsletter)
+
+  // 1. Jika target berakhiran @lid, WAJIB di-resolve ke nomor telepon (@s.whatsapp.net) jika diketahui
+  if (cleaned.endsWith('@lid')) {
+    const resolved = messageStore.resolveLidToPhone(cleaned);
+    if (resolved && resolved.endsWith('@s.whatsapp.net')) {
+      console.log(`🎯 [formatJid] Mengubah target LID ${cleaned} -> nomor telepon ${resolved}`);
+      return resolved;
+    }
+  }
+
+  // 2. Jika sudah berakhiran format WhatsApp valid (@g.us, @s.whatsapp.net, @newsletter)
   if (
     cleaned.endsWith('@g.us') ||
     cleaned.endsWith('@s.whatsapp.net') ||
-    cleaned.endsWith('@newsletter') ||
-    cleaned.includes('@')
+    cleaned.endsWith('@newsletter')
   ) {
     return cleaned;
   }
-  // Bersihkan karakter non-digit untuk nomor telepon biasa
+  // 3. Bersihkan karakter non-digit untuk nomor telepon biasa
   cleaned = cleaned.replace(/[^\d]/g, '');
   if (cleaned.startsWith('0')) {
     cleaned = '62' + cleaned.slice(1);
