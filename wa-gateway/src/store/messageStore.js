@@ -38,6 +38,11 @@ function ensureDir() {
  */
 function handlePhoneNumberShare({ lid, jid }) {
   if (!lid || !jid) return;
+  // Proteksi: lid harus berakhiran @lid dan tidak boleh diawali nomor HP 628/08
+  const lidUser = String(lid).split('@')[0];
+  if (lidUser.startsWith('628') || lidUser.startsWith('08')) {
+    return;
+  }
   ensureDir();
   let map = {};
   try {
@@ -55,6 +60,16 @@ function handlePhoneNumberShare({ lid, jid }) {
 function resolveLidToPhone(lidOrJid) {
   if (!lidOrJid) return lidOrJid;
   if (lidOrJid.endsWith('@s.whatsapp.net')) return lidOrJid;
+
+  // Koreksi: Jika formatnya adalah nomor HP yang salah diberi suffix @lid (misal 6282290211876@lid)
+  if (lidOrJid.endsWith('@lid')) {
+    const user = lidOrJid.split('@')[0];
+    if ((user.startsWith('62') || user.startsWith('0')) && user.length >= 10 && user.length <= 13) {
+      const num = user.startsWith('0') ? '62' + user.slice(1) : user;
+      return `${num}@s.whatsapp.net`;
+    }
+  }
+
   try {
     if (fs.existsSync(LID_MAP_FILE)) {
       const map = JSON.parse(fs.readFileSync(LID_MAP_FILE, 'utf8'));
@@ -89,11 +104,97 @@ function resolvePhoneToLid(phoneJid) {
   try {
     if (fs.existsSync(LID_MAP_FILE)) {
       const map = JSON.parse(fs.readFileSync(LID_MAP_FILE, 'utf8'));
-      if (map[phoneJid] && map[phoneJid].endsWith('@lid')) return map[phoneJid];
+      if (map[phoneJid] && map[phoneJid].endsWith('@lid')) {
+        const user = map[phoneJid].split('@')[0];
+        // Proteksi: jangan kembalikan mapping korup nomor telepon berakhiran @lid
+        if (!user.startsWith('628') && !user.startsWith('08')) {
+          return map[phoneJid];
+        }
+      }
     }
   } catch (e) {}
   return null;
 }
+
+/**
+ * Cari pesan yang tersimpan berdasarkan key pesan untuk Signal retry handshake (Baileys getMessage).
+ * Memeriksa chatId utama, canonical Phone JID, dan mapped LID untuk menemukan ciphertext / text asli.
+ */
+function findMessageForRetry(key) {
+  if (!key?.id) return null;
+  const candidateJids = new Set();
+  if (key.remoteJid) {
+    candidateJids.add(key.remoteJid);
+    const phone = resolveLidToPhone(key.remoteJid);
+    if (phone) candidateJids.add(phone);
+    const lid = resolvePhoneToLid(key.remoteJid);
+    if (lid) candidateJids.add(lid);
+  }
+
+  for (const jid of candidateJids) {
+    const msgs = readChatMessages(jid);
+    const found = msgs.find(m => m && m.id === key.id);
+    if (found) {
+      if (found.rawMessage) return found.rawMessage;
+      if (found.text) return { conversation: found.text };
+    }
+  }
+  return null;
+}
+
+/**
+ * Sanitasi berkas data store secara otomatis saat startup:
+ * Memulihkan dan membersihkan berkas yang rusak seperti 628...@lid.json atau entry korup di lid_map.json.
+ */
+function sanitizeDataStore() {
+  ensureDir();
+  try {
+    // 1. Sanitasi lid_map.json
+    if (fs.existsSync(LID_MAP_FILE)) {
+      const map = JSON.parse(fs.readFileSync(LID_MAP_FILE, 'utf8'));
+      let modified = false;
+      for (const [k, v] of Object.entries(map)) {
+        const kUser = k.split('@')[0];
+        const vUser = typeof v === 'string' ? v.split('@')[0] : '';
+        if ((k.endsWith('@lid') && (kUser.startsWith('628') || kUser.startsWith('08'))) ||
+            (typeof v === 'string' && v.endsWith('@lid') && (vUser.startsWith('628') || vUser.startsWith('08')))) {
+          delete map[k];
+          modified = true;
+        }
+      }
+      if (modified) {
+        fs.writeFileSync(LID_MAP_FILE, JSON.stringify(map, null, 2), 'utf8');
+        console.log('🧹 [MessageStore] Berhasil membersihkan entry LID korup dari lid_map.json');
+      }
+    }
+
+    // 2. Sanitasi berkas obrolan data/messages/*@lid.json di mana prefixnya adalah nomor HP
+    if (fs.existsSync(DATA_DIR)) {
+      const files = fs.readdirSync(DATA_DIR);
+      for (const file of files) {
+        if (file.endsWith('@lid.json')) {
+          const user = file.replace('@lid.json', '');
+          if ((user.startsWith('62') || user.startsWith('0')) && user.length >= 10 && user.length <= 13) {
+            const phone = user.startsWith('0') ? '62' + user.slice(1) : user;
+            const targetJid = `${phone}@s.whatsapp.net`;
+            const corruptFp = path.join(DATA_DIR, file);
+            try {
+              const msgs = JSON.parse(fs.readFileSync(corruptFp, 'utf8'));
+              if (Array.isArray(msgs) && msgs.length > 0) {
+                saveMessages(targetJid, msgs);
+                console.log(`🧹 [MessageStore] Menggabungkan ${msgs.length} pesan dari berkas korup ${file} ke ${targetJid}`);
+              }
+              fs.unlinkSync(corruptFp);
+            } catch (_) {}
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ [MessageStore] Catatan sanitasi data store:', err.message);
+  }
+}
+sanitizeDataStore();
 
 let myJids = new Set();
 function loadMyJids() {
@@ -1639,6 +1740,7 @@ export default {
   formatPhoneNumber,
   clearLiveStore,
   createSafetyBackup,
+  findMessageForRetry,
   getSessionInfo,
   saveSessionInfo,
 };

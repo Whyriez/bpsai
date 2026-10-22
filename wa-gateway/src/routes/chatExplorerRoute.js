@@ -35,42 +35,56 @@ function formatTargetJid(target) {
   let cleaned = String(target || '').trim();
   if (!cleaned) return null;
 
-  // 1. Jika target adalah LID (@lid), SELALU resolve ke nomor telepon asli (@s.whatsapp.net) jika diketahui
+  // 1. Jika target adalah LID (@lid)
   if (cleaned.endsWith('@lid')) {
-    const resolved = messageStore.resolveLidToPhone(cleaned);
-    if (resolved && resolved.endsWith('@s.whatsapp.net')) {
-      console.log(`🎯 [formatTargetJid] Mengubah target LID ${cleaned} -> nomor telepon ${resolved}`);
-      return resolved;
+    const user = cleaned.split('@')[0];
+    // Proteksi: Jika user adalah nomor telepon Indonesia (misal 628... atau 08...),
+    // itu BUKAN LID melainkan nomor HP yang salah diberi suffix @lid. Ubah ke @s.whatsapp.net!
+    if ((user.startsWith('62') || user.startsWith('0')) && user.length >= 10 && user.length <= 13) {
+      const num = user.startsWith('0') ? '62' + user.slice(1) : user;
+      return `${num}@s.whatsapp.net`;
     }
-    // Jika belum terpetakan ke nomor telepon, tetap pertahankan format @lid asli
     return cleaned;
   }
 
-  // 2. Format resmi WhatsApp (@g.us, @s.whatsapp.net, @newsletter, @lid)
+  // 2. Format resmi WhatsApp (@g.us, @newsletter)
   if (
     cleaned.endsWith('@g.us') ||
-    cleaned.endsWith('@s.whatsapp.net') ||
-    cleaned.endsWith('@newsletter') ||
-    cleaned.endsWith('@lid')
+    cleaned.endsWith('@newsletter')
   ) {
     return cleaned;
   }
 
-  // 3. Format nomor HP standar atau digit LID tanpa sufiks
+  // 3. Format nomor telepon WhatsApp (@s.whatsapp.net)
+  if (cleaned.endsWith('@s.whatsapp.net')) {
+    const mappedLid = messageStore.resolvePhoneToLid(cleaned);
+    if (mappedLid && mappedLid.endsWith('@lid') && !mappedLid.startsWith('628') && !mappedLid.startsWith('08')) {
+      console.log(`🎯 [formatTargetJid] Menggunakan sesi aktif LID ${mappedLid} untuk nomor ${cleaned}`);
+      return mappedLid;
+    }
+    return cleaned;
+  }
+
+  // 4. Format nomor HP standar tanpa sufiks
   cleaned = cleaned.replace(/[^\d]/g, '');
   if (!cleaned) return null;
-
-  // Cek apakah angka ini merupakan LID yang tersimpan
-  const resolvedFromLid = messageStore.resolveLidToPhone(`${cleaned}@lid`);
-  if (resolvedFromLid && resolvedFromLid.endsWith('@s.whatsapp.net')) {
-    console.log(`🎯 [formatTargetJid] Mengubah digit LID ${cleaned} -> nomor telepon ${resolvedFromLid}`);
-    return resolvedFromLid;
-  }
 
   if (cleaned.startsWith('0')) {
     cleaned = '62' + cleaned.slice(1);
   }
-  return `${cleaned}@s.whatsapp.net`;
+
+  // Cek jika nomor ini adalah digit LID murni (LID WhatsApp umumnya 15 digit dan BUKAN nomor HP Indonesia 628...)
+  if (cleaned.length >= 14 && !cleaned.startsWith('628')) {
+    return `${cleaned}@lid`;
+  }
+
+  const phoneJid = `${cleaned}@s.whatsapp.net`;
+  const mappedLid = messageStore.resolvePhoneToLid(phoneJid);
+  if (mappedLid && mappedLid.endsWith('@lid') && !mappedLid.startsWith('628') && !mappedLid.startsWith('08')) {
+    console.log(`🎯 [formatTargetJid] Menggunakan sesi aktif LID ${mappedLid} untuk nomor ${phoneJid}`);
+    return mappedLid;
+  }
+  return phoneJid;
 }
 
 // GET /whatsapp/explorer/chats — get all stored chat summaries merged with live groups & channels

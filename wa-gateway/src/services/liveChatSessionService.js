@@ -41,10 +41,12 @@ let settings = { ...DEFAULT_SETTINGS };
 const processingLocks = new Set(); // Prevent concurrent auto-reply per JID
 let _sockGetter = () => null;
 let _isConnectedGetter = () => false;
+let _cacheOutgoingMessage = null;
 
-export function setSocketGetter(sockGetter, isConnectedGetter) {
+export function setSocketGetter(sockGetter, isConnectedGetter, cacheOutgoingMessage) {
   _sockGetter = sockGetter;
   _isConnectedGetter = isConnectedGetter;
+  if (cacheOutgoingMessage) _cacheOutgoingMessage = cacheOutgoingMessage;
 }
 
 const botMessageIds = new Set();
@@ -618,52 +620,11 @@ export async function detectIncomingMessageIntent(chatId, incomingText, session)
     fromMe: Boolean(m.fromMe),
     timestamp: m.timestamp || Math.floor(Date.now() / 1000)
   }));
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-    const res = await fetch('http://127.0.0.1:5000/api/documents/bps/whatsapp-explorer/ai-detect-intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: canonicalId,
-        incoming_text: incomingText,
-        recent_messages: recentMsgs,
-        session_meta: {
-          status: currentSession?.status,
-          delayed_3days: Boolean(currentSession?.delayed_3days || currentSession?.flag_3days),
-          delayed_topic: currentSession?.delayedTopic || currentSession?.consultationTopic,
-          visitor_data: currentSession?.visitorData,
-          topic: currentSession?.consultationTopic
-        }
-      }),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.success && data.analysis) {
-        saveAiAnalysis(canonicalId, data.analysis);
-        console.log(`🤖 [LiveChat AI Gemini] Intent untuk ${canonicalId}: ${data.analysis.intent} (Skip Greeting: ${data.analysis.should_skip_opening_greeting}, Continuation: ${data.analysis.is_continuation}, Topik: "${data.analysis.topic}")`);
-        return data.analysis;
-      }
-    }
-  } catch (err) {
-    // Timeout atau backend python offline: beralih ke analisis lokal
-  }
-
-  // Fallback ke analisis lokal cerdas
-  const localAnalysis = analyzeIntentLocally(incomingText, recentMsgs, currentSession);
-  saveAiAnalysis(canonicalId, localAnalysis);
-  console.log(`🧠 [LiveChat AI Local] Intent untuk ${canonicalId}: ${localAnalysis.intent} (Skip Greeting: ${localAnalysis.should_skip_opening_greeting}, Continuation: ${localAnalysis.is_continuation}, Topik: "${localAnalysis.topic}")`);
-  return localAnalysis;
+  return analyzeIntentLocally(incomingText, recentMsgs, currentSession);
 }
 
 /**
  * Handle incoming message dari WhatsApp
- * Otomatis membalas chat sebelum admin mengambil alih jika sesi baru atau belum auto-greet.
  */
 export async function handleIncomingMessage(sock, msg) {
   const rawChatId = msg.key?.remoteJid;

@@ -95,47 +95,67 @@ setExplorerSocketGetter(
   fetchSubscribedNewsletters,
   (id, msg) => messageMediaCache.set(id, msg)
 );
-liveChatSessionService.setSocketGetter(() => sock, () => isConnected);
+liveChatSessionService.setSocketGetter(
+  () => sock,
+  () => isConnected,
+  (id, msg) => messageMediaCache.set(id, msg)
+);
 
 function formatJid(target) {
   let cleaned = String(target || '').trim();
   if (!cleaned) return null;
 
-  // 1. Jika target berakhiran @lid, WAJIB di-resolve ke nomor telepon (@s.whatsapp.net) jika diketahui
+  // 1. Jika target berakhiran @lid
   if (cleaned.endsWith('@lid')) {
-    const resolved = messageStore.resolveLidToPhone(cleaned);
-    if (resolved && resolved.endsWith('@s.whatsapp.net')) {
-      console.log(`🎯 [formatJid] Mengubah target LID ${cleaned} -> nomor telepon ${resolved}`);
-      return resolved;
+    const user = cleaned.split('@')[0];
+    // Proteksi: Jika user adalah nomor telepon Indonesia (misal 628... atau 08...),
+    // itu BUKAN LID melainkan nomor HP yang salah diberi suffix @lid. Ubah ke @s.whatsapp.net!
+    if ((user.startsWith('62') || user.startsWith('0')) && user.length >= 10 && user.length <= 13) {
+      const num = user.startsWith('0') ? '62' + user.slice(1) : user;
+      return `${num}@s.whatsapp.net`;
     }
-    // Jika belum terpetakan, pertahankan @lid asli
     return cleaned;
   }
 
-  // 2. Jika sudah berakhiran format WhatsApp valid (@g.us, @s.whatsapp.net, @newsletter, @lid)
+  // 2. Format resmi WhatsApp (@g.us, @newsletter)
   if (
     cleaned.endsWith('@g.us') ||
-    cleaned.endsWith('@s.whatsapp.net') ||
-    cleaned.endsWith('@newsletter') ||
-    cleaned.endsWith('@lid')
+    cleaned.endsWith('@newsletter')
   ) {
     return cleaned;
   }
-  // 3. Bersihkan karakter non-digit untuk nomor telepon biasa
+
+  // 3. Jika target adalah nomor telepon (@s.whatsapp.net), periksa apakah ada mapped LID sah.
+  // Jika kontak ini mengobrol melalui sesi LID, balasan WAJIB dikirimkan ke LID aslinya!
+  if (cleaned.endsWith('@s.whatsapp.net')) {
+    const mappedLid = messageStore.resolvePhoneToLid(cleaned);
+    if (mappedLid && mappedLid.endsWith('@lid') && !mappedLid.startsWith('628') && !mappedLid.startsWith('08')) {
+      console.log(`🎯 [formatJid] Menggunakan sesi aktif LID ${mappedLid} untuk nomor ${cleaned}`);
+      return mappedLid;
+    }
+    return cleaned;
+  }
+
+  // 4. Bersihkan karakter non-digit untuk nomor telepon biasa
   cleaned = cleaned.replace(/[^\d]/g, '');
   if (!cleaned) return null;
-
-  // Cek apakah angka ini merupakan LID yang tersimpan
-  const resolvedFromLid = messageStore.resolveLidToPhone(`${cleaned}@lid`);
-  if (resolvedFromLid && resolvedFromLid.endsWith('@s.whatsapp.net')) {
-    console.log(`🎯 [formatJid] Mengubah digit LID ${cleaned} -> nomor telepon ${resolvedFromLid}`);
-    return resolvedFromLid;
-  }
 
   if (cleaned.startsWith('0')) {
     cleaned = '62' + cleaned.slice(1);
   }
-  return `${cleaned}@s.whatsapp.net`;
+
+  // Cek jika nomor ini adalah digit LID murni (LID WhatsApp umumnya 15 digit dan BUKAN nomor HP Indonesia 628...)
+  if (cleaned.length >= 14 && !cleaned.startsWith('628')) {
+    return `${cleaned}@lid`;
+  }
+
+  const phoneJid = `${cleaned}@s.whatsapp.net`;
+  const mappedLid = messageStore.resolvePhoneToLid(phoneJid);
+  if (mappedLid && mappedLid.endsWith('@lid') && !mappedLid.startsWith('628') && !mappedLid.startsWith('08')) {
+    console.log(`🎯 [formatJid] Menggunakan sesi aktif LID ${mappedLid} untuk nomor ${phoneJid}`);
+    return mappedLid;
+  }
+  return phoneJid;
 }
 
 async function connectToWhatsApp() {
@@ -185,13 +205,13 @@ async function connectToWhatsApp() {
             return cached;
           }
         }
-        // 2. Cek dari messageStore lokal (resolve canonical ID jika remoteJid berupa LID)
-        if (key?.remoteJid && key?.id) {
-          const canonicalId = messageStore.resolveLidToPhone(key.remoteJid) || key.remoteJid;
-          const msgs = messageStore.readChatMessages(canonicalId) || [];
-          const found = msgs.find((item) => item.id === key.id);
-          if (found?.rawMessage) return found.rawMessage;
-          if (found?.text) return { conversation: found.text };
+        // 2. Cek dari messageStore lokal (memeriksa file remoteJid, canonical phone, dan mapped LID)
+        if (key?.id) {
+          const stored = messageStore.findMessageForRetry(key);
+          if (stored) {
+            console.log(`🔑 [Baileys getMessage] MessageStore HIT untuk pesan ID: ${key.id}`);
+            return stored;
+          }
         }
         // 3. Fallback proto Message kosong agar WhatsApp retry loop tidak deadlock
         return proto.Message.fromObject({});
