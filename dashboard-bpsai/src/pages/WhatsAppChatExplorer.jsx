@@ -206,6 +206,15 @@ const SparklesIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+// --- Time-aware Dynamic Greeting Helper ---
+const getTimeGreeting = () => {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 11) return "pagi";
+  if (h >= 11 && h < 15) return "siang";
+  if (h >= 15 && h < 18) return "sore";
+  return "malam";
+};
+
 // --- Official PST BPS Gorontalo Templates (Conforming to Uploaded Guide) ---
 const OFFICIAL_TEMPLATES = [
   {
@@ -214,7 +223,7 @@ const OFFICIAL_TEMPLATES = [
     category: "PANDUAN",
     badge: "Jam Layanan",
     description: "Sapaan awal saat pesan masuk dalam jam operasional layanan",
-    getText: (greeting = "pagi/siang/sore") =>
+    getText: (greeting = getTimeGreeting()) =>
 `Selamat ${greeting}.
 Terima kasih telah menghubungi PST BPS Provinsi Gorontalo
 Mohon kesediaannya untuk mengisi data berikut ya Kak 😊
@@ -228,7 +237,7 @@ Instansi/Asal : `
     category: "PANDUAN",
     badge: "Luar Jam Kerja",
     description: "Sapaan saat pesan masuk di luar jam kerja atau hari libur",
-    getText: (greeting = "pagi/siang/sore") =>
+    getText: (greeting = getTimeGreeting()) =>
 `Selamat ${greeting}.
 Mohon maaf atas keterlambatan respons kami dikarenakan pesan Anda masuk di luar jam operasional petugas layanan kami.
 Terima kasih telah bersedia menunggu. Sebelumnya, mohon kesediaannya terlebih dahulu untuk menginformasikan:
@@ -242,7 +251,7 @@ Asal Instansi : `
     category: "TERMINASI",
     badge: "Flag 3 Hari",
     description: "Tandai penundaan data teknis (maks. 3 hari kerja) & pasang flag agar siap direach-out",
-    getText: (greeting = "siang") =>
+    getText: (greeting = getTimeGreeting()) =>
 `Selamat ${greeting} Kak. Data yang Kakak butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja. Kami akan menghubungi Kakak kembali melalui nomor ini setelah data tersebut siap diserahkan.
 Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`
   },
@@ -252,7 +261,7 @@ Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`
     category: "REACH OUT",
     badge: "Pasca-3 Hari",
     description: "Menghubungi kembali kontak tertanda flag saat data teknis telah siap diserahkan tim BPS",
-    getText: (topic = "yang Kakak butuhkan", greeting = "siang") =>
+    getText: (topic = "yang Kakak butuhkan", greeting = getTimeGreeting()) =>
 `Selamat ${greeting} Kak. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan ya Kak.
 
 Berikut informasinya:
@@ -395,13 +404,7 @@ const showDesktopNotification = (title, body) => {
   } catch { /* Optional notification/settings enrichment may be unavailable. */ }
 };
 
-const getTimeGreeting = () => {
-  const h = new Date().getHours();
-  if (h >= 5 && h < 11) return "pagi";
-  if (h >= 11 && h < 15) return "siang";
-  if (h >= 15 && h < 18) return "sore";
-  return "malam";
-};
+
 
 // Intent badge configuration based on Gemini AI detection
 const getIntentBadge = (intent) => {
@@ -517,10 +520,6 @@ export default function WhatsAppChatExplorer() {
   const [delayNote, setDelayNote] = useState("");
   const [delaySendWhatsapp, setDelaySendWhatsapp] = useState(true);
   const [isSubmittingDelay, setIsSubmittingDelay] = useState(false);
-
-  // Gemini AI Smart Intent State
-  const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
-  const [showAiCard, setShowAiCard] = useState(true);
 
   const messagesEndRef = useRef(null);
   const messageFeedRef = useRef(null);
@@ -712,87 +711,6 @@ export default function WhatsAppChatExplorer() {
       toast.error(`Error: ${err.message}`);
     } finally {
       setIsSubmittingDelay(false);
-    }
-  };
-
-  // Trigger Gemini AI Intent Detection & Suggested Reply
-  const handleAnalyzeAiIntent = async () => {
-    if (!activeChatId || !activeChatDetail) return;
-    setIsAnalyzingAi(true);
-    setShowAiCard(true);
-
-    try {
-      const msgs = activeChatDetail.messages || [];
-      const lastIncoming = [...msgs].reverse().find((m) => !m.fromMe);
-      const incomingText = lastIncoming?.text || (msgs.length > 0 ? msgs[msgs.length - 1]?.text : "");
-
-      const recentMsgs = msgs.slice(-8).map((m) => ({
-        text: m.text || "",
-        fromMe: Boolean(m.fromMe),
-        timestamp: m.timestamp || Math.floor(Date.now() / 1000),
-      }));
-
-      const res = await apiFetch("/documents/bps/whatsapp-explorer/ai-detect-intent", {
-        method: "POST",
-        body: JSON.stringify({
-          chat_id: activeChatId,
-          incoming_text: incomingText,
-          recent_messages: recentMsgs,
-          session_meta: {
-            status: activeChatDetail.session_status,
-            delayed_3days: Boolean(activeChatDetail.delayed_3days),
-            delayed_topic: activeChatDetail.delayed_topic || activeChatDetail.consultation_topic,
-            visitor_data: activeChatDetail.visitor_data,
-            topic: activeChatDetail.consultation_topic,
-          },
-        }),
-      });
-
-      if (res?.success && res.analysis) {
-        const analysis = res.analysis;
-        setActiveChatDetail((prev) =>
-          prev
-            ? {
-                ...prev,
-                ai_analysis: analysis,
-                ai_intent: analysis.intent,
-                ai_topic: analysis.topic,
-                ai_suggested_reply: analysis.suggested_reply,
-                ai_analyzed_at: Math.floor(Date.now() / 1000),
-              }
-            : prev
-        );
-
-        setChats((prev) =>
-          prev.map((c) =>
-            c.id === activeChatId
-              ? {
-                  ...c,
-                  ai_intent: analysis.intent,
-                  ai_topic: analysis.topic,
-                  ai_suggested_reply: analysis.suggested_reply,
-                  ai_analyzed_at: Math.floor(Date.now() / 1000),
-                }
-              : c
-          )
-        );
-
-        try {
-          await apiFetch(`/documents/bps/whatsapp-explorer/sessions/${encodeURIComponent(activeChatId)}/ai-analysis`, {
-            method: "POST",
-            body: JSON.stringify(analysis),
-          });
-        } catch { /* Optional notification/settings enrichment may be unavailable. */ }
-
-        const b = getIntentBadge(analysis.intent);
-        toast.success(`✨ Intent: ${b ? b.label : analysis.intent}`);
-      } else {
-        toast.error(res?.error || "Gagal menganalisis obrolan dengan AI");
-      }
-    } catch (err) {
-      toast.error(`Analisis AI gagal: ${err.message}`);
-    } finally {
-      setIsAnalyzingAi(false);
     }
   };
 
@@ -1209,7 +1127,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
 
     setIsSendingReply(true);
     const selectedChatId = activeChatId;
-    const target = activeChatDetail.raw_phone || activeChatDetail.phone || activeChatDetail.id;
+    const target = activeChatDetail.id;
     const msg = replyText.trim();
     const quotedPayload = replyingToMessage
       ? {
@@ -2255,20 +2173,6 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
 
               {/* Action Toolbar with PST Termination Controls */}
               <div className="wa-conversation-actions">
-                {/* Tombol Analisis Konteks Obrolan dengan Gemini AI */}
-                {activeChat.is_direct && (
-                  <button
-                    type="button"
-                    onClick={handleAnalyzeAiIntent}
-                    disabled={isAnalyzingAi}
-                    className="px-2.5 md:px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
-                    title="Menganalisis pesan masuk dengan Gemini AI (apakah sapaan baru, kelanjutan topik, penundaan, dll)"
-                  >
-                    <SparklesIcon className={`w-3.5 h-3.5 ${isAnalyzingAi ? "animate-spin text-indigo-600" : "text-indigo-600"}`} />
-                    <span>{isAnalyzingAi ? "Menganalisis..." : "Analisis AI"}</span>
-                  </button>
-                )}
-
                 {/* Tombol Khusus Saat Kontak Tertanda Flag 3 Hari */}
                 {activeChat.is_direct &&
                   (activeChatDetail?.flag_3days ||
@@ -2556,83 +2460,8 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
             <div className="wa-composer p-3 md:px-6 bg-surface border-t border-line shrink-0">
               {sourceMode === "live" ? (
                 <form onSubmit={handleSendReply} className="space-y-2">
-                  {/* Gemini AI Suggested Reply Card */}
-                  {activeChatDetail?.ai_suggested_reply && showAiCard && (
-                    <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/80 to-emerald-50/80 dark:from-zinc-900 dark:via-zinc-850 dark:to-zinc-900 border border-indigo-200 dark:border-indigo-800/80 rounded-xl p-3 shadow-xs animate-fadeIn space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
-                            <SparklesIcon className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                            <span>Saran Balasan Cerdas (Gemini AI)</span>
-                          </span>
-                          {activeChatDetail.ai_intent && (() => {
-                            const badge = getIntentBadge(activeChatDetail.ai_intent);
-                            return badge ? (
-                              <span className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full border ${badge.bg}`}>
-                                {badge.icon} {badge.label}
-                              </span>
-                            ) : null;
-                          })()}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={handleAnalyzeAiIntent}
-                            disabled={isAnalyzingAi}
-                            className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
-                            title="Minta analisis & saran balasan baru dari Gemini"
-                          >
-                            <span className={isAnalyzingAi ? "animate-spin" : ""}>🔄</span>
-                            <span>Generate Ulang</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowAiCard(false)}
-                            className="text-muted hover:text-ink text-xs p-0.5 rounded cursor-pointer"
-                            title="Tutup kartu saran balasan"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="bg-surface/90 dark:bg-zinc-800/90 p-2.5 rounded-lg border border-line text-xs text-ink leading-relaxed">
-                        <p className="italic">"{activeChatDetail.ai_suggested_reply}"</p>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 pt-0.5">
-                        <span className="text-[10.5px] text-muted truncate max-w-md">
-                          {activeChatDetail.ai_analysis?.summary || (activeChatDetail.ai_topic ? `Topik: ${activeChatDetail.ai_topic}` : "Draf balasan beretika PST BPS Gorontalo")}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReplyText(activeChatDetail.ai_suggested_reply);
-                            replyInputRef.current?.focus();
-                            toast.success("Saran balasan AI disalin ke kolom input!");
-                          }}
-                          className="px-3 py-1 bg-brand hover:bg-brand-hover text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
-                        >
-                          <span>📋 Gunakan Balasan Ini</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Official PST BPS Gorontalo Canned Templates */}
                   <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs text-muted no-scrollbar">
-                    {/* Tombol Minta Analisis AI */}
-                    <button
-                      type="button"
-                      onClick={handleAnalyzeAiIntent}
-                      disabled={isAnalyzingAi}
-                      className="px-3 py-1 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white whitespace-nowrap cursor-pointer transition-all shadow-xs font-bold flex items-center gap-1 text-[11.5px] shrink-0"
-                      title="Deteksi intent pesan pengunjung & buatkan draf balasan cerdas dengan Gemini AI"
-                    >
-                      <SparklesIcon className={`w-3.5 h-3.5 ${isAnalyzingAi ? "animate-spin" : ""}`} />
-                      <span>{isAnalyzingAi ? "Menganalisis..." : "✨ Analisis Gemini"}</span>
-                    </button>
-
                     <span className="text-[11px] font-bold text-faint shrink-0 flex items-center gap-1 pl-1">
                       <span>📜 Panduan:</span>
                     </span>
@@ -2961,52 +2790,6 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                         {activeChatDetail.visitor_data?.instansi || "-"}
                       </span>
                     </div>
-                  </div>
-                </div>
-
-                {/* AI Intent & Context Card */}
-                <div className="p-3.5 bg-gradient-to-br from-indigo-50/70 to-blue-50/50 dark:from-indigo-950/40 dark:to-zinc-900 rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 shadow-2xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h5 className="text-xs font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
-                      <SparklesIcon className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                      <span>Analisis Gemini AI</span>
-                    </h5>
-                    <button
-                      type="button"
-                      onClick={handleAnalyzeAiIntent}
-                      disabled={isAnalyzingAi}
-                      className="text-[10.5px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
-                    >
-                      <span className={isAnalyzingAi ? "animate-spin" : ""}>🔄</span>
-                      <span>{isAnalyzingAi ? "Menganalisis..." : "Analisis Ulang"}</span>
-                    </button>
-                  </div>
-
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between items-center py-1 border-b border-indigo-100 dark:border-indigo-900/60">
-                      <span className="text-muted">Niat (Intent):</span>
-                      <span className="font-bold text-ink">
-                        {activeChatDetail.ai_intent ? (() => {
-                          const badge = getIntentBadge(activeChatDetail.ai_intent);
-                          return badge ? `${badge.icon} ${badge.label}` : activeChatDetail.ai_intent;
-                        })() : (
-                          <span className="text-faint font-normal">Belum dianalisis</span>
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between items-center py-1 border-b border-indigo-100 dark:border-indigo-900/60">
-                      <span className="text-muted">Topik Terdeteksi:</span>
-                      <span className="font-semibold text-ink text-right truncate max-w-[160px]">
-                        {activeChatDetail.ai_topic || activeChatDetail.consultation_topic || "-"}
-                      </span>
-                    </div>
-
-                    {activeChatDetail.ai_analysis?.summary && (
-                      <p className="text-[11px] text-muted italic pt-0.5 leading-relaxed">
-                        "{activeChatDetail.ai_analysis.summary}"
-                      </p>
-                    )}
                   </div>
                 </div>
 

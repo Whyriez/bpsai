@@ -1,0 +1,42 @@
+.wa-explorer { position: relative; min-height: 0; }
+.wa-list-heading { padding: 20px 16px 16px; display: flex; flex-direction: column; gap: 20px; }
+.wa-list-actions { display: flex; align-items: center; gap: 8px; }
+.wa-source-switch { display: flex; align-items: center; margin-right: auto; padding: 4px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+.wa-source-switch button { min-height: 32px; padding-inline: 16px; }
+.wa-list-actions > button { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 8px; }
+.wa-filters button { min-height: 30px; padding-inline: 10px; }
+.wa-sync-notice { display: flex; align-items: flex-start; gap: 8px; padding: 12px 16px; background: var(--subtle); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.6; }
+.wa-sync-notice > span:first-child { margin-top: 5px; }
+.wa-sync-time { padding: 8px 16px; margin: 0; font-size: 10px; border-top: 1px solid var(--line); }
+.wa-conversation-heading { padding: 20px 24px 16px; display: flex; flex-direction: column; gap: 16px; }
+.wa-contact-heading { width: 100%; }
+.wa-contact-heading > div:last-child { flex: 1; min-width: 0; }
+.wa-contact-heading h2 { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+.wa-contact-heading p { margin-top: 6px; }
+.wa-conversation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.wa-conversation-actions > button, .wa-conversation-actions > a { min-height: 36px; padding: 8px 12px; font-size: 11px; line-height: 1.25; white-space: nowrap; box-shadow: none; }
+.wa-conversation-actions > button { background: var(--surface); color: var(--ink); border: 1px solid var(--strong-line); }
+.wa-conversation-actions > button:hover { background: var(--subtle); }
+.wa-conversation-actions > button[title^="Terminasi"] { color: var(--danger); border-color: var(--line); }
+.wa-message-feed { overscroll-behavior: contain; scrollbar-gutter: stable; }
+.wa-composer { max-height: 48%; overflow-y: auto; }
+.wa-composer form { width: 100%; min-width: 0; }
+.wa-composer textarea { display: block; }
+.wa-new-messages { align-self: center; margin: 8px; padding: 8px 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--strong-line); border-radius: 20px; font-size: 12px; box-shadow: var(--shadow); }
+.wa-info-panel { position: absolute; inset: 0 0 0 auto; width: min(360px, 100%); }
+@media (min-width: 1280px) {
+  .wa-info-panel { position: static; width: 300px; }
+}
+@media (max-width: 1100px) {
+  .wa-conversation-heading { padding: 16px; gap: 12px; }
+  .wa-conversation-actions { gap: 6px; padding-top: 12px; }
+  .wa-conversation-actions > button, .wa-conversation-actions > a { padding: 8px 10px; }
+}
+@media (max-width: 767px) {
+  .wa-list-heading { padding: 20px 16px 16px; }
+  .wa-conversation-heading { padding: 12px; }
+  .wa-conversation-actions { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .wa-conversation-actions > button, .wa-conversation-actions > a { flex-shrink: 0; }
+  .wa-composer { padding-inline: 12px; }
+  .wa-info-panel { width: 100%; }
+}

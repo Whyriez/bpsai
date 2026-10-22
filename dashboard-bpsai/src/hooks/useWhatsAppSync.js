@@ -26,12 +26,18 @@ export default function useWhatsAppSync(context) {
     const ctx = latest.current;
     if (ctx.sourceMode !== "live" || (key === "detail" && (!chatId || chatId !== ctx.activeChatId))) return Promise.resolve(false);
     const current = requests.current[key];
-    if (current && current.chatId === chatId) return current.promise;
+    if (current && current.chatId === chatId) {
+      const elapsed = Date.now() - (current.startedAt || 0);
+      if (elapsed < 3500) {
+        return current.promise;
+      }
+      current.controller.abort();
+    }
     current?.controller.abort();
     const controller = new AbortController();
-    const request = { controller, chatId, promise: null };
+    const request = { controller, chatId, promise: null, startedAt: Date.now() };
     requests.current[key] = request;
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => controller.abort(), 6000);
     const isCurrent = () => !controller.signal.aborted &&
       requests.current[key] === request && latest.current.sourceMode === "live" &&
       (key !== "detail" || latest.current.activeChatId === chatId);
@@ -46,6 +52,10 @@ export default function useWhatsAppSync(context) {
         const res = await apiFetch(url, {
           signal: controller.signal,
           cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+          },
         });
         if (!isCurrent()) return false;
         const state = latest.current;
@@ -82,6 +92,12 @@ export default function useWhatsAppSync(context) {
                   (!old || chat.last_message.timestamp > (old.last_message?.timestamp || 0))) {
                 incomingIds.push(chat.id);
               }
+              // Jika chat yang sedang aktif dibuka menerima pesan baru, trigger sinkronisasi detail segera
+              if (state.activeChatId && (chat.id === state.activeChatId || chat.lid === state.activeChatId)) {
+                if (!old || (chat.last_message?.timestamp || 0) > (old.last_message?.timestamp || 0) || chat.message_count > (old.message_count || 0)) {
+                  runRequest("detail", state.activeChatId, true);
+                }
+              }
             }
             if (incomingIds.length) {
               const chat = res.chats.find((item) => item.id === incomingIds[0]);
@@ -106,7 +122,20 @@ export default function useWhatsAppSync(context) {
             return JSON.stringify(prev) === JSON.stringify(merged) ? prev : merged;
           });
           state.setStats(res.stats || null);
-          if (!state.activeChatId && !changedAccount && res.chats.length && window.innerWidth >= 768) {
+          if (state.activeChatId && res.chats.length) {
+            const currentMatch = res.chats.find((c) =>
+              c.id === state.activeChatId ||
+              (c.lid && c.lid === state.activeChatId) ||
+              (state.activeChatDetail && (
+                c.id === state.activeChatDetail.id ||
+                (c.lid && c.lid === state.activeChatDetail.lid) ||
+                (state.activeChatDetail.raw_phone && c.raw_phone === state.activeChatDetail.raw_phone)
+              ))
+            );
+            if (currentMatch && currentMatch.id !== state.activeChatId) {
+              state.setActiveChatId(currentMatch.id);
+            }
+          } else if (!state.activeChatId && !changedAccount && res.chats.length && window.innerWidth >= 768) {
             state.setActiveChatId(res.chats[0].id);
           }
         } else {
@@ -148,10 +177,12 @@ export default function useWhatsAppSync(context) {
             const isMatch = chat.id === chatId || chat.id === res.chat.id ||
               (chat.lid && (chat.lid === chatId || chat.lid === res.chat.lid));
             if (!isMatch) return chat;
-            if ((chat.last_message?.timestamp || 0) > (last.timestamp || 0) || chat.message_count > res.chat.total_messages) return chat;
-            return { ...chat, message_count: res.chat.total_messages ?? res.chat.messages.length,
+            return {
+              ...chat,
+              message_count: res.chat.total_messages ?? res.chat.messages.length,
               last_message: { text: last.text || `[${last.type}]`, type: last.type, timestamp: last.timestamp, fromMe: last.fromMe },
-              session_status: res.chat.session_status || chat.session_status };
+              session_status: res.chat.session_status || chat.session_status,
+            };
           }));
           if (!silent && res.chat.is_direct) state.setRightPanelTab((tab) =>
             tab === "media" || tab === "links" ? tab : "pst");
