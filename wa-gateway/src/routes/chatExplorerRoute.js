@@ -42,19 +42,31 @@ function formatTargetJid(target) {
       console.log(`🎯 [formatTargetJid] Mengubah target LID ${cleaned} -> nomor telepon ${resolved}`);
       return resolved;
     }
+    // Jika belum terpetakan ke nomor telepon, tetap pertahankan format @lid asli
+    return cleaned;
   }
 
-  // 2. Format resmi WhatsApp
+  // 2. Format resmi WhatsApp (@g.us, @s.whatsapp.net, @newsletter, @lid)
   if (
     cleaned.endsWith('@g.us') ||
     cleaned.endsWith('@s.whatsapp.net') ||
-    cleaned.endsWith('@newsletter')
+    cleaned.endsWith('@newsletter') ||
+    cleaned.endsWith('@lid')
   ) {
     return cleaned;
   }
 
-  // 3. Format nomor HP standar
+  // 3. Format nomor HP standar atau digit LID tanpa sufiks
   cleaned = cleaned.replace(/[^\d]/g, '');
+  if (!cleaned) return null;
+
+  // Cek apakah angka ini merupakan LID yang tersimpan
+  const resolvedFromLid = messageStore.resolveLidToPhone(`${cleaned}@lid`);
+  if (resolvedFromLid && resolvedFromLid.endsWith('@s.whatsapp.net')) {
+    console.log(`🎯 [formatTargetJid] Mengubah digit LID ${cleaned} -> nomor telepon ${resolvedFromLid}`);
+    return resolvedFromLid;
+  }
+
   if (cleaned.startsWith('0')) {
     cleaned = '62' + cleaned.slice(1);
   }

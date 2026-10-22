@@ -51,6 +51,20 @@ const logger = pino({
   level: 'warn',
   serializers: { err: describeDisconnect },
   redact: { paths: ['creds', 'keys', 'session', 'node.content', 'node.attrs.jid'], remove: true },
+  hooks: {
+    logMethod(inputArgs, method) {
+      const msg = inputArgs[0];
+      const text = typeof msg === 'string' ? msg : (inputArgs[1] || msg?.msg || '');
+      if (
+        typeof text === 'string' &&
+        (text.includes('dropping spoofed self-only protocolMessage') ||
+         text.includes('failed to decrypt message'))
+      ) {
+        return; // Reduksi bising sinkronisasi peer multi-device internal WhatsApp
+      }
+      return method.apply(this, inputArgs);
+    }
+  }
 });
 let sock = null;
 let isConnected = false;
@@ -94,18 +108,30 @@ function formatJid(target) {
       console.log(`🎯 [formatJid] Mengubah target LID ${cleaned} -> nomor telepon ${resolved}`);
       return resolved;
     }
+    // Jika belum terpetakan, pertahankan @lid asli
+    return cleaned;
   }
 
-  // 2. Jika sudah berakhiran format WhatsApp valid (@g.us, @s.whatsapp.net, @newsletter)
+  // 2. Jika sudah berakhiran format WhatsApp valid (@g.us, @s.whatsapp.net, @newsletter, @lid)
   if (
     cleaned.endsWith('@g.us') ||
     cleaned.endsWith('@s.whatsapp.net') ||
-    cleaned.endsWith('@newsletter')
+    cleaned.endsWith('@newsletter') ||
+    cleaned.endsWith('@lid')
   ) {
     return cleaned;
   }
   // 3. Bersihkan karakter non-digit untuk nomor telepon biasa
   cleaned = cleaned.replace(/[^\d]/g, '');
+  if (!cleaned) return null;
+
+  // Cek apakah angka ini merupakan LID yang tersimpan
+  const resolvedFromLid = messageStore.resolveLidToPhone(`${cleaned}@lid`);
+  if (resolvedFromLid && resolvedFromLid.endsWith('@s.whatsapp.net')) {
+    console.log(`🎯 [formatJid] Mengubah digit LID ${cleaned} -> nomor telepon ${resolvedFromLid}`);
+    return resolvedFromLid;
+  }
+
   if (cleaned.startsWith('0')) {
     cleaned = '62' + cleaned.slice(1);
   }
@@ -127,32 +153,6 @@ async function connectToWhatsApp() {
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     if (generation !== connectionGeneration) return;
-
-    // Helper untuk membersihkan sesi Signal/ratchet yang korup (khusus kontak eksternal, BUKAN bot/primary HP)
-    const purgeCorruptedSession = async (remoteJid) => {
-      if (!remoteJid || messageStore.isSelfJid(remoteJid)) return;
-      try {
-        const user = remoteJid.split('@')[0].split(':')[0];
-        const sids = [`${user}.0`, `${user}:0`, `${user}.1`, `${user}:1`, user];
-        for (const sid of sids) {
-          try {
-            await state.keys.set({ session: { [sid]: null } });
-          } catch (_) {}
-          const candidateFiles = [
-            path.join(authDir, `session-${sid}.json`),
-            path.join(authDir, `session-${sid.replace(/:/g, '-')}.json`),
-          ];
-          for (const f of candidateFiles) {
-            if (fs.existsSync(f)) {
-              try { fs.unlinkSync(f); } catch (_) {}
-            }
-          }
-        }
-        console.log(`🧹 [Gateway] Berhasil membersihkan sesi kripto corrupted untuk kontak: ${remoteJid}`);
-      } catch (e) {
-        console.warn(`Catatan pembersihan sesi:`, e.message);
-      }
-    };
 
     // Restore the version lookup and browser/auth settings used before the
     // connection regression. Keep the installed legacy library pinned.
@@ -352,19 +352,6 @@ async function connectToWhatsApp() {
       for (const m of (upsert.messages || [])) {
         if (m.key?.id && m.message) {
           messageMediaCache.set(m.key.id, m.message);
-        }
-        // Deteksi jika pesan gagal didekripsi karena Bad MAC / Session error (HANYA untuk chat masuk kontak eksternal)
-        const isSelf = m.key?.fromMe || messageStore.isSelfJid(m.key?.remoteJid);
-        if (!isSelf && (m.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT || !m.message)) {
-          const stubParam = m.messageStubParameters?.[0] || '';
-          if (
-            m.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT ||
-            stubParam.includes('Bad MAC') ||
-            stubParam.includes('No matching sessions')
-          ) {
-            console.warn(`⚠️ [Gateway] Pesan ID: ${m.key?.id} gagal didekripsi (${stubParam || 'CIPHERTEXT/Bad MAC'}) dari kontak ${m.key?.remoteJid}. Mereset sesi corrupted...`);
-            purgeCorruptedSession(m.key?.remoteJid);
-          }
         }
         const jid = m.key?.remoteJid;
         const direction = m.key?.fromMe ? 'Keluar (dari HP/saya)' : 'Masuk (dari luar)';

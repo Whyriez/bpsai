@@ -132,8 +132,6 @@ function isSelfJid(jid) {
   loadMyJids();
   const clean = jid.split(':')[0] + (jid.includes('@') ? '@' + jid.split('@')[1] : '');
   if (myJids.has(jid) || myJids.has(clean)) return true;
-  if (jid.includes('116939829588032')) return true; // current bot LID
-  if (jid.includes('260593114161297')) return true; // old self note
   return false;
 }
 
@@ -766,12 +764,13 @@ function getChatSummaries() {
           }
         }
 
+        const isPhoneDirect = isDirect && canonicalId.endsWith('@s.whatsapp.net');
         const summaryItem = {
           id: canonicalId,
           lid: rawChatId.endsWith('@lid') ? rawChatId : resolvePhoneToLid(canonicalId),
           name,
-          phone: isDirect ? formatPhoneNumber(canonicalId) : null,
-          raw_phone: isDirect ? canonicalId.split('@')[0] : null,
+          phone: isPhoneDirect ? formatPhoneNumber(canonicalId) : null,
+          raw_phone: isPhoneDirect ? canonicalId.split('@')[0] : null,
           type: isGroup ? 'group' : (isChannel ? 'channel' : 'direct'),
           is_group: isGroup,
           is_channel: isChannel,
@@ -875,13 +874,14 @@ function getChatDetail(chatId) {
 
   // If no stored messages yet but contact exists or is direct chat, return clean contact view
   if (allMessages.length === 0 && (contacts[canonicalId] || contacts[chatId] || isDirect)) {
-    const phone = formatPhoneNumber(canonicalId);
+    const isPhoneDirect = isDirect && canonicalId.endsWith('@s.whatsapp.net');
+    const phone = isPhoneDirect ? formatPhoneNumber(canonicalId) : null;
     return {
       id: canonicalId,
       lid: mappedLid || (chatId.endsWith('@lid') ? chatId : null),
-      name: chatName || phone,
-      phone: isDirect ? phone : null,
-      raw_phone: isDirect ? canonicalId.split('@')[0] : null,
+      name: chatName || phone || (canonicalId.endsWith('@lid') ? `Kontak (LID ${canonicalId.split('@')[0].slice(-4)})` : canonicalId),
+      phone,
+      raw_phone: isPhoneDirect ? canonicalId.split('@')[0] : null,
       type: isGroup ? 'group' : (isChannel ? 'channel' : 'direct'),
       is_group: isGroup,
       is_channel: isChannel,
@@ -963,13 +963,14 @@ function getChatDetail(chatId) {
     }
   });
 
-  const phone = isDirect ? formatPhoneNumber(canonicalId) : null;
+  const isPhoneDirect = isDirect && canonicalId.endsWith('@s.whatsapp.net');
+  const phone = isPhoneDirect ? formatPhoneNumber(canonicalId) : null;
   return {
     id: canonicalId,
     lid: mappedLid || (chatId.endsWith('@lid') ? chatId : null),
-    name: chatName || phone,
+    name: chatName || phone || (canonicalId.endsWith('@lid') ? `Kontak (LID ${canonicalId.split('@')[0].slice(-4)})` : canonicalId),
     phone,
-    raw_phone: isDirect ? canonicalId.split('@')[0] : null,
+    raw_phone: isPhoneDirect ? canonicalId.split('@')[0] : null,
     type: isGroup ? 'group' : (isChannel ? 'channel' : 'direct'),
     is_group: isGroup,
     is_channel: isChannel,

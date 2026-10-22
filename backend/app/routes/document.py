@@ -2460,7 +2460,7 @@ def get_whatsapp_explorer_chats():
     import requests
     base_url = _get_wa_gateway_base_url()
     try:
-        res = requests.get(f"{base_url}/whatsapp/explorer/chats", timeout=15)
+        res = requests.get(f"{base_url}/whatsapp/explorer/chats", params=request.args, timeout=15)
         resp = jsonify(res.json())
         resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         resp.headers['Pragma'] = 'no-cache'
@@ -2477,7 +2477,7 @@ def get_whatsapp_explorer_chat_detail(chat_id):
     import requests
     base_url = _get_wa_gateway_base_url()
     try:
-        res = requests.get(f"{base_url}/whatsapp/explorer/chats/{chat_id}", timeout=15)
+        res = requests.get(f"{base_url}/whatsapp/explorer/chats/{chat_id}", params=request.args, timeout=15)
         resp = jsonify(res.json())
         resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         resp.headers['Pragma'] = 'no-cache'
