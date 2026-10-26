@@ -98,6 +98,8 @@ export function isAutomatedBotMessage(msg) {
   // Bot opening & out of hours
   if (text.includes('Terima kasih telah menghubungi PST BPS') ||
       text.includes('Mohon kesediaannya untuk mengisi data berikut') ||
+      text.includes('Selamat datang kembali di Layanan PST BPS') ||
+      text.includes('Terima kasih telah menghubungi kembali Layanan PST BPS') ||
       text.includes('di luar jam operasional petugas layanan kami')) {
     return true;
   }
@@ -265,7 +267,7 @@ export function getNextOperatingSchedule(localDate = getLocalGorontaloDate()) {
 }
 
 /**
- * 1. Pesan Pembuka (PST BPS Provinsi Gorontalo)
+ * 1. Pesan Pembuka (PST BPS Provinsi Gorontalo) - Pengguna Baru (Buku Tamu Lengkap)
  */
 export function buildOpeningMessage(greeting = getTimeGreeting()) {
   return (
@@ -279,7 +281,20 @@ Instansi/Asal : `
 }
 
 /**
- * 2. Pesan Follow Up (Jika pesan masuk di luar jam layanan)
+ * 1b. Pesan Pembuka Hangat untuk Pengguna Lama (Personalized Welcome Back)
+ */
+export function buildReturningVisitorOpeningMessage(visitorName = '', greeting = getTimeGreeting()) {
+  const cleanName = (visitorName || '').trim();
+  const callName = cleanName ? `, Kak ${cleanName}` : ' Kak';
+  return (
+`Selamat ${greeting}${callName}!
+Selamat datang kembali di Layanan PST BPS Provinsi Gorontalo 😊
+Pesan Kakak sudah kami terima dan segera diteruskan ke petugas layanan kami. Ada data atau informasi statistik yang bisa kami bantu hari ini?`
+  );
+}
+
+/**
+ * 2. Pesan Follow Up (Jika pesan masuk di luar jam layanan) - Pengguna Baru
  */
 export function buildOutOfHoursMessage(greeting = getTimeGreeting()) {
   return (
@@ -289,6 +304,21 @@ Terima kasih telah bersedia menunggu. Sebelumnya, mohon kesediaannya terlebih da
 Nama : 
 Pekerjaan : 
 Asal Instansi : `
+  );
+}
+
+/**
+ * 2b. Pesan Di Luar Jam Layanan untuk Pengguna Lama (Personalized Out of Hours)
+ */
+export function buildReturningVisitorOutOfHoursMessage(visitorName = '', greeting = getTimeGreeting(), nextSchedule = null) {
+  const cleanName = (visitorName || '').trim();
+  const callName = cleanName ? `, Kak ${cleanName}` : ' Kak';
+  const schedule = nextSchedule || getNextOperatingSchedule();
+  return (
+`Selamat ${greeting}${callName}!
+Terima kasih telah menghubungi kembali Layanan PST BPS Provinsi Gorontalo.
+Mohon maaf, pesan Kakak masuk di luar jam operasional layanan kami (Senin-Jumat, 08.00 - 15.30 WITA).
+Pesan Kakak telah kami catat dan akan segera ditindaklanjuti saat jam layanan dibuka kembali (${schedule}). Terima kasih banyak atas kesabarannya ya Kak 😊`
   );
 }
 
@@ -582,7 +612,17 @@ export function analyzeIntentLocally(incomingText = '', recentMsgs = [], session
     'belum selesai', 'kirim ke mana', 'formatnya', 'ini nama saya', 'nama saya'
   ];
   const hasContinuationKeyword = continuationKeywords.some(kw => text.includes(kw));
-  const hasHistory = (recentMsgs && recentMsgs.length > 1) || Boolean(visitorName) || (session?.messageCount && session.messageCount > 1);
+  // Riwayat percakapan hanya dihitung jika terjadi hari ini dan sudah disapa hari ini
+  const localDate = getLocalGorontaloDate();
+  const todayStr = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
+  const todayMsgs = (recentMsgs || []).filter(m => {
+    if (!m.timestamp) return false;
+    const msgDate = getLocalGorontaloDate(new Date(m.timestamp * 1000));
+    const msgDateStr = `${msgDate.getFullYear()}-${String(msgDate.getMonth() + 1).padStart(2, '0')}-${String(msgDate.getDate()).padStart(2, '0')}`;
+    return msgDateStr === todayStr;
+  });
+  const isGreetedToday = session?.lastGreetedDate === todayStr && session?.autoGreeted;
+  const hasHistory = isGreetedToday && (todayMsgs.length > 1 || (session?.messageCount && session.messageCount > 1));
 
   if (hasContinuationKeyword || (hasHistory && !text.match(/^(halo|hai|pagi|siang|sore|malam|assalamu|ping|p)$/i))) {
     return {
@@ -591,7 +631,7 @@ export function analyzeIntentLocally(incomingText = '', recentMsgs = [], session
       should_skip_opening_greeting: true,
       topic: session?.consultationTopic || 'Konsultasi Data PST',
       visitor_info: { nama: visitorName, pekerjaan: null, instansi: null },
-      summary: 'Pengunjung melanjutkan percakapan yang sedang berjalan',
+      summary: 'Pengunjung melanjutkan percakapan yang sedang berjalan hari ini',
       suggested_reply: 'Baik Kak, pesan Kakak sudah kami terima dan sedang kami tindaklanjuti. Mohon ditunggu sebentar ya Kak 😊',
       confidence: 0.88
     };
@@ -714,8 +754,8 @@ export async function handleIncomingMessage(sock, msg) {
     ? (typeof msg.messageTimestamp === 'object' ? msg.messageTimestamp.low : Number(msg.messageTimestamp))
     : Math.floor(Date.now() / 1000);
   const nowSec = Math.floor(Date.now() / 1000);
-  if (nowSec - msgTimestamp > 180) {
-    // Pesan sudah lebih dari 3 menit lalu, kemungkinan history sync
+  if (nowSec - msgTimestamp > 900) {
+    // Pesan sudah lebih dari 15 menit lalu, kemungkinan history sync
     return;
   }
 
@@ -746,7 +786,6 @@ export async function handleIncomingMessage(sock, msg) {
 
   try {
     let session = getOrCreateSession(chatId);
-    const nowSec = Math.floor(Date.now() / 1000);
     const localDate = getLocalGorontaloDate();
     const todayDateStr = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
 
@@ -770,6 +809,34 @@ export async function handleIncomingMessage(sock, msg) {
 
     const isSessionClosed = session.status === 'closed';
     const isSessionDelayed = session.status === 'delayed' || Boolean(session.delayed_3days) || Boolean(session.flag_3days);
+    const isNewDay = session.lastGreetedDate !== todayDateStr;
+
+    // =========================================================================
+    // 1. RESET / INISIALISASI SESI BARU JIKA HARI BARU ATAU SESI SUDAH CLOSED:
+    // Pelanggan yang kembali di hari berikutnya atau setelah sesi ditutup
+    // berhak mendapatkan sapaan resmi baru untuk konsultasi hari ini.
+    // =========================================================================
+    if (isSessionClosed || isNewDay) {
+      console.log(`🌅 [LiveChat] Sesi baru / hari baru (${todayDateStr}) untuk ${chatId} (closed=${isSessionClosed}, newDay=${isNewDay}). Menyiapkan sesi baru.`);
+      session.status = 'waiting_admin';
+      session.autoGreeted = false;
+      session.autoGreetedAt = null;
+      session.createdAt = nowSec;
+      session.lastActivityAt = nowSec;
+      session.closedAt = null;
+      session.terminationType = null;
+      session.terminationMessage = null;
+      session.confirmation1400Sent = false;
+      session.confirmation1400Date = null;
+      session.confirmation1400Replied = false;
+      session.adminRepliedToday = null;
+      session.hasAdminEverReplied = false;
+      session.adminLastRepliedAt = null;
+      session.messageCount = 1;
+    } else {
+      session.lastActivityAt = nowSec;
+      session.messageCount = (session.messageCount || 0) + 1;
+    }
 
     // =========================================================================
     // KHUSUS STATUS PENUNDAAN / TERMINASI 3 HARI KERJA (FLAG AKTIF):
@@ -784,7 +851,6 @@ export async function handleIncomingMessage(sock, msg) {
       session.flag_3days = true;
       session.autoGreeted = true; // Kunci permanen agar tidak ada auto-greeting
       session.lastActivityAt = nowSec;
-      session.messageCount = (session.messageCount || 0) + 1;
       session.customerRepliedAfterFlag = true;
       session.customerRepliedAt = nowSec;
 
@@ -796,16 +862,10 @@ export async function handleIncomingMessage(sock, msg) {
 
     // =========================================================================
     // DETEKSI INTENT CERDAS DENGAN GEMINI AI (AWAITED):
-    // Membedakan secara cerdas dan akurat:
-    // - Sapaan baru (GREETING_NEW)
-    // - Percakapan lanjutan / tanggapan pengunjung (CONTINUATION)
-    // - Follow-up penundaan data (DELAY_FOLLOWUP)
-    // - Ucapan terima kasih / kesantunan (COURTESY_THANKS)
-    // - Permintaan data statistik langsung (DATA_INQUIRY)
     // =========================================================================
     const aiAnalysis = await detectIncomingMessageIntent(chatId, incomingText, session);
 
-    // 1. Jika pesan pengunjung merupakan kesantunan / ucapan terima kasih:
+    // 2. Jika pesan pengunjung merupakan kesantunan / ucapan terima kasih:
     if (aiAnalysis?.intent === 'COURTESY_THANKS' || isCourtesyOrAcknowledgmentMessage(incomingText)) {
       session.lastActivityAt = nowSec;
       session.autoGreeted = true;
@@ -819,27 +879,23 @@ export async function handleIncomingMessage(sock, msg) {
       return;
     }
 
-    // 2. Jika terdeteksi sebagai percakapan lanjutan (melanjutkan percakapan sebelumnya / follow-up):
-    // JANGAN PERNAH mengirim form pembuka berulang! Aktifkan kembali sesi ke 'waiting_admin'.
-    const isContinuation = Boolean(
-      aiAnalysis?.is_continuation ||
-      aiAnalysis?.should_skip_opening_greeting ||
-      aiAnalysis?.intent === 'CONTINUATION' ||
-      aiAnalysis?.intent === 'DELAY_FOLLOWUP' ||
-      session.lastGreetedDate === todayDateStr ||
-      session.visitorData?.nama ||
-      (session.messageCount && session.messageCount > 1)
+    // 3. Jika pengguna SUDAH DISAPA HARI INI dan sedang melanjutkan percakapan di hari yang sama:
+    // (Hanya berlaku jika BUKAN hari baru / sesi baru)
+    const isContinuationToday = Boolean(
+      !isNewDay && (
+        session.autoGreeted ||
+        session.lastGreetedDate === todayDateStr ||
+        aiAnalysis?.is_continuation ||
+        aiAnalysis?.intent === 'CONTINUATION' ||
+        aiAnalysis?.intent === 'DELAY_FOLLOWUP'
+      )
     );
 
-    if (isContinuation) {
-      console.log(`🔄 [LiveChat AI] Pengunjung ${chatId} melanjutkan percakapan (Intent: ${aiAnalysis?.intent || 'CONTINUATION'}, Topik: "${aiAnalysis?.topic || session.consultationTopic || '-'}"). Melewatkan form pembuka otomatis.`);
+    if (isContinuationToday) {
+      console.log(`🔄 [LiveChat AI] Pengunjung ${chatId} melanjutkan percakapan hari ini (Intent: ${aiAnalysis?.intent || 'CONTINUATION'}, Topik: "${aiAnalysis?.topic || session.consultationTopic || '-'}"). Melewatkan form pembuka otomatis.`);
       session.status = 'waiting_admin';
-      session.closedAt = null;
-      session.terminationType = null;
-      session.terminationMessage = null;
       session.lastActivityAt = nowSec;
-      session.messageCount = (session.messageCount || 0) + 1;
-      session.autoGreeted = true; // KUNCI agar narasi pembuka / form nama TIDAK terkirim ulang!
+      session.autoGreeted = true; // KUNCI agar narasi pembuka / form nama TIDAK terkirim ulang dalam hari yang sama
       if (aiAnalysis?.topic && !session.consultationTopic) {
         session.consultationTopic = aiAnalysis.topic;
       }
@@ -847,57 +903,45 @@ export async function handleIncomingMessage(sock, msg) {
       return;
     }
 
-    // 3. Jika admin sedang aktif menangani sesi
+    // 4. Jika admin sedang aktif menangani sesi
     if (session.status === 'admin_active') {
       session.lastActivityAt = nowSec;
-      session.messageCount = (session.messageCount || 0) + 1;
       saveSessions();
       return;
     }
 
-    // 4. Jika auto-greeting dinonaktifkan dalam konfigurasi
+    // 5. Jika auto-greeting dinonaktifkan dalam konfigurasi
     if (!settings.autoGreetingEnabled) {
       session.lastActivityAt = nowSec;
-      session.messageCount = (session.messageCount || 0) + 1;
       saveSessions();
       return;
     }
 
-    // 5. Sesi benar-benar baru di hari baru (GREETING_NEW murni):
-    if (isSessionClosed) {
-      console.log(`🌅 [LiveChat] Pengunjung ${chatId} menyapa pertama kali di hari baru (${todayDateStr}). Menyiapkan sesi baru.`);
-      session.status = 'waiting_admin';
-      session.autoGreeted = false;
-      session.autoGreetedAt = null;
-      session.createdAt = nowSec;
-      session.lastActivityAt = nowSec;
-      session.closedAt = null;
-      session.terminationType = null;
-      session.terminationMessage = null;
-      session.messageCount = 1;
-    } else {
-      session.lastActivityAt = nowSec;
-      session.messageCount = (session.messageCount || 0) + 1;
-    }
-
-    // CEK ANTI-REPETISI TAMBAHAN: Jika sudah autoGreeted atau sudah disapa hari ini
-    if (session.autoGreeted || session.lastGreetedDate === todayDateStr) {
-      session.autoGreeted = true;
-      session.lastGreetedDate = todayDateStr;
+    // 6. Cek anti-repetisi sapaan hari ini: jika sudah disapa hari ini, jangan kirim sapaan pembuka lagi
+    if (session.autoGreeted && session.lastGreetedDate === todayDateStr) {
       saveSessions();
       return;
     }
 
+    // 7. Kirim pesan sapaan / form pembuka (karena ini hari baru / sesi baru yang belum disapa hari ini)
     const inOperatingHours = isWithinOperatingHours(localDate);
     const greetingWord = getTimeGreeting(localDate);
+    const existingName = session.visitorData?.nama || null;
+    const isReturningVisitor = Boolean(existingName);
 
     let replyText = '';
     let replyType = '';
 
     if (inOperatingHours) {
-      replyText = buildOpeningMessage(greetingWord);
-      replyType = 'opening_message';
-      console.log(`🟢 [LiveChat] Mengirim Pesan Pembuka PST BPS Gorontalo ke ${chatId}`);
+      if (isReturningVisitor) {
+        replyText = buildReturningVisitorOpeningMessage(existingName, greetingWord);
+        replyType = 'returning_opening_message';
+        console.log(`🟢 [LiveChat] Mengirim Pesan Sapaan Hangat Pengguna Lama (Kak ${existingName}) ke ${chatId}`);
+      } else {
+        replyText = buildOpeningMessage(greetingWord);
+        replyType = 'opening_message';
+        console.log(`🟢 [LiveChat] Mengirim Pesan Pembuka Formulir PST BPS Gorontalo ke ${chatId}`);
+      }
     } else {
       // Di luar jam operasional: cek apakah sudah pernah dikirim sapaan luar jam hari ini
       if (session.lastOutOfHoursGreetedDate === todayDateStr) {
@@ -905,10 +949,16 @@ export async function handleIncomingMessage(sock, msg) {
         saveSessions();
         return;
       }
-      replyText = buildOutOfHoursMessage(greetingWord);
-      replyType = 'out_of_hours_message';
+      if (isReturningVisitor) {
+        replyText = buildReturningVisitorOutOfHoursMessage(existingName, greetingWord);
+        replyType = 'returning_out_of_hours_message';
+        console.log(`🟡 [LiveChat] Mengirim Pesan Luar Jam Layanan Pengguna Lama (Kak ${existingName}) ke ${chatId}`);
+      } else {
+        replyText = buildOutOfHoursMessage(greetingWord);
+        replyType = 'out_of_hours_message';
+        console.log(`🟡 [LiveChat] Mengirim Pesan Luar Jam Layanan Formulir PST BPS Gorontalo ke ${chatId}`);
+      }
       session.lastOutOfHoursGreetedDate = todayDateStr;
-      console.log(`🟡 [LiveChat] Mengirim Pesan Luar Jam Layanan PST BPS Gorontalo ke ${chatId}`);
     }
 
     // TANDAI SECARA SINKRON SEBELUM AWAIT PENGIRIMAN:
@@ -1010,7 +1060,9 @@ export function hasAdminRepliedToday(chatId, session = null, todayStr = null) {
 }
 
 export function handleAdminMessageSent(chatId, adminName = 'Admin PST', msgId = null, msgText = '') {
-  if (!chatId) return;
+  if (!chatId || chatId.endsWith('@g.us') || chatId.endsWith('@newsletter') || chatId.includes('@broadcast')) {
+    return;
+  }
   // Abaikan pesan otomatis yang dikirim oleh sistem / bot SIGAP
   if (isAutomatedBotMessage({ id: msgId, text: msgText })) {
     return;
@@ -1582,7 +1634,7 @@ setInterval(() => {
   } catch (e) {
     console.warn('⚠️ [LiveChat Scheduled Interval] Warning:', e.message);
   }
-}, 25000);
+}, 25000).unref();
 
 // Backward compatibility alias
 export const checkAndAutoTerminateSessions = checkScheduledTerminations;
@@ -1593,7 +1645,9 @@ export default {
   isWithinOperatingHours,
   getNextOperatingSchedule,
   buildOpeningMessage,
+  buildReturningVisitorOpeningMessage,
   buildOutOfHoursMessage,
+  buildReturningVisitorOutOfHoursMessage,
   buildDelayMessage,
   buildConfirmationMessage,
   buildClosingCompletedMessage,

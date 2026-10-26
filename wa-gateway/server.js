@@ -34,13 +34,53 @@ app.use(express.urlencoded({ extended: true }));
 const require = createRequire(import.meta.url);
 const baileysVersion = require('@whiskeysockets/baileys/package.json').version;
 
-// Reduksi logging bising internal libsignal untuk sinkronisasi peer multi-device
+// Reduksi logging bising internal libsignal & auto-repair session ratchet desync
+let isRepairingSessions = false;
+function autoRepairCorruptedSessions(reason = 'Over 2000 messages into the future') {
+  if (isRepairingSessions) return;
+  isRepairingSessions = true;
+  console.warn(`🚨 [Gateway Auto-Heal] Terdeteksi desinkronisasi Signal Protocol (${reason}). Membersihkan session ratchet rusak...`);
+  try {
+    const authDir = path.join(__dirname, 'auth_info_baileys');
+    let deletedCount = 0;
+    if (fs.existsSync(authDir)) {
+      const files = fs.readdirSync(authDir);
+      for (const file of files) {
+        if ((file.startsWith('session-') || file.startsWith('sender-key-')) && file.endsWith('.json')) {
+          try {
+            fs.unlinkSync(path.join(authDir, file));
+            deletedCount++;
+          } catch (_) {}
+        }
+      }
+    }
+    msgRetryCounterCache.flushAll();
+    console.log(`✅ [Gateway Auto-Heal] Berhasil membersihkan ${deletedCount} session files rusak. Kredensial login creds.json tetap aman.`);
+  } catch (err) {
+    console.error('❌ [Gateway Auto-Heal] Gagal membersihkan session:', err.message);
+  } finally {
+    setTimeout(() => {
+      isRepairingSessions = false;
+    }, 15000);
+  }
+}
+
 const originalConsoleError = console.error;
 console.error = function (...args) {
-  const msg = typeof args[0] === 'string' ? args[0] : '';
+  const msg = typeof args[0] === 'string' ? args[0] : (args[0]?.message || '');
+  const stack = typeof args[1] === 'string' ? args[1] : (args[0]?.stack || '');
+  const fullText = `${msg} ${stack}`;
+
   if (
-    msg.includes('Failed to decrypt message with any known session') ||
-    msg.includes('Session error:Error: Bad MAC')
+    fullText.includes('Over 2000 messages into the future') ||
+    fullText.includes('Bad MAC')
+  ) {
+    autoRepairCorruptedSessions(fullText.includes('Over 2000') ? 'Over 2000 messages into the future' : 'Bad MAC');
+    return; // Reduksi spam bising di console
+  }
+
+  if (
+    fullText.includes('Failed to decrypt message with any known session')
   ) {
     return;
   }
@@ -191,8 +231,8 @@ async function connectToWhatsApp() {
       },
       logger,
       printQRInTerminal: false,
-      syncFullHistory: true,
-      shouldSyncHistoryMessage: () => true,
+      syncFullHistory: false, // Dinonaktifkan untuk mencegah lonjakan kuota Signal dan error 2000 messages
+      shouldSyncHistoryMessage: () => false,
       msgRetryCounterCache,
       userDevicesCache,
       browser: ['SIGAP BPS Gateway', 'Chrome', '1.0.0'],
@@ -342,21 +382,6 @@ async function connectToWhatsApp() {
             console.warn('Catatan resyncAppState:', e.message);
           }
 
-          // Request History Sync on demand from phone
-          try {
-            if (isCurrentSocket() && isConnected && connectionSocket.sendPeerDataOperationMessage) {
-              console.log('🔄 [Gateway] Mengirim permintaan riwayat chat ke HP utama...');
-              await connectionSocket.sendPeerDataOperationMessage({
-                peerDataOperationRequestType: 6, // FULL_HISTORY_SYNC_ON_DEMAND
-                fullHistorySyncOnDemandRequest: {
-                  requestMetadata: {
-                    requestId: connectionSocket.generateMessageTag()
-                  }
-                }
-              });
-              console.log('📨 [Gateway] Permintaan riwayat berhasil dikirim ke HP.');
-            }
-          } catch (e) {}
         }, 2500);
       }
     });
@@ -395,7 +420,9 @@ async function connectToWhatsApp() {
               if (liveChatSessionService.isAutomatedBotMessage(m)) {
                 continue; // Abaikan pesan otomatis bot agar tidak dianggap sebagai balasan admin
               }
-              liveChatSessionService.handleAdminMessageSent(rawJid, 'Admin PST', m.key?.id, text);
+              if (!rawJid.endsWith('@g.us') && !rawJid.endsWith('@newsletter') && !rawJid.includes('@broadcast')) {
+                liveChatSessionService.handleAdminMessageSent(rawJid, 'Admin PST', m.key?.id, text);
+              }
             } else if (upsert.type === 'notify' || upsert.type === 'append') {
               liveChatSessionService.handleIncomingMessage(sock, m);
             }
@@ -558,7 +585,7 @@ app.post(['/reset-session', '/logout', '/change-number'], async (req, res) => {
   }
 });
 
-// Endpoint untuk membersihkan sesi Signal/ratchet yang korup (Bad MAC) tanpa perlu logout (QR tetap aktif)
+// Endpoint untuk membersihkan sesi Signal/ratchet yang korup (Bad MAC / 2000 messages) tanpa perlu logout (QR tetap aktif)
 app.post(['/fix-sessions', '/clear-bad-sessions', '/api/whatsapp/clear-sessions'], async (req, res) => {
   try {
     console.log('\n🧹 [Gateway] Permintaan pembersihan sesi Signal corrupted...');
@@ -567,7 +594,7 @@ app.post(['/fix-sessions', '/clear-bad-sessions', '/api/whatsapp/clear-sessions'
     if (fs.existsSync(authDir)) {
       const files = fs.readdirSync(authDir);
       for (const file of files) {
-        if (file.startsWith('session-') && file.endsWith('.json')) {
+        if ((file.startsWith('session-') || file.startsWith('sender-key-')) && file.endsWith('.json')) {
           try {
             fs.unlinkSync(path.join(authDir, file));
             deletedCount++;
@@ -577,6 +604,16 @@ app.post(['/fix-sessions', '/clear-bad-sessions', '/api/whatsapp/clear-sessions'
     }
     msgRetryCounterCache.flushAll();
     console.log(`✅ [Gateway] Berhasil menghapus ${deletedCount} file session Signal. Sesi login creds tetap aman.`);
+
+    // Reconnect socket secara mulus agar memory keystore cache dibersihkan
+    if (sock && isConnected) {
+      console.log('🔄 [Gateway] Merestart socket Baileys agar memory cache Signal bersih...');
+      scheduleReconnect(1000);
+      try {
+        sock.end(new Error('Signal session cleanup requested'));
+      } catch (_) {}
+    }
+
     return res.json({
       success: true,
       message: `Berhasil membersihkan ${deletedCount} sesi kripto Signal yang rusak. Sesi login WhatsApp Anda tetap aman.`,
@@ -790,7 +827,9 @@ app.post(['/webhook', '/send'], async (req, res) => {
         pushName: 'SIGAP BPS Admin',
       };
       messageStore.saveMessages(jid, [outgoingMsg]);
-      liveChatSessionService.handleAdminMessageSent(jid, 'SIGAP BPS Admin', sentResult?.key?.id, message || '');
+      if (!jid.endsWith('@g.us') && !jid.endsWith('@newsletter') && !jid.includes('@broadcast')) {
+        liveChatSessionService.handleAdminMessageSent(jid, 'SIGAP BPS Admin', sentResult?.key?.id, message || '');
+      }
     } catch (saveErr) {
       console.warn('⚠️ Gagal menyimpan pesan keluar ke store:', saveErr.message);
     }
