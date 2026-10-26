@@ -392,6 +392,9 @@ async function connectToWhatsApp() {
                 m.message?.extendedTextMessage?.text ||
                 m.message?.imageMessage?.caption ||
                 '';
+              if (liveChatSessionService.isAutomatedBotMessage(m)) {
+                continue; // Abaikan pesan otomatis bot agar tidak dianggap sebagai balasan admin
+              }
               liveChatSessionService.handleAdminMessageSent(rawJid, 'Admin PST', m.key?.id, text);
             } else if (upsert.type === 'notify' || upsert.type === 'append') {
               liveChatSessionService.handleIncomingMessage(sock, m);

@@ -60,7 +60,66 @@ export function registerBotMessageId(id) {
 }
 
 export function isBotMessage(id) {
+  if (!id) return false;
   return botMessageIds.has(id);
+}
+
+/**
+ * Deteksi apakah suatu pesan merupakan pesan otomatis dari bot / sistem SIGAP,
+ * bukan ketikan manusia (admin / petugas).
+ * Memeriksa botMessageIds, ID prefix (bot-, confirm-, term-, delay-, meta-),
+ * pushName (Otomatis, Sistem), dan frasa baku template bot.
+ */
+export function isAutomatedBotMessage(msg) {
+  if (!msg) return false;
+  const id = typeof msg === 'string' ? msg : (msg.id || msg.key?.id || '');
+  if (id) {
+    if (botMessageIds.has(id)) return true;
+    if (id.startsWith('bot-') || id.startsWith('confirm-') || id.startsWith('term-') || id.startsWith('delay-') || id.startsWith('meta-')) {
+      return true;
+    }
+  }
+
+  const pushName = String(msg.pushName || '');
+  if (pushName.includes('Otomatis') || pushName.includes('Sistem') || pushName.includes('Konfirmasi 14.00') || pushName.includes('Penundaan')) {
+    return true;
+  }
+
+  const text = String(
+    msg.text ||
+    msg.message?.conversation ||
+    msg.message?.extendedTextMessage?.text ||
+    msg.message?.imageMessage?.caption ||
+    ''
+  ).trim();
+
+  if (!text) return false;
+
+  // Bot opening & out of hours
+  if (text.includes('Terima kasih telah menghubungi PST BPS') ||
+      text.includes('Mohon kesediaannya untuk mengisi data berikut') ||
+      text.includes('di luar jam operasional petugas layanan kami')) {
+    return true;
+  }
+
+  // Bot 14.00 confirmation
+  if (text.includes('Bagaimana Kak, terkait penjelasan mengenai') && text.includes('apakah sudah cukup jelas')) {
+    return true;
+  }
+
+  // Bot delay 3 days
+  if (text.includes('memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja')) {
+    return true;
+  }
+
+  // Bot closing & terminations
+  if (text.includes('Mengingat jam operasional layanan hari ini telah berakhir') ||
+      text.includes('kami akhiri ya Kak') ||
+      text.includes('s.bps.go.id/skd75')) {
+    return true;
+  }
+
+  return false;
 }
 
 function ensureDataDir() {
@@ -859,6 +918,12 @@ export async function handleIncomingMessage(sock, msg) {
     session.lastGreetedDate = todayDateStr;
     session.lastGreetingType = replyType;
     session.status = 'waiting_admin';
+    session.confirmation1400Sent = false;
+    session.confirmation1400Date = null;
+    session.confirmation1400Replied = false;
+    session.adminRepliedToday = null;
+    session.hasAdminEverReplied = false;
+    session.adminLastRepliedAt = null;
     saveSessions();
 
     // Kirim balasan otomatis via Baileys WhatsApp Socket ke JID pengirim asal
@@ -903,42 +968,51 @@ export function hasAdminRepliedToday(chatId, session = null, todayStr = null) {
   const localDate = getLocalGorontaloDate();
   const currentTodayStr = todayStr || `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
 
-  const currentSession = session || getSession(chatId);
-  if (currentSession?.adminRepliedToday === currentTodayStr) {
-    return true;
-  }
-  if (currentSession?.hasAdminEverReplied && currentSession?.adminLastRepliedAt) {
-    const replyDate = getLocalGorontaloDate(new Date(currentSession.adminLastRepliedAt * 1000));
-    const replyDateStr = `${replyDate.getFullYear()}-${String(replyDate.getMonth() + 1).padStart(2, '0')}-${String(replyDate.getDate()).padStart(2, '0')}`;
-    if (replyDateStr === currentTodayStr) return true;
-  }
-
-  // Cek langsung dari riwayat pesan chat di messageStore (mencakup pesan keluar yang diketik admin dari HP)
   const canonicalId = messageStore.resolveLidToPhone(chatId) || chatId;
   const messages = messageStore.readChatMessages(canonicalId) || [];
+  if (messages.length === 0) return false;
+
+  let lastCustomerMsg = null;
+  let lastRealAdminMsg = null;
+
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    if (m.fromMe && !isBotMessage(m.id)) {
-      const msgDate = getLocalGorontaloDate(new Date(m.timestamp * 1000));
-      const msgDateStr = `${msgDate.getFullYear()}-${String(msgDate.getMonth() + 1).padStart(2, '0')}-${String(msgDate.getDate()).padStart(2, '0')}`;
-      if (msgDateStr === currentTodayStr) {
-        if (currentSession) {
-          currentSession.hasAdminEverReplied = true;
-          currentSession.adminRepliedToday = currentTodayStr;
-          currentSession.adminLastRepliedAt = m.timestamp;
-        }
-        return true;
-      }
+    if (!m || !m.timestamp) continue;
+
+    const msgDate = getLocalGorontaloDate(new Date(m.timestamp * 1000));
+    const msgDateStr = `${msgDate.getFullYear()}-${String(msgDate.getMonth() + 1).padStart(2, '0')}-${String(msgDate.getDate()).padStart(2, '0')}`;
+    
+    // Hanya periksa pesan hari ini
+    if (msgDateStr !== currentTodayStr) continue;
+
+    if (!m.fromMe && !lastCustomerMsg) {
+      lastCustomerMsg = m;
+    } else if (m.fromMe && !lastRealAdminMsg && !isAutomatedBotMessage(m)) {
+      lastRealAdminMsg = m;
     }
+
+    if (lastCustomerMsg && lastRealAdminMsg) break;
   }
 
-  return false;
+  // Jika admin belum pernah mengirim pesan manual hari ini sama sekali
+  if (!lastRealAdminMsg) {
+    return false;
+  }
+
+  // Jika pengunjung mengirim pesan hari ini, pastikan pesan admin dikirim SETELAH pesan pengunjung!
+  // Jika pesan pengunjung lebih baru daripada pesan admin, berarti pengunjung sedang menunggu balasan admin (antrean belum dijawab).
+  if (lastCustomerMsg && (lastCustomerMsg.timestamp || 0) > (lastRealAdminMsg.timestamp || 0)) {
+    console.log(`⏳ [LiveChat] Pengunjung ${chatId} mengirim pesan lebih baru (${lastCustomerMsg.text?.slice(0, 30) || 'pesan'}) daripada balasan admin terakhir. Pengunjung masih menunggu respons admin.`);
+    return false;
+  }
+
+  return true;
 }
 
 export function handleAdminMessageSent(chatId, adminName = 'Admin PST', msgId = null, msgText = '') {
   if (!chatId) return;
   // Abaikan pesan otomatis yang dikirim oleh sistem / bot SIGAP
-  if (msgId && isBotMessage(msgId)) {
+  if (isAutomatedBotMessage({ id: msgId, text: msgText })) {
     return;
   }
   const session = getOrCreateSession(chatId);
@@ -1546,6 +1620,7 @@ export default {
   setSocketGetter,
   checkScheduledTerminations,
   checkAndAutoTerminateSessions,
+  isAutomatedBotMessage,
   isCourtesyOrAcknowledgmentMessage,
   isTerminationClosingText,
   clearSessions
