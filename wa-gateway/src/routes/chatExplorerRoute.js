@@ -1,15 +1,21 @@
-import express from 'express';
-import messageStore from '../store/messageStore.js';
-import liveChatSessionService from '../services/liveChatSessionService.js';
-import { fetchParticipatingGroups, fetchGroupMetadata } from '../services/whatsappMetadataCache.js';
+import express from "express";
+import messageStore from "../store/messageStore.js";
+import liveChatSessionService from "../services/liveChatSessionService.js";
+import {
+  fetchParticipatingGroups,
+  fetchGroupMetadata,
+} from "../services/whatsappMetadataCache.js";
 
 const router = express.Router();
 
 // Middleware anti-cache: pastikan respons selalu fresh untuk live chat realtime
 router.use((req, res, next) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+  res.setHeader(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+  );
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   next();
 });
 
@@ -21,7 +27,12 @@ let _cacheOutgoingMessage = null;
 /**
  * Configure socket getters from server.js
  */
-export function setExplorerSocketGetter(getSock, getIsConnected, getNewsletters, cacheOutgoingMessage) {
+export function setExplorerSocketGetter(
+  getSock,
+  getIsConnected,
+  getNewsletters,
+  cacheOutgoingMessage,
+) {
   _getSock = getSock;
   _getIsConnected = getIsConnected;
   if (getNewsletters) _getNewsletters = getNewsletters;
@@ -32,67 +43,84 @@ export function setExplorerSocketGetter(getSock, getIsConnected, getNewsletters,
  * Helper to format target JID
  */
 function formatTargetJid(target) {
-  let cleaned = String(target || '').trim();
+  let cleaned = String(target || "").trim();
   if (!cleaned) return null;
 
   // 1. Jika target adalah LID (@lid)
-  if (cleaned.endsWith('@lid')) {
-    const user = cleaned.split('@')[0];
+  if (cleaned.endsWith("@lid")) {
+    const user = cleaned.split("@")[0];
     // Proteksi: Jika user adalah nomor telepon Indonesia (misal 628... atau 08...),
     // itu BUKAN LID melainkan nomor HP yang salah diberi suffix @lid. Ubah ke @s.whatsapp.net!
-    if ((user.startsWith('62') || user.startsWith('0')) && user.length >= 10 && user.length <= 13) {
-      const num = user.startsWith('0') ? '62' + user.slice(1) : user;
+    if (
+      (user.startsWith("62") || user.startsWith("0")) &&
+      user.length >= 10 &&
+      user.length <= 13
+    ) {
+      const num = user.startsWith("0") ? "62" + user.slice(1) : user;
       return `${num}@s.whatsapp.net`;
     }
     return cleaned;
   }
 
   // 2. Format resmi WhatsApp (@g.us, @newsletter)
-  if (
-    cleaned.endsWith('@g.us') ||
-    cleaned.endsWith('@newsletter')
-  ) {
+  if (cleaned.endsWith("@g.us") || cleaned.endsWith("@newsletter")) {
     return cleaned;
   }
 
   // 3. Format nomor telepon WhatsApp (@s.whatsapp.net)
-  if (cleaned.endsWith('@s.whatsapp.net')) {
+  if (cleaned.endsWith("@s.whatsapp.net")) {
     const mappedLid = messageStore.resolvePhoneToLid(cleaned);
-    if (mappedLid && mappedLid.endsWith('@lid') && !mappedLid.startsWith('628') && !mappedLid.startsWith('08')) {
-      console.log(`🎯 [formatTargetJid] Menggunakan sesi aktif LID ${mappedLid} untuk nomor ${cleaned}`);
+    if (
+      mappedLid &&
+      mappedLid.endsWith("@lid") &&
+      !mappedLid.startsWith("628") &&
+      !mappedLid.startsWith("08")
+    ) {
+      console.log(
+        `🎯 [formatTargetJid] Menggunakan sesi aktif LID ${mappedLid} untuk nomor ${cleaned}`,
+      );
       return mappedLid;
     }
     return cleaned;
   }
 
   // 4. Format nomor HP standar tanpa sufiks
-  cleaned = cleaned.replace(/[^\d]/g, '');
+  cleaned = cleaned.replace(/[^\d]/g, "");
   if (!cleaned) return null;
 
-  if (cleaned.startsWith('0')) {
-    cleaned = '62' + cleaned.slice(1);
+  if (cleaned.startsWith("0")) {
+    cleaned = "62" + cleaned.slice(1);
   }
 
   // Cek jika nomor ini adalah digit LID murni (LID WhatsApp umumnya 15 digit dan BUKAN nomor HP Indonesia 628...)
-  if (cleaned.length >= 14 && !cleaned.startsWith('628')) {
+  if (cleaned.length >= 14 && !cleaned.startsWith("628")) {
     return `${cleaned}@lid`;
   }
 
   const phoneJid = `${cleaned}@s.whatsapp.net`;
   const mappedLid = messageStore.resolvePhoneToLid(phoneJid);
-  if (mappedLid && mappedLid.endsWith('@lid') && !mappedLid.startsWith('628') && !mappedLid.startsWith('08')) {
-    console.log(`🎯 [formatTargetJid] Menggunakan sesi aktif LID ${mappedLid} untuk nomor ${phoneJid}`);
+  if (
+    mappedLid &&
+    mappedLid.endsWith("@lid") &&
+    !mappedLid.startsWith("628") &&
+    !mappedLid.startsWith("08")
+  ) {
+    console.log(
+      `🎯 [formatTargetJid] Menggunakan sesi aktif LID ${mappedLid} untuk nomor ${phoneJid}`,
+    );
     return mappedLid;
   }
   return phoneJid;
 }
 
 // GET /whatsapp/explorer/chats — get all stored chat summaries merged with live groups & channels
-router.get('/chats', async (req, res) => {
+router.get("/chats", async (req, res) => {
   try {
     const sock = _getSock();
     const isConn = _getIsConnected();
-    const rawPhone = sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null;
+    const rawPhone = sock?.user?.id
+      ? sock.user.id.split(":")[0].split("@")[0]
+      : null;
     const isActuallyConnected = Boolean(isConn && rawPhone);
 
     // Jika bot sedang terputus / logout, kembalikan daftar kosong agar tidak membocorkan riwayat nomor lama
@@ -100,7 +128,7 @@ router.get('/chats', async (req, res) => {
       return res.json({
         success: true,
         is_connected: false,
-        status: 'DISCONNECTED',
+        status: "DISCONNECTED",
         phone: null,
         phone_formatted: null,
         total: 0,
@@ -113,12 +141,12 @@ router.get('/chats', async (req, res) => {
           total_direct: 0,
         },
         chats: [],
-        message: 'WhatsApp belum terhubung atau sesi telah keluar.',
+        message: "WhatsApp belum terhubung atau sesi telah keluar.",
       });
     }
 
     const summaries = messageStore.getChatSummaries();
-    const existingIds = new Set(summaries.map(s => s.id));
+    const existingIds = new Set(summaries.map((s) => s.id));
 
     // If socket is connected, merge participating groups & channels
     if (sock && isConn) {
@@ -130,10 +158,14 @@ router.get('/chats', async (req, res) => {
             const participants = g.participants || [];
             const isAnnounce = Boolean(g.isCommunityAnnounce || g.announce);
             const isComm = Boolean(g.isCommunity);
-            const type = isAnnounce ? 'channel' : (isComm ? 'community' : 'group');
+            const type = isAnnounce
+              ? "channel"
+              : isComm
+                ? "community"
+                : "group";
             summaries.push({
               id: id,
-              name: g.subject || 'Grup WhatsApp',
+              name: g.subject || "Grup WhatsApp",
               type: type,
               is_group: !isAnnounce,
               is_channel: isAnnounce,
@@ -143,18 +175,18 @@ router.get('/chats', async (req, res) => {
               media_count: 0,
               link_count: 0,
               last_message: {
-                text: g.desc ? g.desc.toString() : 'Grup WhatsApp aktif',
-                type: 'text',
+                text: g.desc ? g.desc.toString() : "Grup WhatsApp aktif",
+                type: "text",
                 timestamp: g.creation || null,
                 fromMe: false,
                 sender: null,
-              }
+              },
             });
             existingIds.add(id);
           }
         }
       } catch (grpErr) {
-        console.warn('Catatan explorer groups:', grpErr.message);
+        console.warn("Catatan explorer groups:", grpErr.message);
       }
 
       // 2. Fetch subscribed newsletters (Saluran Resmi WhatsApp)
@@ -165,8 +197,8 @@ router.get('/chats', async (req, res) => {
             if (!existingIds.has(ch.id)) {
               summaries.push({
                 id: ch.id,
-                name: ch.name || 'Saluran WhatsApp',
-                type: 'channel',
+                name: ch.name || "Saluran WhatsApp",
+                type: "channel",
                 is_group: false,
                 is_channel: true,
                 is_direct: false,
@@ -175,19 +207,19 @@ router.get('/chats', async (req, res) => {
                 media_count: 0,
                 link_count: 0,
                 last_message: {
-                  text: ch.desc || 'Saluran Resmi WhatsApp',
-                  type: 'text',
+                  text: ch.desc || "Saluran Resmi WhatsApp",
+                  type: "text",
                   timestamp: null,
                   fromMe: false,
                   sender: null,
-                }
+                },
               });
               existingIds.add(ch.id);
             }
           }
         }
       } catch (nlErr) {
-        console.warn('Catatan explorer newsletters:', nlErr.message);
+        console.warn("Catatan explorer newsletters:", nlErr.message);
       }
     }
 
@@ -198,25 +230,32 @@ router.get('/chats', async (req, res) => {
       if (tsA && tsB) return tsB - tsA;
       if (tsA) return -1;
       if (tsB) return 1;
-      return (a.name || '').localeCompare(b.name || '');
+      return (a.name || "").localeCompare(b.name || "");
     });
 
     // Enrich direct chats with session data (waiting_admin, admin_active, delayed, closed)
     for (const s of summaries) {
       if (s.is_direct) {
         const session = liveChatSessionService.getSession(s.id);
-        s.session_status = session?.status || 'waiting_admin';
-        s.flag_3days = Boolean(session?.flag_3days || session?.delayed_3days || session?.status === 'delayed');
+        s.session_status = session?.status || "waiting_admin";
+        s.flag_3days = Boolean(
+          session?.flag_3days ||
+          session?.delayed_3days ||
+          session?.status === "delayed",
+        );
         s.delayed_3days = s.flag_3days;
         s.delayed_at = session?.delayedAt || null;
         s.delayed_until = session?.delayedUntil || null;
         s.delayed_until_formatted = session?.delayedUntilFormatted || null;
-        s.delayed_topic = session?.delayedTopic || session?.consultationTopic || null;
+        s.delayed_topic =
+          session?.delayedTopic || session?.consultationTopic || null;
         s.delayed_by = session?.delayedBy || null;
         s.delayed_note = session?.delayedNote || null;
         s.reached_out_at = session?.reachedOutAt || null;
         s.reached_out_by = session?.reachedOutBy || null;
-        s.customer_replied_after_flag = Boolean(session?.customerRepliedAfterFlag);
+        s.customer_replied_after_flag = Boolean(
+          session?.customerRepliedAfterFlag,
+        );
         s.auto_greeted = Boolean(session?.autoGreeted);
         s.auto_greeted_at = session?.autoGreetedAt || null;
         s.visitor_data = session?.visitorData || null;
@@ -227,9 +266,12 @@ router.get('/chats', async (req, res) => {
         s.ai_topic = session?.aiTopic || null;
         s.ai_suggested_reply = session?.aiSuggestedReply || null;
         s.ai_analyzed_at = session?.aiAnalyzedAt || null;
-        s.has_admin_replied_today = liveChatSessionService.hasAdminRepliedToday(s.id, session);
+        s.has_admin_replied_today = liveChatSessionService.hasAdminRepliedToday(
+          s.id,
+          session,
+        );
       } else {
-        s.session_status = 'group';
+        s.session_status = "group";
         s.delayed_3days = false;
       }
     }
@@ -238,122 +280,138 @@ router.get('/chats', async (req, res) => {
     res.json({
       success: true,
       is_connected: true,
-      status: 'CONNECTED',
+      status: "CONNECTED",
       phone: rawPhone,
       phone_formatted: messageStore.formatPhoneNumber(rawPhone),
       total: summaries.length,
       stats: {
         ...stats,
         total_chats: summaries.length,
-        total_groups: summaries.filter(s => s.is_group).length,
-        total_channels: summaries.filter(s => s.is_channel).length,
-        total_direct: summaries.filter(s => s.is_direct).length,
+        total_groups: summaries.filter((s) => s.is_group).length,
+        total_channels: summaries.filter((s) => s.is_channel).length,
+        total_direct: summaries.filter((s) => s.is_direct).length,
       },
       chats: summaries,
     });
   } catch (err) {
-    console.error('❌ [Explorer] Error getting chats:', err);
+    console.error("❌ [Explorer] Error getting chats:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // GET /whatsapp/explorer/chats/:chatId — get messages & media for a specific chat
-router.get('/chats/:chatId', async (req, res) => {
+router.get("/chats/:chatId", async (req, res) => {
   try {
     const { chatId } = req.params;
     if (!chatId) {
-      return res.status(400).json({ success: false, error: 'Chat ID diperlukan' });
+      return res
+        .status(400)
+        .json({ success: false, error: "Chat ID diperlukan" });
     }
     const sock = _getSock();
     const isConn = _getIsConnected();
-    const rawPhone = sock?.user?.id ? sock.user.id.split(':')[0].split('@')[0] : null;
+    const rawPhone = sock?.user?.id
+      ? sock.user.id.split(":")[0].split("@")[0]
+      : null;
     const isActuallyConnected = Boolean(isConn && rawPhone);
 
     if (!isActuallyConnected) {
       return res.status(503).json({
         success: false,
-        error: 'WhatsApp belum terhubung atau sesi telah keluar.',
+        error: "WhatsApp belum terhubung atau sesi telah keluar.",
       });
     }
 
     let detail = messageStore.getChatDetail(chatId);
 
     // If it's a group, enrich with live WhatsApp group metadata if available
-    if (chatId.endsWith('@g.us') && sock && isConn) {
+    if (chatId.endsWith("@g.us") && sock && isConn) {
       try {
         const meta = await fetchGroupMetadata(sock, chatId);
         if (meta) {
           detail.name = meta.subject || detail.name;
           detail.participant_count = meta.participants?.length || 0;
           if (!detail.participants || detail.participants.length === 0) {
-            detail.participants = (meta.participants || []).map(p => {
+            detail.participants = (meta.participants || []).map((p) => {
               const pId = p.id || String(p);
               const pPhone = messageStore.formatPhoneNumber(pId);
               return {
                 jid: pId,
                 phone: pPhone,
-                raw_phone: pId.split('@')[0],
+                raw_phone: pId.split("@")[0],
                 name: pPhone,
                 admin: p.admin || null,
-                message_count: 0
+                message_count: 0,
               };
             });
           }
           if (detail.messages.length === 0) {
             detail.messages = [
               {
-                id: 'meta-group-info',
+                id: "meta-group-info",
                 fromMe: false,
                 text: meta.desc
                   ? `Deskripsi Grup:\n${meta.desc.toString()}`
                   : `Grup WhatsApp "${meta.subject}" aktif dengan ${meta.participants?.length || 0} anggota. Anda dapat mengirim rilis BPS atau pesan teks ke grup ini melalui kolom di bawah.`,
-                type: 'text',
+                type: "text",
                 timestamp: meta.creation || Math.floor(Date.now() / 1000),
-                pushName: 'Sistem WhatsApp',
-              }
+                pushName: "Sistem WhatsApp",
+              },
             ];
           }
         }
       } catch (grpErr) {
-        console.warn('Catatan groupMetadata:', grpErr.message);
+        console.warn("Catatan groupMetadata:", grpErr.message);
       }
     }
 
     // Enrich detail with live session data
     const session = liveChatSessionService.getSession(chatId);
     detail.session = session || null;
-    detail.session_status = session?.status || (detail.is_direct ? 'waiting_admin' : 'group');
-    detail.flag_3days = Boolean(session?.flag_3days || session?.delayed_3days || session?.status === 'delayed');
+    detail.session_status =
+      session?.status || (detail.is_direct ? "waiting_admin" : "group");
+    detail.flag_3days = Boolean(
+      session?.flag_3days ||
+      session?.delayed_3days ||
+      session?.status === "delayed",
+    );
     detail.delayed_3days = detail.flag_3days;
     detail.delayed_at = session?.delayedAt || null;
     detail.delayed_until = session?.delayedUntil || null;
     detail.delayed_until_formatted = session?.delayedUntilFormatted || null;
-    detail.delayed_topic = session?.delayedTopic || session?.consultationTopic || null;
+    detail.delayed_topic =
+      session?.delayedTopic || session?.consultationTopic || null;
     detail.delayed_by = session?.delayedBy || null;
     detail.delayed_note = session?.delayedNote || null;
     detail.reached_out_at = session?.reachedOutAt || null;
     detail.reached_out_by = session?.reachedOutBy || null;
-    detail.customer_replied_after_flag = Boolean(session?.customerRepliedAfterFlag);
+    detail.customer_replied_after_flag = Boolean(
+      session?.customerRepliedAfterFlag,
+    );
     detail.visitor_data = session?.visitorData || null;
     detail.ai_analysis = session?.aiAnalysis || null;
     detail.ai_intent = session?.aiIntent || null;
     detail.ai_topic = session?.aiTopic || null;
     detail.ai_suggested_reply = session?.aiSuggestedReply || null;
     detail.ai_analyzed_at = session?.aiAnalyzedAt || null;
-    detail.has_admin_replied_today = liveChatSessionService.hasAdminRepliedToday(chatId, session);
+    detail.has_admin_replied_today =
+      liveChatSessionService.hasAdminRepliedToday(chatId, session);
 
     res.json({
       success: true,
       chat: detail,
     });
   } catch (err) {
-    console.error(`❌ [Explorer] Error getting chat ${req.params.chatId}:`, err);
+    console.error(
+      `❌ [Explorer] Error getting chat ${req.params.chatId}:`,
+      err,
+    );
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // GET /whatsapp/explorer/backups — list available backup ZIP files
-router.get('/backups', (req, res) => {
+router.get("/backups", (req, res) => {
   try {
     const backups = messageStore.listBackupZips();
     res.json({
@@ -362,17 +420,19 @@ router.get('/backups', (req, res) => {
       backups,
     });
   } catch (err) {
-    console.error('❌ [Explorer] Error listing backups:', err);
+    console.error("❌ [Explorer] Error listing backups:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // GET /whatsapp/explorer/backups/inspect?filename=...
-router.get('/backups/inspect', async (req, res) => {
+router.get("/backups/inspect", async (req, res) => {
   try {
     const { filename } = req.query;
     if (!filename) {
-      return res.status(400).json({ success: false, error: 'Nama berkas backup diperlukan' });
+      return res
+        .status(400)
+        .json({ success: false, error: "Nama berkas backup diperlukan" });
     }
     const data = await messageStore.inspectBackupZip(filename);
     res.json({
@@ -380,17 +440,25 @@ router.get('/backups/inspect', async (req, res) => {
       ...data,
     });
   } catch (err) {
-    console.error(`❌ [Explorer] Error inspecting backup ${req.query.filename}:`, err);
+    console.error(
+      `❌ [Explorer] Error inspecting backup ${req.query.filename}:`,
+      err,
+    );
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // GET /whatsapp/explorer/backups/chat?filename=...&chatId=...
-router.get('/backups/chat', async (req, res) => {
+router.get("/backups/chat", async (req, res) => {
   try {
     const { filename, chatId } = req.query;
     if (!filename || !chatId) {
-      return res.status(400).json({ success: false, error: 'Parameter filename dan chatId diperlukan' });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "Parameter filename dan chatId diperlukan",
+        });
     }
     const chatDetail = await messageStore.getBackupZipChat(filename, chatId);
     res.json({
@@ -398,17 +466,30 @@ router.get('/backups/chat', async (req, res) => {
       chat: chatDetail,
     });
   } catch (err) {
-    console.error('❌ [Explorer] Error getting backup chat:', err);
+    console.error("❌ [Explorer] Error getting backup chat:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // POST /whatsapp/explorer/reply — send reply message directly from SIGAP
-router.post('/reply', async (req, res) => {
+router.post("/reply", async (req, res) => {
   try {
-    const { target, message, quotedMsgId, quotedParticipant, quotedText, quotedSender, quotedFromMe } = req.body;
+    const {
+      target,
+      message,
+      quotedMsgId,
+      quotedParticipant,
+      quotedText,
+      quotedSender,
+      quotedFromMe,
+    } = req.body;
     if (!target || !message) {
-      return res.status(400).json({ success: false, error: 'Target dan pesan balasan wajib diisi' });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "Target dan pesan balasan wajib diisi",
+        });
     }
 
     const isConnected = _getIsConnected();
@@ -417,17 +498,25 @@ router.post('/reply', async (req, res) => {
     if (!isConnected || !sock) {
       return res.status(503).json({
         success: false,
-        error: 'WhatsApp Gateway belum terhubung. Silakan hubungkan gateway terlebih dahulu untuk mengirim balasan.',
+        error:
+          "WhatsApp Gateway belum terhubung. Silakan hubungkan gateway terlebih dahulu untuk mengirim balasan.",
       });
     }
 
     const jid = formatTargetJid(target);
     if (!jid) {
-      return res.status(400).json({ success: false, error: 'Format nomor atau grup target tidak valid' });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "Format nomor atau grup target tidak valid",
+        });
     }
 
-    console.log(`💬 [Explorer] Mengirim balasan ke ${jid}: "${message.slice(0, 50)}..."${quotedMsgId ? ` (Membalas ${quotedMsgId})` : ''}`);
-    
+    console.log(
+      `💬 [Explorer] Mengirim balasan ke ${jid}: "${message.slice(0, 50)}..."${quotedMsgId ? ` (Membalas ${quotedMsgId})` : ""}`,
+    );
+
     // Prepare Baileys send options for quoting
     const sendOptions = {};
     if (quotedMsgId) {
@@ -439,7 +528,7 @@ router.post('/reply', async (req, res) => {
           fromMe: Boolean(quotedFromMe),
         },
         message: {
-          conversation: quotedText || '',
+          conversation: quotedText || "",
         },
       };
     }
@@ -464,7 +553,7 @@ router.post('/reply', async (req, res) => {
                 stanzaId: quotedMsgId,
                 participant: quotedParticipant || undefined,
                 quotedMessage: {
-                  conversation: quotedText || '',
+                  conversation: quotedText || "",
                 },
               },
             },
@@ -474,28 +563,38 @@ router.post('/reply', async (req, res) => {
           },
       rawMessage: sent?.message || undefined,
       messageTimestamp: Math.floor(Date.now() / 1000),
-      pushName: 'SIGAP BPS Admin',
+      pushName: "SIGAP BPS Admin",
     };
     messageStore.saveMessages(jid, [outgoingMsg]);
-    liveChatSessionService.handleAdminMessageSent(jid, 'SIGAP BPS Admin', sent?.key?.id, message);
+    liveChatSessionService.handleAdminMessageSent(
+      jid,
+      "SIGAP BPS Admin",
+      sent?.key?.id,
+      message,
+    );
 
     res.json({
       success: true,
-      message: 'Pesan balasan berhasil dikirim melalui WhatsApp Gateway',
+      message: "Pesan balasan berhasil dikirim melalui WhatsApp Gateway",
       message_id: sent?.key?.id,
       timestamp: Math.floor(Date.now() / 1000),
       quoted: quotedMsgId
         ? {
             id: quotedMsgId,
             participant: quotedParticipant || null,
-            text: quotedText || '',
+            text: quotedText || "",
             sender: quotedSender || null,
           }
         : null,
     });
   } catch (err) {
-    console.error('❌ [Explorer] Error sending reply:', err);
-    res.status(500).json({ success: false, error: `Gagal mengirim balasan: ${err.message}` });
+    console.error("❌ [Explorer] Error sending reply:", err);
+    res
+      .status(500)
+      .json({
+        success: false,
+        error: `Gagal mengirim balasan: ${err.message}`,
+      });
   }
 });
 
@@ -504,14 +603,14 @@ router.post('/reply', async (req, res) => {
 // ===================================================================
 
 // GET /whatsapp/explorer/sessions — get all active & past live chat sessions
-router.get('/sessions', (req, res) => {
+router.get("/sessions", (req, res) => {
   try {
     const all = liveChatSessionService.getAllSessions();
     const settings = liveChatSessionService.getLiveSettings();
     res.json({
       success: true,
       sessions: all,
-      settings
+      settings,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -519,7 +618,7 @@ router.get('/sessions', (req, res) => {
 });
 
 // GET /whatsapp/explorer/sessions/:chatId — get single session details
-router.get('/sessions/:chatId', (req, res) => {
+router.get("/sessions/:chatId", (req, res) => {
   try {
     const { chatId } = req.params;
     const session = liveChatSessionService.getSession(chatId);
@@ -527,7 +626,7 @@ router.get('/sessions/:chatId', (req, res) => {
     res.json({
       success: true,
       session: session || null,
-      settings
+      settings,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -535,15 +634,15 @@ router.get('/sessions/:chatId', (req, res) => {
 });
 
 // POST /whatsapp/explorer/sessions/:chatId/takeover — admin takes over chat
-router.post('/sessions/:chatId/takeover', (req, res) => {
+router.post("/sessions/:chatId/takeover", (req, res) => {
   try {
     const { chatId } = req.params;
-    const { adminName = 'Admin PST' } = req.body || {};
+    const { adminName = "Admin PST" } = req.body || {};
     const session = liveChatSessionService.takeoverSession(chatId, adminName);
     res.json({
       success: true,
-      message: 'Sesi obrolan berhasil diambil alih oleh admin',
-      session
+      message: "Sesi obrolan berhasil diambil alih oleh admin",
+      session,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -551,11 +650,20 @@ router.post('/sessions/:chatId/takeover', (req, res) => {
 });
 
 // POST /whatsapp/explorer/sessions/:chatId/delay — mark session as delayed (maks. 3 hari kerja)
-router.post('/sessions/:chatId/delay', async (req, res) => {
+router.post("/sessions/:chatId/delay", async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { adminName = 'Admin PST', topic = '', note = '', sendMessage = true } = req.body || {};
-    const session = liveChatSessionService.delaySession(chatId, { adminName, topic, note });
+    const {
+      adminName = "Admin PST",
+      topic = "",
+      note = "",
+      sendMessage = true,
+    } = req.body || {};
+    const session = liveChatSessionService.delaySession(chatId, {
+      adminName,
+      topic,
+      note,
+    });
 
     if (sendMessage) {
       const sock = _getSock();
@@ -568,7 +676,7 @@ router.post('/sessions/:chatId/delay', async (req, res) => {
           key: { id: `delay-${Date.now()}`, remoteJid: jid, fromMe: true },
           message: { conversation: delayMsg },
           messageTimestamp: Math.floor(Date.now() / 1000),
-          pushName: `${adminName} (Penundaan Data)`
+          pushName: `${adminName} (Penundaan Data)`,
         };
         messageStore.saveMessages(jid, [outMsg]);
       }
@@ -576,8 +684,9 @@ router.post('/sessions/:chatId/delay', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Status sesi diperbarui ke Penundaan Pengolahan Data (Maks. 3 Hari)',
-      session
+      message:
+        "Status sesi diperbarui ke Penundaan Pengolahan Data (Maks. 3 Hari)",
+      session,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -585,14 +694,14 @@ router.post('/sessions/:chatId/delay', async (req, res) => {
 });
 
 // POST /whatsapp/explorer/sessions/:chatId/reopen — reopen closed session
-router.post('/sessions/:chatId/reopen', (req, res) => {
+router.post("/sessions/:chatId/reopen", (req, res) => {
   try {
     const { chatId } = req.params;
     const session = liveChatSessionService.reopenSession(chatId);
     res.json({
       success: true,
-      message: 'Sesi berhasil dibuka kembali',
-      session
+      message: "Sesi berhasil dibuka kembali",
+      session,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -600,17 +709,17 @@ router.post('/sessions/:chatId/reopen', (req, res) => {
 });
 
 // POST /whatsapp/explorer/sessions/:chatId/terminate — official session termination conforming to PDF
-router.post('/sessions/:chatId/terminate', async (req, res) => {
+router.post("/sessions/:chatId/terminate", async (req, res) => {
   try {
     const { chatId } = req.params;
     const {
-      type = 'completed', // 'completed' | 'end_of_day' | 'midday_1400' | 'delayed_3days'
-      topic = '',
-      nextSchedule = '',
-      message = '',
-      adminName = 'Admin PST',
+      type = "completed", // 'completed' | 'end_of_day' | 'midday_1400' | 'delayed_3days'
+      topic = "",
+      nextSchedule = "",
+      message = "",
+      adminName = "Admin PST",
       sendWhatsappMessage = true,
-      note = ''
+      note = "",
     } = req.body || {};
 
     const sock = _getSock();
@@ -619,7 +728,8 @@ router.post('/sessions/:chatId/terminate', async (req, res) => {
     if (sendWhatsappMessage && (!sock || !isConnected)) {
       return res.status(503).json({
         success: false,
-        error: 'WhatsApp Gateway belum terhubung. Tidak dapat mengirim pesan terminasi ke pelanggan.'
+        error:
+          "WhatsApp Gateway belum terhubung. Tidak dapat mengirim pesan terminasi ke pelanggan.",
       });
     }
 
@@ -630,32 +740,43 @@ router.post('/sessions/:chatId/terminate', async (req, res) => {
 
     const result = await liveChatSessionService.terminateSession(
       jid,
-      { type, topic, nextSchedule, message, adminName, sendWhatsappMessage, note },
-      sendFn
+      {
+        type,
+        topic,
+        nextSchedule,
+        message,
+        adminName,
+        sendWhatsappMessage,
+        note,
+      },
+      sendFn,
     );
 
-    let resMsg = 'Sesi konsultasi berhasil diterminasi dan survei SKD dikirim';
-    if (type === 'end_of_day') {
-      resMsg = 'Sesi berhasil diterminasi (Jam Layanan Berakhir)';
-    } else if (type === 'midday_1400') {
-      resMsg = 'Sesi 14.00 WITA berhasil diterminasi & survei SKD dikirim';
-    } else if (type === 'delayed_3days' || type === 'delayed') {
-      resMsg = 'Flag Terminasi 3 Hari berhasil diaktifkan. Auto-pembuka dan penutup dinonaktifkan agar kontak dapat direach-out kembali.';
+    let resMsg = "Sesi konsultasi berhasil diterminasi dan survei SKD dikirim";
+    if (type === "end_of_day") {
+      resMsg = "Sesi berhasil diterminasi (Jam Layanan Berakhir)";
+    } else if (type === "midday_1400") {
+      resMsg = "Sesi 14.00 WITA berhasil diterminasi & survei SKD dikirim";
+    } else if (type === "delayed_3days" || type === "delayed") {
+      resMsg =
+        "Flag Terminasi 3 Hari berhasil diaktifkan. Auto-pembuka dan penutup dinonaktifkan agar kontak dapat direach-out kembali.";
     }
 
     res.json({
       success: true,
       message: resMsg,
-      result
+      result,
     });
   } catch (err) {
-    console.error('❌ [Explorer] Error terminating session:', err);
-    res.status(500).json({ success: false, error: `Gagal terminasi sesi: ${err.message}` });
+    console.error("❌ [Explorer] Error terminating session:", err);
+    res
+      .status(500)
+      .json({ success: false, error: `Gagal terminasi sesi: ${err.message}` });
   }
 });
 
 // POST /whatsapp/explorer/sessions/:chatId/ai-analysis — simpan hasil analisis intent AI
-router.post('/sessions/:chatId/ai-analysis', (req, res) => {
+router.post("/sessions/:chatId/ai-analysis", (req, res) => {
   try {
     const { chatId } = req.params;
     const body = req.body || {};
@@ -667,11 +788,11 @@ router.post('/sessions/:chatId/ai-analysis', (req, res) => {
 });
 
 // GET /whatsapp/explorer/sessions-settings
-router.get('/sessions-settings', (req, res) => {
+router.get("/sessions-settings", (req, res) => {
   try {
     res.json({
       success: true,
-      settings: liveChatSessionService.getLiveSettings()
+      settings: liveChatSessionService.getLiveSettings(),
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -679,13 +800,13 @@ router.get('/sessions-settings', (req, res) => {
 });
 
 // POST /whatsapp/explorer/sessions-settings
-router.post('/sessions-settings', (req, res) => {
+router.post("/sessions-settings", (req, res) => {
   try {
     const updated = liveChatSessionService.updateLiveSettings(req.body || {});
     res.json({
       success: true,
-      message: 'Pengaturan Live Chat & Jam Operasional berhasil disimpan',
-      settings: updated
+      message: "Pengaturan Live Chat & Jam Operasional berhasil disimpan",
+      settings: updated,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -693,63 +814,78 @@ router.post('/sessions-settings', (req, res) => {
 });
 
 // GET /whatsapp/explorer/templates — get all official PST BPS templates from uploaded guide
-router.get('/templates', (req, res) => {
+router.get("/templates", (req, res) => {
   try {
-    const topic = req.query.topic || 'konsultasi data';
+    const topic = req.query.topic || "konsultasi data";
     const schedule = req.query.schedule || null;
     res.json({
       success: true,
       templates: [
         {
-          id: 'opening',
-          title: 'Pesan Pembuka (Jam Layanan)',
-          category: 'pembuka',
+          id: "opening",
+          title: "Pesan Pembuka (Jam Layanan)",
+          category: "pembuka",
           text: liveChatSessionService.buildOpeningMessage(),
-          description: 'Dikirim otomatis saat chat masuk pada jam operasional layanan'
+          description:
+            "Dikirim otomatis saat chat masuk pada jam operasional layanan",
         },
         {
-          id: 'out_of_hours',
-          title: 'Pesan Luar Jam Layanan',
-          category: 'luar_jam',
+          id: "out_of_hours",
+          title: "Pesan Luar Jam Layanan",
+          category: "luar_jam",
           text: liveChatSessionService.buildOutOfHoursMessage(),
-          description: 'Dikirim otomatis saat chat masuk di luar jam operasional petugas'
+          description:
+            "Dikirim otomatis saat chat masuk di luar jam operasional petugas",
         },
         {
-          id: 'delay',
-          title: 'Pesan Penundaan (3 Hari Kerja)',
-          category: 'penundaan',
+          id: "transition_to_operating_hours",
+          title: "Pesan Transisi Masuk Jam Operasional",
+          category: "pembuka",
+          text: liveChatSessionService.buildOperatingHoursTransitionMessage(),
+          description:
+            "Dikirim saat pengunjung yang chat di luar jam operasional mengirim pesan kembali saat jam layanan telah dibuka",
+        },
+        {
+          id: "delay",
+          title: "Pesan Penundaan (3 Hari Kerja)",
+          category: "penundaan",
           text: liveChatSessionService.buildDelayMessage(),
-          description: 'Jika permintaan data butuh penyiapan teknis (maks. 3 hari kerja)'
+          description:
+            "Jika permintaan data butuh penyiapan teknis (maks. 3 hari kerja)",
         },
         {
-          id: 'confirmation',
-          title: 'Pesan Konfirmasi',
-          category: 'konfirmasi',
+          id: "confirmation",
+          title: "Pesan Konfirmasi",
+          category: "konfirmasi",
           text: liveChatSessionService.buildConfirmationMessage(topic),
-          description: 'Memastikan apakah penjelasan/data yang diberikan sudah jelas'
+          description:
+            "Memastikan apakah penjelasan/data yang diberikan sudah jelas",
         },
         {
-          id: 'termination_completed',
-          title: 'Pesan Penutup: Layanan Selesai (+Survei SKD)',
-          category: 'terminasi',
+          id: "termination_completed",
+          title: "Pesan Penutup: Layanan Selesai (+Survei SKD)",
+          category: "terminasi",
           text: liveChatSessionService.buildClosingCompletedMessage(topic),
-          description: 'Terminasi konsultasi selesai dengan konfirmasi & link survei SKD'
+          description:
+            "Terminasi konsultasi selesai dengan konfirmasi & link survei SKD",
         },
         {
-          id: 'termination_midday_1400',
-          title: 'Pesan Penutup: Sesi Siang (Pukul 14.00 WITA)',
-          category: 'terminasi',
+          id: "termination_midday_1400",
+          title: "Pesan Penutup: Sesi Siang (Pukul 14.00 WITA)",
+          category: "terminasi",
           text: liveChatSessionService.buildClosing1400Message(topic),
-          description: 'Terminasi sesi konsultasi siang pukul 14.00 WITA (+ link survei SKD)'
+          description:
+            "Terminasi sesi konsultasi siang pukul 14.00 WITA (+ link survei SKD)",
         },
         {
-          id: 'termination_end_of_day',
-          title: 'Pesan Penutup: Jam Layanan Telah Selesai (Pukul 15.30 WITA)',
-          category: 'terminasi',
+          id: "termination_end_of_day",
+          title: "Pesan Penutup: Jam Layanan Telah Selesai (Pukul 15.30 WITA)",
+          category: "terminasi",
           text: liveChatSessionService.buildClosingEndOfDayMessage(schedule),
-          description: 'Terminasi saat jam operasional hari ini berakhir (+ link SIGAP & Web BPS)'
-        }
-      ]
+          description:
+            "Terminasi saat jam operasional hari ini berakhir (+ link SIGAP & Web BPS)",
+        },
+      ],
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

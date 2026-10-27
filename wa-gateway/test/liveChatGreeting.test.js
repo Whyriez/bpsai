@@ -111,3 +111,100 @@ test('handleIncomingMessage Option 1: sends guest book form to brand new visitor
   assert.equal(updatedSession.autoGreeted, true);
   assert.equal(updatedSession.status, 'waiting_admin');
 });
+
+test('handleIncomingMessage: sends transition message when user greeted out of hours chats again during operating hours', async () => {
+  clearSessions();
+  const testJid = '6287711223344@s.whatsapp.net';
+  const localDate = getLocalGorontaloDate();
+  const todayStr = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
+
+  // Simulasi: Pengunjung telah menerima sapaan luar jam kerja hari ini
+  const session = liveChatSessionService.getOrCreateSession(testJid);
+  session.autoGreeted = true;
+  session.lastGreetedDate = todayStr;
+  session.lastOutOfHoursGreetedDate = todayStr;
+  session.lastGreetingType = 'out_of_hours_message';
+  session.status = 'waiting_admin';
+  session.transitionToOperatingHoursSent = false;
+  session.visitorData = { nama: 'Rina' };
+
+  let sentPayload = null;
+  const mockSock = {
+    sendMessage: async (jid, content) => {
+      sentPayload = content;
+      return { key: { id: `bot-trans-${Date.now()}` } };
+    }
+  };
+
+  const incomingMsg = {
+    key: { remoteJid: testJid, fromMe: false, id: `test-in-hours-${Date.now()}` },
+    message: { conversation: 'Halo min, sekarang sudah jam kerja kan?' },
+    messageTimestamp: Math.floor(Date.now() / 1000),
+  };
+
+  await handleIncomingMessage(mockSock, incomingMsg);
+
+  // Jika waktu pengujian saat ini berada dalam jam operasional
+  const inOperatingHours = liveChatSessionService.isWithinOperatingHours();
+  if (inOperatingHours) {
+    assert.ok(sentPayload?.text);
+    assert.ok(sentPayload.text.includes('Jam operasional Layanan PST BPS Provinsi Gorontalo hari ini telah dibuka'));
+    assert.ok(sentPayload.text.includes('Kak Rina'));
+    assert.ok(sentPayload.text.includes('antrean prioritas'));
+
+    const updatedSession = liveChatSessionService.getSession(testJid);
+    assert.equal(updatedSession.transitionToOperatingHoursSent, true);
+    assert.equal(updatedSession.lastGreetingType, 'transition_to_operating_hours');
+
+    // Pengujian anti-spam: chat berikutnya dalam jam kerja tidak mengirim ulang pesan transisi
+    sentPayload = null;
+    const nextMsg = {
+      key: { remoteJid: testJid, fromMe: false, id: `test-next-${Date.now()}` },
+      message: { conversation: 'Mau tanya data PDRB tahun 2025' },
+      messageTimestamp: Math.floor(Date.now() / 1000),
+    };
+    await handleIncomingMessage(mockSock, nextMsg);
+    assert.equal(sentPayload, null); // Melewatkan pembuka / anti-spam aktif
+  }
+});
+
+test('handleIncomingMessage: sends transition message with form fields if visitor name is not yet known', async () => {
+  clearSessions();
+  const testJid = '6287755667788@s.whatsapp.net';
+  const localDate = getLocalGorontaloDate();
+  const todayStr = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
+
+  const session = liveChatSessionService.getOrCreateSession(testJid);
+  session.autoGreeted = true;
+  session.lastGreetedDate = todayStr;
+  session.lastOutOfHoursGreetedDate = todayStr;
+  session.lastGreetingType = 'out_of_hours_message';
+  session.status = 'waiting_admin';
+  session.transitionToOperatingHoursSent = false;
+  session.visitorData = null;
+
+  let sentPayload = null;
+  const mockSock = {
+    sendMessage: async (jid, content) => {
+      sentPayload = content;
+      return { key: { id: `bot-trans-${Date.now()}` } };
+    }
+  };
+
+  const incomingMsg = {
+    key: { remoteJid: testJid, fromMe: false, id: `test-anon-${Date.now()}` },
+    message: { conversation: 'Halo pagi' },
+    messageTimestamp: Math.floor(Date.now() / 1000),
+  };
+
+  await handleIncomingMessage(mockSock, incomingMsg);
+
+  const inOperatingHours = liveChatSessionService.isWithinOperatingHours();
+  if (inOperatingHours) {
+    assert.ok(sentPayload?.text);
+    assert.ok(sentPayload.text.includes('Jam operasional Layanan PST BPS Provinsi Gorontalo hari ini telah dibuka'));
+    assert.ok(sentPayload.text.includes('Nama :'));
+    assert.ok(sentPayload.text.includes('Pekerjaan :'));
+    assert.ok(sentPayload.text.includes('Instansi/Asal :'));
+  }
+});
