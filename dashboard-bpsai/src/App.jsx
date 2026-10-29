@@ -131,6 +131,16 @@ export default function App() {
         </Route>
 
         <Route path={routes.documentation} element={<Documentation />} />
+
+        {/* Fullscreen Dedicated Console (Tab Baru) - Tanpa Sidebar & Header Dashboard */}
+        <Route
+          path={routes.whatsappConsole}
+          element={
+            <ProtectedRoute>
+              <WhatsAppChatExplorer isStandalone={true} />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </>
   );

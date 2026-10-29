@@ -12,6 +12,7 @@ const routes = {
     documentation: "/documentation",
     developer: "/developer",
     whatsappChat: "/whatsapp-chat",
+    whatsappConsole: "/whatsapp-console",
 };
 
 export default routes;
