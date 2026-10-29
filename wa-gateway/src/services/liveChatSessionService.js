@@ -136,9 +136,9 @@ export function isAutomatedBotMessage(msg) {
     return true;
   }
 
-  // Bot 14.00 confirmation
+  // Bot confirmation
   if (
-    text.includes("Bagaimana Kak, terkait penjelasan mengenai") &&
+    text.includes("terkait penjelasan mengenai") &&
     text.includes("apakah sudah cukup jelas")
   ) {
     return true;
@@ -147,7 +147,7 @@ export function isAutomatedBotMessage(msg) {
   // Bot delay 3 days
   if (
     text.includes(
-      "memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja",
+      "memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3",
     )
   ) {
     return true;
@@ -158,7 +158,7 @@ export function isAutomatedBotMessage(msg) {
     text.includes(
       "Mengingat jam operasional layanan hari ini telah berakhir",
     ) ||
-    text.includes("kami akhiri ya Kak") ||
+    text.includes("kami akhiri") ||
     text.includes("s.bps.go.id/skd75")
   ) {
     return true;
@@ -336,25 +336,23 @@ export function getNextOperatingSchedule(localDate = getLocalGorontaloDate()) {
  */
 export function buildOpeningMessage(greeting = getTimeGreeting()) {
   return `Selamat ${greeting}.
-Terima kasih telah menghubungi PST BPS Provinsi Gorontalo
-Mohon kesediaannya untuk mengisi data berikut ya Kak 😊
+Terima kasih telah menghubungi PST BPS Provinsi Gorontalo.
+Mohon kesediaannya untuk mengisi data berikut:
 Nama : 
 Pekerjaan : 
 Instansi/Asal : `;
 }
 
 /**
- * 1b. Pesan Pembuka Hangat untuk Pengguna Lama (Personalized Welcome Back)
+ * 1b. Pesan Pembuka Hangat untuk Pengguna Lama (General Welcome Back)
  */
 export function buildReturningVisitorOpeningMessage(
   visitorName = "",
   greeting = getTimeGreeting(),
 ) {
-  const cleanName = (visitorName || "").trim();
-  const callName = cleanName ? `, Kak ${cleanName}` : " Kak";
-  return `Selamat ${greeting}${callName}!
+  return `Selamat ${greeting}!
 Selamat datang kembali di Layanan PST BPS Provinsi Gorontalo 😊
-Pesan Kakak sudah kami terima dan segera diteruskan ke petugas layanan kami. Ada data atau informasi statistik yang bisa kami bantu hari ini?`;
+Pesan Anda sudah kami terima dan segera diteruskan ke petugas layanan kami. Ada data atau informasi statistik yang bisa kami bantu hari ini?`;
 }
 
 /**
@@ -370,20 +368,18 @@ Asal Instansi : `;
 }
 
 /**
- * 2b. Pesan Di Luar Jam Layanan untuk Pengguna Lama (Personalized Out of Hours)
+ * 2b. Pesan Di Luar Jam Layanan untuk Pengguna Lama (General Out of Hours)
  */
 export function buildReturningVisitorOutOfHoursMessage(
   visitorName = "",
   greeting = getTimeGreeting(),
   nextSchedule = null,
 ) {
-  const cleanName = (visitorName || "").trim();
-  const callName = cleanName ? `, Kak ${cleanName}` : " Kak";
   const schedule = nextSchedule || getNextOperatingSchedule();
-  return `Selamat ${greeting}${callName}!
+  return `Selamat ${greeting}!
 Terima kasih telah menghubungi kembali Layanan PST BPS Provinsi Gorontalo.
-Mohon maaf, pesan Kakak masuk di luar jam operasional layanan kami (Senin-Jumat, 08.00 - 15.30 WITA).
-Pesan Kakak telah kami catat dan akan segera ditindaklanjuti saat jam layanan dibuka kembali (${schedule}). Terima kasih banyak atas kesabarannya ya Kak 😊`;
+Mohon maaf, pesan Anda masuk di luar jam operasional layanan kami (Senin-Jumat, 08.00 - 15.30 WITA).
+Pesan Anda telah kami catat dan akan segera ditindaklanjuti saat jam layanan dibuka kembali (${schedule}). Terima kasih banyak atas kesabaran Anda menunggu 😊`;
 }
 
 /**
@@ -393,35 +389,34 @@ export function buildOperatingHoursTransitionMessage(
   visitorName = "",
   greeting = getTimeGreeting(),
 ) {
-  const cleanName = (visitorName || "").trim();
-  const callName = cleanName ? `, Kak ${cleanName}` : " Kak";
+  const isRegistered = Boolean((visitorName || "").trim());
 
-  if (cleanName) {
-    return `Selamat ${greeting}${callName}!
+  if (isRegistered) {
+    return `Selamat ${greeting}!
 Jam operasional Layanan PST BPS Provinsi Gorontalo hari ini telah dibuka.
 
-Pesan dan pertanyaan Kakak sudah masuk dalam antrean prioritas petugas layanan kami dan akan segera direspons. Terima kasih banyak atas kesabaran Kakak menunggu ya 😊`;
+Pesan dan pertanyaan Anda sudah masuk dalam antrean prioritas petugas layanan kami dan akan segera direspons. Terima kasih banyak atas kesabaran Anda menunggu ya 😊`;
   }
 
-  return `Selamat ${greeting}${callName}!
+  return `Selamat ${greeting}!
 Jam operasional Layanan PST BPS Provinsi Gorontalo hari ini telah dibuka (Senin - Jumat pukul 08:00 - 15:30 WITA).
 
-Pesan Kakak sudah masuk dalam antrean petugas layanan kami dan akan segera ditindaklanjuti.
+Pesan Anda sudah masuk dalam antrean petugas layanan kami dan akan segera ditindaklanjuti.
 
-Sebelumnya, agar kami dapat mendata kunjungan Kakak, mohon kesediaannya untuk menginformasikan:
+Sebelumnya, agar kami dapat mendata kunjungan Anda, mohon kesediaannya untuk menginformasikan:
 Nama : 
 Pekerjaan : 
 Instansi/Asal : 
 
-Petugas kami akan segera merespons kebutuhan data statistik Kakak. Terima kasih banyak atas pengertian dan kesabarannya ya Kak 😊`;
+Petugas kami akan segera merespons kebutuhan data statistik Anda. Terima kasih banyak atas pengertian dan kesabarannya 😊`;
 }
 
 /**
  * 3. Pesan Penundaan (Jika Permintaan Data Membutuhkan Proses Pengolahan Terlebih Dahulu)
  */
 export function buildDelayMessage(greeting = getTimeGreeting()) {
-  return `Selamat ${greeting} Kak. Data yang Kakak butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja. Kami akan menghubungi Kakak kembali melalui nomor ini setelah data tersebut siap diserahkan.
-Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`;
+  return `Selamat ${greeting}. Data yang Anda butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (tiga) hari kerja. Kami akan menghubungi Anda kembali melalui nomor ini setelah data tersebut siap diserahkan.
+Terima kasih atas pengertian dan kesediaan Anda untuk menunggu 😊`;
 }
 
 /**
@@ -429,8 +424,8 @@ Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`;
  */
 export function buildConfirmationMessage(topic = "konsultasi data") {
   const cleanTopic = (topic || "konsultasi data").trim();
-  return `Bagaimana Kak, terkait penjelasan mengenai ${cleanTopic} tadi, apakah sudah cukup jelas?
-Kalau dirasa masih ada poin yang kurang jelas atau ada yang ingin ditanyakan lagi, silakan disampaikan saja, ya. 😊`;
+  return `Terkait penjelasan mengenai ${cleanTopic} tadi, apakah sudah cukup jelas?
+Apabila masih ada poin yang kurang jelas atau ada yang ingin ditanyakan lagi, silakan disampaikan saja ya. 😊`;
 }
 
 /**
@@ -439,9 +434,9 @@ Kalau dirasa masih ada poin yang kurang jelas atau ada yang ingin ditanyakan lag
 export function buildClosingCompletedMessage(topic = "konsultasi data") {
   const cleanTopic = (topic || "konsultasi data").trim();
   const surveyUrl = settings.links?.surveyUrl || "https://s.bps.go.id/skd75";
-  return `Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Dengan ini, konsultasi terkait ${cleanTopic} kami akhiri ya Kak. Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: ${surveyUrl}
+  return `Terima kasih banyak telah menghubungi layanan PST BPS Provinsi Gorontalo. Dengan ini, sesi konsultasi terkait ${cleanTopic} kami akhiri. Agar kami dapat terus meningkatkan kualitas pelayanan, mohon bantuan Anda untuk mengisi survei kepuasan singkat pada tautan ini: ${surveyUrl}
 
-Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`;
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan salam sehat selalu! 👏 😊`;
 }
 
 /**
@@ -452,16 +447,16 @@ export function buildClosingEndOfDayMessage(nextSchedule = null) {
   const sigapUrl = settings.links?.sigapUrl || "https://sigap.bps7500.my.id";
   const bpsUrl = settings.links?.bpsWebsiteUrl || "https://gorontalo.bps.go.id";
 
-  return `Selamat sore, Kak.
+  return `Selamat sore.
 Mengingat jam operasional layanan hari ini telah berakhir, proses konsultasi akan kami lanjutkan kembali pada ${schedule} saat jam layanan dibuka.
 
-Untuk kebutuhan data statistik secara mandiri, Kakak dapat mengakses tautan berikut:
+Untuk kebutuhan data statistik secara mandiri, Anda dapat mengakses tautan berikut:
 • SIGAP: ${sigapUrl}
 • Website BPS Provinsi Gorontalo: ${bpsUrl}
 
-Kami akan menghubungi Kakak kembali pada ${schedule} untuk menjawab pertanyaan yang belum terselesaikan.
+Kami akan menghubungi Anda kembali pada ${schedule} untuk menjawab pertanyaan yang belum terselesaikan.
 
-Terima kasih banyak atas pengertiannya Kak 😊`;
+Terima kasih banyak atas pengertian Anda 😊`;
 }
 
 /**
@@ -470,11 +465,11 @@ Terima kasih banyak atas pengertiannya Kak 😊`;
 export function buildClosing1400Message(topic = "konsultasi data") {
   const cleanTopic = (topic || "konsultasi data").trim();
   const surveyUrl = settings.links?.surveyUrl || "https://s.bps.go.id/skd75";
-  return `Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Sesi konsultasi terkait ${cleanTopic} pada pukul 14.00 WITA kami akhiri ya Kak.
+  return `Terima kasih banyak telah menghubungi layanan PST BPS Provinsi Gorontalo. Sesi konsultasi terkait ${cleanTopic} pada pukul 14.00 WITA kami akhiri.
 
-Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: ${surveyUrl}
+Agar kami dapat terus meningkatkan kualitas pelayanan, mohon bantuan Anda untuk mengisi survei kepuasan singkat pada tautan ini: ${surveyUrl}
 
-Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`;
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan salam sehat selalu! 👏 😊`;
 }
 
 /**
@@ -486,16 +481,16 @@ export function buildUnansweredEndOfDayMessage(nextSchedule = null) {
   const sigapUrl = settings.links?.sigapUrl || "https://sigap.bps7500.my.id";
   const bpsUrl = settings.links?.bpsWebsiteUrl || "https://gorontalo.bps.go.id";
 
-  return `Selamat sore, Kak.
+  return `Selamat sore.
 Mohon maaf yang sebesar-besarnya atas keterlambatan respons kami dikarenakan padatnya antrean layanan konsultasi hari ini.
 
-Mengingat jam operasional layanan PST BPS Provinsi Gorontalo telah berakhir pada pukul 15.30 WITA, pesan dan pertanyaan Kakak telah kami catat dalam antrean prioritas dan akan segera kami tindaklanjuti kembali pada ${schedule} saat jam layanan dibuka kembali.
+Mengingat jam operasional layanan PST BPS Provinsi Gorontalo telah berakhir pada pukul 15.30 WITA, pesan dan pertanyaan Anda telah kami catat dalam antrean prioritas dan akan segera kami tindaklanjuti kembali pada ${schedule} saat jam layanan dibuka kembali.
 
-Untuk kebutuhan data statistik secara mandiri, Kakak dapat mengakses:
+Untuk kebutuhan data statistik secara mandiri, Anda dapat mengakses:
 • SIGAP: ${sigapUrl}
 • Website BPS Provinsi Gorontalo: ${bpsUrl}
 
-Terima kasih banyak atas kesabaran dan pengertian Kakak 🙏 😊`;
+Terima kasih banyak atas kesabaran dan pengertian Anda 🙏 😊`;
 }
 
 /**
@@ -725,7 +720,7 @@ export function analyzeIntentLocally(
       summary:
         "Pengunjung menyampaikan ucapan terima kasih / kesantunan penutup",
       suggested_reply:
-        "Sama-sama Kak, senang dapat melayani Anda. Jika masih ada data yang dibutuhkan di kemudian hari, jangan ragu untuk menghubungi PST BPS Provinsi Gorontalo kembali ya Kak 😊",
+        "Sama-sama, senang dapat melayani Anda. Jika masih ada data yang dibutuhkan di kemudian hari, jangan ragu untuk menghubungi PST BPS Provinsi Gorontalo kembali ya 😊",
       confidence: 0.95,
     };
   }
@@ -764,7 +759,7 @@ export function analyzeIntentLocally(
         delayedTopic || session?.consultationTopic || "Permintaan Data Teknis",
       visitor_info: { nama: visitorName, pekerjaan: null, instansi: null },
       summary: `Pengunjung menindaklanjuti data tertunda (${delayedTopic || "Data teknis 3 hari"})`,
-      suggested_reply: `Halo Kak, terkait data ${delayedTopic ? `mengenai ${delayedTopic}` : "yang Kakak butuhkan"} saat ini masih dalam proses penyiapan oleh tim teknis kami. Kami pastikan segera mengabari Kakak kembali begitu data siap. Terima kasih atas kesabarannya ya Kak 😊`,
+      suggested_reply: `Halo, terkait data ${delayedTopic ? `mengenai ${delayedTopic}` : "yang Anda butuhkan"} saat ini masih dalam proses penyiapan oleh tim teknis kami. Kami pastikan segera mengabari Anda kembali begitu data siap. Terima kasih atas kesabaran Anda menunggu 😊`,
       confidence: 0.92,
     };
   }
@@ -835,7 +830,7 @@ export function analyzeIntentLocally(
       summary:
         "Pengunjung melanjutkan percakapan yang sedang berjalan hari ini",
       suggested_reply:
-        "Baik Kak, pesan Kakak sudah kami terima dan sedang kami tindaklanjuti. Mohon ditunggu sebentar ya Kak 😊",
+        "Baik, pesan Anda sudah kami terima dan sedang kami tindaklanjuti. Mohon ditunggu sebentar ya 😊",
       confidence: 0.88,
     };
   }
@@ -875,8 +870,8 @@ export function analyzeIntentLocally(
       visitor_info: { nama: visitorName, pekerjaan: null, instansi: null },
       summary: `Pengunjung menanyakan informasi terkait ${topicGuess}`,
       suggested_reply: hasHistory
-        ? `Baik Kak, terkait informasi ${topicGuess} tersebut sedang kami siapkan ya Kak. Mohon ditunggu sebentar 😊`
-        : `Selamat datang di PST BPS Gorontalo Kak! Terkait informasi ${topicGuess} akan kami bantu carikan. Mohon kesediaannya melengkapi data pengunjung terlebih dahulu ya Kak 😊`,
+        ? `Baik, terkait informasi ${topicGuess} tersebut sedang kami siapkan. Mohon ditunggu sebentar ya 😊`
+        : `Selamat datang di PST BPS Gorontalo! Terkait informasi ${topicGuess} akan kami bantu carikan. Mohon kesediaannya melengkapi data pengunjung terlebih dahulu ya 😊`,
       confidence: 0.85,
     };
   }
@@ -914,7 +909,7 @@ export function analyzeIntentLocally(
       visitor_info: { nama: null, pekerjaan: null, instansi: null },
       summary: "Pengunjung baru menyapa untuk memulai layanan PST",
       suggested_reply:
-        "Halo Selamat datang di Layanan PST BPS Provinsi Gorontalo! Ada yang bisa kami bantu hari ini? 😊",
+        "Halo, selamat datang di Layanan PST BPS Provinsi Gorontalo! Ada yang bisa kami bantu hari ini? 😊",
       confidence: 0.9,
     };
   }
@@ -929,7 +924,7 @@ export function analyzeIntentLocally(
       visitor_info: { nama: visitorName, pekerjaan: null, instansi: null },
       summary: "Pengunjung melanjutkan percakapan sebelumnya",
       suggested_reply:
-        "Baik Kak, pesan Kakak sudah kami terima dan sedang kami proses ya Kak 😊",
+        "Baik, pesan Anda sudah kami terima dan sedang kami proses ya 😊",
       confidence: 0.8,
     };
   }
@@ -942,7 +937,7 @@ export function analyzeIntentLocally(
     visitor_info: { nama: null, pekerjaan: null, instansi: null },
     summary: "Pengunjung baru memulai konsultasi",
     suggested_reply:
-      "Selamat datang di Layanan PST BPS Provinsi Gorontalo Kak! Ada yang bisa kami bantu terkait kebutuhan data statistik hari ini? 😊",
+      "Selamat datang di Layanan PST BPS Provinsi Gorontalo! Ada yang bisa kami bantu terkait kebutuhan data statistik hari ini? 😊",
     confidence: 0.75,
   };
 }
@@ -1289,7 +1284,7 @@ export async function handleIncomingMessage(sock, msg) {
         );
         replyType = "returning_opening_message";
         console.log(
-          `🟢 [LiveChat] Mengirim Pesan Sapaan Hangat Pengguna Lama (Kak ${existingName}) ke ${chatId}`,
+          `🟢 [LiveChat] Mengirim Pesan Sapaan Hangat Pengguna Lama ke ${chatId}`,
         );
       } else {
         replyText = buildOpeningMessage(greetingWord);
@@ -1314,7 +1309,7 @@ export async function handleIncomingMessage(sock, msg) {
         );
         replyType = "returning_out_of_hours_message";
         console.log(
-          `🟡 [LiveChat] Mengirim Pesan Luar Jam Layanan Pengguna Lama (Kak ${existingName}) ke ${chatId}`,
+          `🟡 [LiveChat] Mengirim Pesan Luar Jam Layanan Pengguna Lama ke ${chatId}`,
         );
       } else {
         replyText = buildOutOfHoursMessage(greetingWord);

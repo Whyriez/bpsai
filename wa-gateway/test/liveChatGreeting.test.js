@@ -67,9 +67,9 @@ test('handleIncomingMessage Option 1: sends personalized welcome back to returni
   await handleIncomingMessage(mockSock, incomingMsg);
   assert.equal(sentTo, testJid);
   assert.ok(sentPayload?.text);
-  // Personalized greeting mentioning name
+  // General welcome back greeting without requiring form again
   assert.ok(sentPayload.text.includes('Selamat datang kembali di Layanan PST BPS'));
-  assert.ok(sentPayload.text.includes('Ahmad'));
+  assert.ok(sentPayload.text.includes('Pesan Anda sudah kami terima'));
   // Should NOT demand the form again
   assert.equal(sentPayload.text.includes('Mohon kesediaannya untuk mengisi data berikut'), false);
   
@@ -149,7 +149,7 @@ test('handleIncomingMessage: sends transition message when user greeted out of h
   if (inOperatingHours) {
     assert.ok(sentPayload?.text);
     assert.ok(sentPayload.text.includes('Jam operasional Layanan PST BPS Provinsi Gorontalo hari ini telah dibuka'));
-    assert.ok(sentPayload.text.includes('Kak Rina'));
+    assert.ok(sentPayload.text.includes('Pesan dan pertanyaan Anda'));
     assert.ok(sentPayload.text.includes('antrean prioritas'));
 
     const updatedSession = liveChatSessionService.getSession(testJid);

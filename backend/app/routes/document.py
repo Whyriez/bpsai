@@ -2776,7 +2776,7 @@ Klasifikasikan pesan terbaru tersebut:
 
 6. "summary": string (Ringkasan 1 kalimat yang menjelaskan maksud pengunjung secara jelas).
 
-7. "suggested_reply": string (Draf balasan resmi beretika PST BPS Gorontalo. Gaya bahasa ramah, sopan, menggunakan panggilan 'Kak', santun, dan menyertakan emoji 😊. Jika intent CONTINUATION atau DATA_INQUIRY, berikan tanggapan yang relevan. Jika COURTESY_THANKS, berikan jawaban sopan seperti 'Sama-sama Kak, senang bisa membantu 😊'. Jika DELAY_FOLLOWUP, berikan kepastian bahwa data sedang diproses tim teknis).
+7. "suggested_reply": string (Draf balasan resmi beretika PST BPS Gorontalo. Gaya bahasa ramah, sopan, profesional, menggunakan kata ganti netral 'Anda' tanpa menyebutkan nama spesifik atau panggilan seperti 'Kak' / 'Pak' / 'Bu', santun, dan menyertakan emoji 😊. Jika intent CONTINUATION atau DATA_INQUIRY, berikan tanggapan yang relevan. Jika COURTESY_THANKS, berikan jawaban sopan seperti 'Sama-sama, senang bisa membantu Anda 😊'. Jika DELAY_FOLLOWUP, berikan kepastian bahwa data sedang diproses tim teknis).
 
 8. "confidence": float antara 0.70 sampai 0.99.
 
@@ -2816,19 +2816,19 @@ Keluarkan HANYA JSON valid tanpa teks pengantar atau markdown block (tanpa ```js
         is_cont = True
         skip_greet = True
         summary = "Pengunjung menyampaikan ucapan terima kasih / kesantunan"
-        reply = "Sama-sama Kak, senang dapat melayani Anda. Jika masih ada data yang dibutuhkan di kemudian hari, jangan ragu untuk menghubungi PST BPS Provinsi Gorontalo kembali ya Kak 😊"
+        reply = "Sama-sama, senang dapat melayani Anda. Jika masih ada data yang dibutuhkan di kemudian hari, jangan ragu untuk menghubungi PST BPS Provinsi Gorontalo kembali ya 😊"
     elif is_delayed:
         intent = "DELAY_FOLLOWUP"
         is_cont = True
         skip_greet = True
         summary = f"Pengunjung menindaklanjuti data tertunda ({delayed_topic or 'Data teknis'})"
-        reply = f"Halo Kak, terkait data {delayed_topic or 'yang Kakak butuhkan'} saat ini masih dalam proses penyiapan oleh tim teknis kami. Kami pastikan segera mengabari Kakak kembali begitu data siap. Terima kasih banyak atas kesabarannya menunggu ya Kak 😊"
+        reply = f"Halo, terkait data {delayed_topic or 'yang Anda butuhkan'} saat ini masih dalam proses penyiapan oleh tim teknis kami. Kami pastikan segera mengabari Anda kembali begitu data siap. Terima kasih banyak atas kesabaran Anda menunggu 😊"
     elif len(recent_messages) > 1 or visitor_name:
         intent = "CONTINUATION"
         is_cont = True
         skip_greet = True
         summary = "Pengunjung melanjutkan percakapan yang sedang berjalan"
-        reply = "Baik Kak, pesan Kakak sudah kami terima dan sedang kami tindaklanjuti. Mohon ditunggu sebentar ya Kak 😊"
+        reply = "Baik, pesan Anda sudah kami terima dan sedang kami tindaklanjuti. Mohon ditunggu sebentar ya 😊"
     else:
         greeting_words = ['halo', 'assalamu', 'pagi', 'siang', 'sore', 'malam', 'permisi', 'hai']
         is_greet = any(w in lower_text for w in greeting_words)
@@ -2836,7 +2836,7 @@ Keluarkan HANYA JSON valid tanpa teks pengantar atau markdown block (tanpa ```js
         is_cont = False
         skip_greet = False
         summary = "Pengunjung baru memulai konsultasi layanan BPS"
-        reply = "Selamat datang di Layanan PST BPS Provinsi Gorontalo Kak! Ada yang bisa kami bantu terkait kebutuhan data statistik hari ini? 😊"
+        reply = "Selamat datang di Layanan PST BPS Provinsi Gorontalo! Ada yang bisa kami bantu terkait kebutuhan data statistik hari ini? 😊"
 
     fallback_analysis = {
         "intent": intent,

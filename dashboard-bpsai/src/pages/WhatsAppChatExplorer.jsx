@@ -434,8 +434,8 @@ const OFFICIAL_TEMPLATES = [
     description: "Sapaan awal saat pesan masuk dalam jam operasional layanan",
     getText: (greeting = getTimeGreeting()) =>
       `Selamat ${greeting}.
-Terima kasih telah menghubungi PST BPS Provinsi Gorontalo
-Mohon kesediaannya untuk mengisi data berikut ya Kak 😊
+Terima kasih telah menghubungi PST BPS Provinsi Gorontalo.
+Mohon kesediaannya untuk mengisi data berikut:
 Nama : 
 Pekerjaan : 
 Instansi/Asal : `,
@@ -462,8 +462,8 @@ Asal Instansi : `,
     description:
       "Tandai penundaan data teknis (maks. 3 hari kerja) & pasang flag agar siap direach-out",
     getText: (greeting = getTimeGreeting()) =>
-      `Selamat ${greeting} Kak. Data yang Kakak butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja. Kami akan menghubungi Kakak kembali melalui nomor ini setelah data tersebut siap diserahkan.
-Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`,
+      `Selamat ${greeting}. Data yang Anda butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (tiga) hari kerja. Kami akan menghubungi Anda kembali melalui nomor ini setelah data tersebut siap diserahkan.
+Terima kasih atas pengertian dan kesediaan Anda untuk menunggu 😊`,
   },
   {
     id: "reachout_3hari",
@@ -472,13 +472,13 @@ Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`,
     badge: "Pasca-3 Hari",
     description:
       "Menghubungi kembali kontak tertanda flag saat data teknis telah siap diserahkan tim BPS",
-    getText: (topic = "yang Kakak butuhkan", greeting = getTimeGreeting()) =>
-      `Selamat ${greeting} Kak. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan ya Kak.
+    getText: (topic = "yang Anda butuhkan", greeting = getTimeGreeting()) =>
+      `Selamat ${greeting}. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan.
 
 Berikut informasinya:
 [Tuliskan keterangan / tautan data di sini]
 
-Apabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kepada kami ya Kak 😊`,
+Apabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kepada kami 😊`,
   },
   {
     id: "konfirmasi",
@@ -487,8 +487,8 @@ Apabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kep
     badge: "Konfirmasi",
     description: "Menanyakan apakah data/penjelasan yang diberikan sudah jelas",
     getText: (topic = "[Topik Konsultasi]") =>
-      `Bagaimana Kak, terkait penjelasan mengenai ${topic} tadi, apakah sudah cukup jelas?
-Kalau dirasa masih ada poin yang kurang jelas atau ada yang ingin ditanyakan lagi, silakan disampaikan saja, ya. 😊`,
+      `Terkait penjelasan mengenai ${topic} tadi, apakah sudah cukup jelas?
+Apabila masih ada poin yang kurang jelas atau ada yang ingin ditanyakan lagi, silakan disampaikan saja ya. 😊`,
   },
   {
     id: "terminasi_selesai",
@@ -498,9 +498,9 @@ Kalau dirasa masih ada poin yang kurang jelas atau ada yang ingin ditanyakan lag
     description:
       "Mengakhiri konsultasi yang telah selesai disertai link survei SKD",
     getText: (topic = "[Topik Konsultasi]") =>
-      `Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Dengan ini, konsultasi terkait ${topic} kami akhiri ya Kak. Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: https://s.bps.go.id/skd75
+      `Terima kasih banyak telah menghubungi layanan PST BPS Provinsi Gorontalo. Dengan ini, sesi konsultasi terkait ${topic} kami akhiri. Agar kami dapat terus meningkatkan kualitas pelayanan, mohon kesediaan Anda untuk mengisi survei kepuasan singkat pada tautan berikut: https://s.bps.go.id/skd75
 
-Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`,
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan salam sehat selalu! 👏 😊`,
   },
   {
     id: "terminasi_siang_1400",
@@ -510,11 +510,11 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
     description:
       "Mengakhiri konsultasi sesi siang pukul 14.00 WITA disertai link survei SKD",
     getText: (topic = "[Topik Konsultasi]") =>
-      `Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Sesi konsultasi terkait ${topic} pada pukul 14.00 WITA kami akhiri ya Kak.
+      `Terima kasih banyak telah menghubungi layanan PST BPS Provinsi Gorontalo. Sesi konsultasi terkait ${topic} pada pukul 14.00 WITA kami akhiri.
 
-Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: https://s.bps.go.id/skd75
+Agar kami dapat terus meningkatkan kualitas pelayanan, mohon kesediaan Anda untuk mengisi survei kepuasan singkat pada tautan berikut: https://s.bps.go.id/skd75
 
-Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`,
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan salam sehat selalu! 👏 😊`,
   },
   {
     id: "terminasi_tutup_hari",
@@ -524,16 +524,16 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
     description:
       "Mengakhiri layanan hari ini karena jam operasional berakhir (+ link SIGAP & Web)",
     getText: (schedule = "[hari, tanggal]") =>
-      `Selamat sore, Kak.
+      `Selamat sore.
 Mengingat jam operasional layanan hari ini telah berakhir, proses konsultasi akan kami lanjutkan kembali pada ${schedule} saat jam layanan dibuka.
 
-Untuk kebutuhan data statistik secara mandiri, Kakak dapat mengakses tautan berikut:
+Untuk kebutuhan data statistik secara mandiri, Anda dapat mengakses tautan berikut:
 • SIGAP: https://sigap.bps7500.my.id
 • Website BPS Provinsi Gorontalo: https://gorontalo.bps.go.id
 
-Kami akan menghubungi Kakak kembali pada ${schedule} untuk menjawab pertanyaan yang belum terselesaikan.
+Kami akan menghubungi Anda kembali pada ${schedule} untuk menjawab pertanyaan yang belum terselesaikan.
 
-Terima kasih banyak atas pengertiannya Kak 😊`,
+Terima kasih banyak atas pengertian Anda 😊`,
   },
 ];
 
@@ -1087,8 +1087,8 @@ export default function WhatsAppChatExplorer({ isStandalone = false }) {
   const getTerminationPreviewText = () => {
     if (terminationType === "delayed_3days") {
       const greeting = getTimeGreeting();
-      return `Selamat ${greeting} Kak. Data yang Kakak butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja. Kami akan menghubungi Kakak kembali melalui nomor ini setelah data tersebut siap diserahkan.
-Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`;
+      return `Selamat ${greeting}. Data yang Anda butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (tiga) hari kerja. Kami akan menghubungi Anda kembali melalui nomor ini setelah data tersebut siap diserahkan.
+Terima kasih atas pengertian dan kesediaan Anda untuk menunggu 😊`;
     } else if (terminationType === "end_of_day") {
       const sched =
         terminationSchedule.trim() ||
@@ -1098,32 +1098,32 @@ Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`;
         liveSettings?.links?.sigapUrl || "https://sigap.bps7500.my.id";
       const bpsUrl =
         liveSettings?.links?.bpsWebsiteUrl || "https://gorontalo.bps.go.id";
-      return `Selamat sore, Kak.
+      return `Selamat sore.
 Mengingat jam operasional layanan hari ini telah berakhir, proses konsultasi akan kami lanjutkan kembali pada ${sched} saat jam layanan dibuka.
 
-Untuk kebutuhan data statistik secara mandiri, Kakak dapat mengakses tautan berikut:
+Untuk kebutuhan data statistik secara mandiri, Anda dapat mengakses tautan berikut:
 • SIGAP: ${sigapUrl}
 • Website BPS Provinsi Gorontalo: ${bpsUrl}
 
-Kami akan menghubungi Kakak kembali pada ${sched} untuk menjawab pertanyaan yang belum terselesaikan.
+Kami akan menghubungi Anda kembali pada ${sched} untuk menjawab pertanyaan yang belum terselesaikan.
 
-Terima kasih banyak atas pengertiannya Kak 😊`;
+Terima kasih banyak atas pengertian Anda 😊`;
     } else if (terminationType === "midday_1400") {
       const top = terminationTopic.trim() || "konsultasi data";
       const surveyUrl =
         liveSettings?.links?.surveyUrl || "https://s.bps.go.id/skd75";
-      return `Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Sesi konsultasi terkait ${top} pada pukul 14.00 WITA kami akhiri ya Kak.
+      return `Terima kasih banyak telah menghubungi layanan PST BPS Provinsi Gorontalo. Sesi konsultasi terkait ${top} pada pukul 14.00 WITA kami akhiri.
 
-Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: ${surveyUrl}
+Agar kami dapat terus meningkatkan kualitas pelayanan, mohon kesediaan Anda untuk mengisi survei kepuasan singkat pada tautan berikut: ${surveyUrl}
 
-Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`;
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan salam sehat selalu! 👏 😊`;
     } else {
       const top = terminationTopic.trim() || "konsultasi data";
       const surveyUrl =
         liveSettings?.links?.surveyUrl || "https://s.bps.go.id/skd75";
-      return `Terima kasih banyak telah menghubungi nomor layanan PST BPS Provinsi Gorontalo. Dengan ini, konsultasi terkait ${top} kami akhiri ya Kak. Agar kami bisa terus memberikan pelayanan yang lebih baik, mohon bantuannya untuk mengisi survei kepuasan singkat di tautan ini: ${surveyUrl}
+      return `Terima kasih banyak telah menghubungi layanan PST BPS Provinsi Gorontalo. Dengan ini, sesi konsultasi terkait ${top} kami akhiri. Agar kami dapat terus meningkatkan kualitas pelayanan, mohon kesediaan Anda untuk mengisi survei kepuasan singkat pada tautan berikut: ${surveyUrl}
 
-Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan sehat selalu! 👏 😊`;
+Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas dan salam sehat selalu! 👏 😊`;
     }
   };
 
@@ -1195,7 +1195,7 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
         activeChatDetail?.delayed_topic ||
         activeChatDetail?.visitor_data?.topic ||
         activeChatDetail?.consultation_topic ||
-        "yang Kakak butuhkan";
+        "yang Anda butuhkan";
       const timeGreeting = liveSettings?.currentGreeting || getTimeGreeting();
       setReplyText(tmpl.getText(topic, timeGreeting));
       replyInputRef.current?.focus();
@@ -2625,11 +2625,11 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                         onClick={() => {
                           const topic =
                             activeChatDetail?.delayed_topic ||
-                            "yang Kakak butuhkan";
+                            "yang Anda butuhkan";
                           const timeGreeting =
                             liveSettings?.currentGreeting || getTimeGreeting();
                           setReplyText(
-                            `Selamat ${timeGreeting} Kak. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan ya Kak.\n\nBerikut informasinya:\n[Tuliskan keterangan / tautan berkas di sini]\n\nApabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kepada kami ya Kak 😊`,
+                            `Selamat ${timeGreeting}. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan.\n\nBerikut informasinya:\n[Tuliskan keterangan / tautan berkas di sini]\n\nApabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kepada kami 😊`,
                           );
                           replyInputRef.current?.focus();
                           toast.success("Draf pesan reach out disiapkan.");
@@ -3356,12 +3356,12 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                               onClick={() => {
                                 const topic =
                                   activeChatDetail?.delayed_topic ||
-                                  "yang Kakak butuhkan";
+                                  "yang Anda butuhkan";
                                 const timeGreeting =
                                   liveSettings?.currentGreeting ||
                                   getTimeGreeting();
                                 setReplyText(
-                                  `Selamat ${timeGreeting} Kak. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan ya Kak.\n\nBerikut informasinya:\n[Tuliskan keterangan / tautan berkas di sini]\n\nApabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kepada kami ya Kak 😊`,
+                                  `Selamat ${timeGreeting}. Terkait data mengenai ${topic} yang telah disiapkan oleh tim teknis kami, datanya kini sudah selesai diproses dan siap kami serahkan.\n\nBerikut informasinya:\n[Tuliskan keterangan / tautan berkas di sini]\n\nApabila masih ada yang ingin dikonsultasikan lebih lanjut, silakan sampaikan kepada kami 😊`,
                                 );
                                 replyInputRef.current?.focus();
                                 toast.success("Draf pesan reach out disalin.");
@@ -3868,8 +3868,8 @@ Semoga informasi yang kami sampaikan bermanfaat. Selamat melanjutkan aktivitas d
                   Pratinjau Pesan Penundaan
                 </label>
                 <div className="p-3 bg-subtle rounded-lg border border-line text-xs font-mono whitespace-pre-wrap leading-relaxed text-ink select-all">
-                  {`Selamat ${getTimeGreeting()} Kak. Data yang Kakak butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (hari) kerja. Kami akan menghubungi Kakak kembali melalui nomor ini setelah data tersebut siap diserahkan.
-Terima kasih atas pengertian dan kesediaan Kakak untuk menunggu 😊`}
+                  {`Selamat ${getTimeGreeting()}. Data yang Anda butuhkan memerlukan proses penyiapan terlebih dahulu oleh tim teknis kami dalam waktu maksimal 3 (tiga) hari kerja. Kami akan menghubungi Anda kembali melalui nomor ini setelah data tersebut siap diserahkan.
+Terima kasih atas pengertian dan kesediaan Anda untuk menunggu 😊`}
                 </div>
               </div>
 
