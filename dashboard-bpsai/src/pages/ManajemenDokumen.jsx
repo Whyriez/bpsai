@@ -955,6 +955,9 @@ const BpsSyncModal = ({
     sync_interval_hours: 6,
     sync_interval_unit: "hours",
     wa_channel_enabled: true,
+    broadcast_infographic: true,
+    broadcast_brs: false,
+    broadcast_publication: false,
     wa_target: "",
     wa_gateway_type: "webhook",
     wa_webhook_url: "",
@@ -1270,6 +1273,12 @@ const BpsSyncModal = ({
         sync_interval_unit: res.sync_interval_unit || "hours",
         wa_channel_enabled:
           res.wa_channel_enabled !== undefined ? res.wa_channel_enabled : true,
+        broadcast_infographic:
+          res.broadcast_infographic !== undefined ? res.broadcast_infographic : true,
+        broadcast_brs:
+          res.broadcast_brs !== undefined ? res.broadcast_brs : false,
+        broadcast_publication:
+          res.broadcast_publication !== undefined ? res.broadcast_publication : false,
         wa_target: res.wa_target || "",
         wa_gateway_type: res.wa_gateway_type || "webhook",
         wa_webhook_url: res.wa_webhook_url || "",
@@ -1981,6 +1990,143 @@ const BpsSyncModal = ({
                     </label>
                   </div>
 
+                  {/* Pilihan Fleksibel Konten Siaran Otomatis (Infografis, BRS, Publikasi) */}
+                  {Boolean(config.wa_channel_enabled) && (
+                    <div className="p-4 bg-surface rounded-2xl border border-line shadow-2xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-bold text-ink flex items-center gap-1.5">
+                            <span>📑 Pilihan Konten Siaran Otomatis (WhatsApp)</span>
+                          </h4>
+                          <p className="text-[11px] text-muted mt-0.5">
+                            Pilih jenis rilis data dari BPS yang ingin otomatis disiarkan ke WhatsApp:
+                          </p>
+                        </div>
+                        <span className="text-[10px] bg-subtle text-muted border border-line font-semibold px-2 py-0.5 rounded-full">
+                          Fleksibel
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+                        {/* 1. Infografis */}
+                        <label
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                            config.broadcast_infographic
+                              ? "bg-emerald-50/80 border-emerald-300 ring-1 ring-emerald-400/50"
+                              : "bg-subtle/60 border-line hover:border-line-strong"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(config.broadcast_infographic)}
+                              onChange={(e) =>
+                                setConfig({
+                                  ...config,
+                                  broadcast_infographic: e.target.checked,
+                                })
+                              }
+                              className="mt-0.5 w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                            />
+                            <div>
+                              <span className="text-xs font-bold text-ink flex items-center gap-1">
+                                <span>📊</span>
+                                <span>Infografis Statistik</span>
+                              </span>
+                              <p className="text-[10px] text-muted leading-relaxed mt-1">
+                                Gambar poster visual data & narasi ringkasan statistik yang komunikatif.
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md w-fit mt-2">
+                            ⭐ Direkomendasikan
+                          </span>
+                        </label>
+
+                        {/* 2. BRS */}
+                        <label
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                            config.broadcast_brs
+                              ? "bg-purple-50/80 border-purple-300 ring-1 ring-purple-400/50"
+                              : "bg-subtle/60 border-line hover:border-line-strong"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(config.broadcast_brs)}
+                              onChange={(e) =>
+                                setConfig({
+                                  ...config,
+                                  broadcast_brs: e.target.checked,
+                                })
+                              }
+                              className="mt-0.5 w-4 h-4 text-purple-600 rounded focus:ring-purple-500 cursor-pointer"
+                            />
+                            <div>
+                              <span className="text-xs font-bold text-ink flex items-center gap-1">
+                                <span>📰</span>
+                                <span>Berita Resmi Statistik (BRS)</span>
+                              </span>
+                              <p className="text-[10px] text-muted leading-relaxed mt-1">
+                                Rilis pers indikator bulanan (inflasi, ekspor-impor, dll).
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-medium text-muted bg-subtle px-2 py-0.5 rounded-md w-fit mt-2">
+                            Rilis Pers
+                          </span>
+                        </label>
+
+                        {/* 3. Publikasi */}
+                        <label
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                            config.broadcast_publication
+                              ? "bg-blue-50/80 border-blue-300 ring-1 ring-blue-400/50"
+                              : "bg-subtle/60 border-line hover:border-line-strong"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(config.broadcast_publication)}
+                              onChange={(e) =>
+                                setConfig({
+                                  ...config,
+                                  broadcast_publication: e.target.checked,
+                                })
+                              }
+                              className="mt-0.5 w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                            />
+                            <div>
+                              <span className="text-xs font-bold text-ink flex items-center gap-1">
+                                <span>📘</span>
+                                <span>Publikasi Buku Statistik</span>
+                              </span>
+                              <p className="text-[10px] text-muted leading-relaxed mt-1">
+                                Dokumen buku laporan statistik lengkap (PDF tebal).
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-medium text-muted bg-subtle px-2 py-0.5 rounded-md w-fit mt-2">
+                            Buku Laporan
+                          </span>
+                        </label>
+                      </div>
+
+                      {!config.broadcast_infographic &&
+                        !config.broadcast_brs &&
+                        !config.broadcast_publication && (
+                          <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 p-2.5 rounded-xl font-medium flex items-center gap-1.5">
+                            <span>⚠️</span>
+                            <span>
+                              Perhatian: Semua jenis siaran sedang nonaktif. Aktifkan minimal satu jenis (misal: Infografis) agar bot dapat mengirimkan siaran rilis baru.
+                            </span>
+                          </p>
+                        )}
+                    </div>
+                  )}
+
                   {/* 2 Proportional Balanced Cards: Gateway Status & Target WA */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Gateway Lokal Card */}
@@ -2609,8 +2755,9 @@ const BpsSyncModal = ({
                     className="px-2.5 py-1.5 text-xs border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 bg-surface text-ink font-medium"
                   >
                     <option value="ALL">Semua Tipe</option>
-                    <option value="PUBLIKASI">Publikasi</option>
-                    <option value="BRS">BRS (Berita Resmi Statistik)</option>
+                    <option value="INFOGRAFIS">📊 Infografis</option>
+                    <option value="BRS">📰 BRS (Berita Resmi Statistik)</option>
+                    <option value="PUBLIKASI">📘 Publikasi</option>
                   </select>
 
                   {/* Filter Status WA */}
@@ -2800,14 +2947,18 @@ const BpsSyncModal = ({
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span
                                   className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                    alert.doc_type === "BRS"
-                                      ? "bg-accent-soft text-accent border border-indigo-200"
-                                      : "bg-accent-soft text-accent border border-blue-200"
+                                    alert.doc_type === "INFOGRAFIS"
+                                      ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                      : alert.doc_type === "BRS"
+                                        ? "bg-purple-100 text-purple-800 border border-purple-200"
+                                        : "bg-blue-100 text-blue-800 border border-blue-200"
                                   }`}
                                 >
-                                  {alert.doc_type === "BRS"
-                                    ? "📰 BRS"
-                                    : "📘 Publikasi"}
+                                  {alert.doc_type === "INFOGRAFIS"
+                                    ? "📊 Infografis"
+                                    : alert.doc_type === "BRS"
+                                      ? "📰 BRS"
+                                      : "📘 Publikasi"}
                                 </span>
                                 <span className="text-xs font-bold text-ink">
                                   {alert.title}
@@ -3264,6 +3415,22 @@ const BpsSyncModal = ({
                   <span>📰</span>
                   <span>Berita Resmi Statistik (BRS)</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewType("infographic");
+                    setSelectedPubIds([]);
+                    loadPreview(1, config.domain_code, "infographic");
+                  }}
+                  className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    previewType === "infographic"
+                      ? "bg-surface text-emerald-700 shadow-2xs font-bold"
+                      : "text-muted hover:text-ink"
+                  }`}
+                >
+                  <span>📊</span>
+                  <span>Infografis Statistik</span>
+                </button>
               </div>
 
               {/* Filter Search Bar Proportional Grid */}
@@ -3425,14 +3592,18 @@ const BpsSyncModal = ({
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       <span
                                         className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                          item.doc_type === "BRS"
-                                            ? "bg-accent-soft text-accent border border-indigo-200"
-                                            : "bg-accent-soft text-accent border border-blue-200"
+                                          item.doc_type === "INFOGRAFIS"
+                                            ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                            : item.doc_type === "BRS"
+                                              ? "bg-purple-100 text-purple-800 border border-purple-200"
+                                              : "bg-blue-100 text-blue-800 border border-blue-200"
                                         }`}
                                       >
-                                        {item.doc_type === "BRS"
-                                          ? "BRS"
-                                          : "Buku"}
+                                        {item.doc_type === "INFOGRAFIS"
+                                          ? "Infografis"
+                                          : item.doc_type === "BRS"
+                                            ? "BRS"
+                                            : "Buku"}
                                       </span>
                                       <span>{item.title}</span>
                                     </div>

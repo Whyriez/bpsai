@@ -39,7 +39,10 @@ def generate_bps_web_url(
     Format Publikasi: {portal}/id/publication/{YYYY}/{MM}/{DD}/{pub_id}/{slug}.html
     """
     base = (domain_base or "https://gorontalo.bps.go.id").rstrip("/")
-    is_brs = (doc_type or "").upper() == "BRS"
+    dt = (doc_type or "").upper()
+    if dt in ["INFOGRAFIS", "INFOGRAPHIC"]:
+        return f"{base}/id/infographic"
+    is_brs = dt == "BRS"
     section = "pressrelease" if is_brs else "publication"
 
     clean_date = (release_date or "").split("T")[0].replace("-", "/").strip("/")
@@ -62,6 +65,26 @@ def generate_bps_web_url(
 
     return f"{base}/id/{section}/{clean_date}/{clean_id}/{slug}.html"
 
+
+
+def ensure_bps_config_columns():
+    """
+    Memastikan seluruh kolom konfigurasi baru pada bps_api_configs telah dibuat di database PostgreSQL (auto-migration).
+    """
+    try:
+        from sqlalchemy import text
+        queries = [
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS sync_interval_unit VARCHAR(20) DEFAULT 'hours';",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS broadcast_infographic BOOLEAN DEFAULT TRUE;",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS broadcast_brs BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS broadcast_publication BOOLEAN DEFAULT FALSE;"
+        ]
+        for q in queries:
+            db.session.execute(text(q))
+        db.session.commit()
+    except Exception as ex:
+        db.session.rollback()
+        logger.warning(f"Note on auto-migration bps_api_configs columns: {ex}")
 
 class BpsApiService:
     """
@@ -121,12 +144,7 @@ class BpsApiService:
                 cfg = BpsApiConfig.query.first()
             except Exception:
                 db.session.rollback()
-                try:
-                    from sqlalchemy import text
-                    db.session.execute(text("ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS sync_interval_unit VARCHAR(20) DEFAULT 'hours';"))
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
+                ensure_bps_config_columns()
                 cfg = BpsApiConfig.query.first()
 
             if not cfg:
@@ -150,6 +168,9 @@ class BpsApiService:
                 "sync_interval_hours": getattr(cfg, 'sync_interval_hours', 6) or 6,
                 "sync_interval_unit": getattr(cfg, 'sync_interval_unit', 'hours') or 'hours',
                 "wa_channel_enabled": bool(getattr(cfg, 'wa_channel_enabled', True)),
+                "broadcast_infographic": bool(getattr(cfg, 'broadcast_infographic', True)),
+                "broadcast_brs": bool(getattr(cfg, 'broadcast_brs', False)),
+                "broadcast_publication": bool(getattr(cfg, 'broadcast_publication', False)),
                 "wa_target": getattr(cfg, 'wa_target', '') or os.getenv("WA_TARGET", "") or '',
                 "wa_gateway_type": getattr(cfg, 'wa_gateway_type', '') or "local",
                 "wa_webhook_url": getattr(cfg, 'wa_webhook_url', '') or os.getenv("WA_WEBHOOK_URL", "http://localhost:3001/send") or 'http://localhost:3001/send',
@@ -170,6 +191,9 @@ class BpsApiService:
                 "sync_interval_hours": 6,
                 "sync_interval_unit": "hours",
                 "wa_channel_enabled": True,
+                "broadcast_infographic": True,
+                "broadcast_brs": False,
+                "broadcast_publication": False,
                 "wa_target": os.getenv("WA_TARGET", "") or "",
                 "wa_gateway_type": "local",
                 "wa_webhook_url": os.getenv("WA_WEBHOOK_URL", "http://localhost:3001/send"),
@@ -184,7 +208,8 @@ class BpsApiService:
                     auto_sync: bool = False, sync_interval_hours: int = 6, sync_interval_unit: str = "hours",
                     wa_channel_enabled: bool = True, wa_target: str = "",
                     wa_gateway_type: str = "local", wa_webhook_url: str = "http://localhost:3001/send",
-                    wa_api_token: str = "", chatbot_url: str = "", portal_url: str = "https://gorontalo.bps.go.id") -> dict:
+                    wa_api_token: str = "", chatbot_url: str = "", portal_url: str = "https://gorontalo.bps.go.id",
+                    broadcast_infographic: bool = True, broadcast_brs: bool = False, broadcast_publication: bool = False) -> dict:
         """
         Menyimpan konfigurasi BPS API dan integrasi WhatsApp ke database.
         """
@@ -192,12 +217,7 @@ class BpsApiService:
             cfg = BpsApiConfig.query.first()
         except Exception:
             db.session.rollback()
-            try:
-                from sqlalchemy import text
-                db.session.execute(text("ALTER TABLE bps_api_configs ADD COLUMN IF NOT EXISTS sync_interval_unit VARCHAR(20) DEFAULT 'hours';"))
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
+            ensure_bps_config_columns()
             cfg = BpsApiConfig.query.first()
 
         if not cfg:
@@ -213,6 +233,12 @@ class BpsApiService:
         if cfg.sync_interval_unit not in ('hours', 'minutes', 'seconds'):
             cfg.sync_interval_unit = 'hours'
         cfg.wa_channel_enabled = bool(wa_channel_enabled)
+        if broadcast_infographic is not None:
+            cfg.broadcast_infographic = bool(broadcast_infographic)
+        if broadcast_brs is not None:
+            cfg.broadcast_brs = bool(broadcast_brs)
+        if broadcast_publication is not None:
+            cfg.broadcast_publication = bool(broadcast_publication)
         cfg.wa_target = (wa_target or "").strip()
         cfg.wa_gateway_type = (wa_gateway_type or "local").strip()
         cfg.wa_webhook_url = (wa_webhook_url or "http://localhost:3001/send").strip()
@@ -496,6 +522,145 @@ class BpsApiService:
         except Exception as e:
             logger.error(f"Exception during BPS Press Release fetch: {e}")
             return {"success": False, "error": f"Gagal menghubungi BPS Web API: {str(e)}"}
+
+    def fetch_infographics(self, page: int = 1, year: str = None, keyword: str = None, api_key: str = None, domain: str = None) -> dict:
+        """
+        Mengambil daftar Infografis dari BPS Web API untuk 1 halaman.
+        """
+        config = self.get_config()
+        effective_key = api_key or config.get("api_key") or os.getenv("BPS_API_KEY", "")
+        effective_domain = domain or config.get("domain_code") or self.DEFAULT_DOMAIN
+
+        if not effective_key:
+            return {
+                "success": False,
+                "error": "BPS API Key belum dikonfigurasi. Silakan masukkan API Key BPS terlebih dahulu."
+            }
+
+        url_parts = [
+            f"{self.base_url}/list/model/infographic/lang/ind/domain/{effective_domain}/page/{page}"
+        ]
+
+        if year:
+            url_parts.append(f"year/{year}")
+        if keyword:
+            url_parts.append(f"keyword/{requests.utils.quote(keyword)}")
+
+        url_parts.append(f"key/{effective_key}/")
+        full_url = "/".join(url_parts)
+
+        logger.info(f"Fetching BPS Infografis: {self.base_url}/list/model/infographic/lang/ind/domain/{effective_domain}/page/{page}/key/***")
+
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            res = requests.get(full_url, headers=headers, timeout=25)
+            
+            if res.status_code != 200:
+                return {
+                    "success": False,
+                    "error": f"BPS Web API mengembalikan HTTP status {res.status_code}: {res.text[:200]}"
+                }
+
+            data = res.json()
+            if data.get("status") != "OK":
+                error_msg = data.get("message") or "Format respons BPS Web API tidak valid."
+                return {"success": False, "error": error_msg, "raw": data}
+
+            if data.get("data-availability") != "available":
+                return {
+                    "success": True,
+                    "pagination": {"page": page, "pages": 0, "total": 0, "per_page": 10},
+                    "publications": [],
+                    "doc_type": "INFOGRAFIS"
+                }
+
+            raw_data = data.get("data", [])
+            pagination = {"page": page, "pages": 1, "total": 0, "per_page": 10}
+            raw_infographics = []
+
+            if isinstance(raw_data, list):
+                if len(raw_data) >= 2 and isinstance(raw_data[0], dict) and isinstance(raw_data[1], list):
+                    pagination = {
+                        "page": raw_data[0].get("page", page),
+                        "pages": raw_data[0].get("pages", 1),
+                        "total": raw_data[0].get("total", len(raw_data[1])),
+                        "per_page": raw_data[0].get("per_page", 10)
+                    }
+                    raw_infographics = raw_data[1]
+                elif len(raw_data) >= 1 and isinstance(raw_data[0], list):
+                    raw_infographics = raw_data[0]
+                elif len(raw_data) >= 1 and isinstance(raw_data[0], dict):
+                    if "inf_id" in raw_data[0] or "title" in raw_data[0]:
+                        raw_infographics = raw_data
+                    else:
+                        pagination = raw_data[0]
+                        raw_infographics = raw_data[1:] if len(raw_data) > 1 else []
+
+            parsed_items = []
+            for item in raw_infographics:
+                if not isinstance(item, dict):
+                    continue
+                inf_id = str(item.get("inf_id") or "")
+                pub_id = f"inf_{inf_id}" if inf_id else ""
+                raw_title = (item.get("title") or "").strip()
+                # Bersihkan postfix tanggal / urutan angka di judul seperti (1)2026-10-01
+                clean_title = re.sub(r'\(\d+\)\s*\d{4}-\d{2}-\d{2}$', '', raw_title).strip()
+                if not clean_title:
+                    clean_title = raw_title
+                rl_date = item.get("date") or ""
+                cover = item.get("img") or ""
+                dl_url = item.get("dl") or cover or ""
+                category = item.get("category") or "Infografis Statistik"
+
+                raw_desc = item.get("desc") or ""
+                clean_desc = re.sub(r'<[^>]+>', ' ', raw_desc)
+                clean_desc = html.unescape(clean_desc)
+                clean_desc = re.sub(r'\s+', ' ', clean_desc).strip()
+
+                # Cek apakah sudah pernah tersimpan di BpsPublicationAlert
+                existing_alert = BpsPublicationAlert.query.filter_by(pub_id=pub_id).first() if pub_id else None
+                is_downloaded = bool(existing_alert)
+
+                web_url = generate_bps_web_url(
+                    domain_base=self.get_portal_url(effective_domain),
+                    doc_type="INFOGRAFIS",
+                    release_date=rl_date,
+                    item_id=inf_id,
+                    title=clean_title
+                )
+
+                parsed_items.append({
+                    "pub_id": pub_id,
+                    "inf_id": inf_id,
+                    "title": clean_title,
+                    "rl_date": rl_date,
+                    "updt_date": rl_date,
+                    "cover": cover,
+                    "pdf_url": dl_url,
+                    "dl_url": dl_url,
+                    "size": "",
+                    "abstract": clean_desc,
+                    "category": category,
+                    "web_url": web_url,
+                    "doc_type": "INFOGRAFIS",
+                    "is_downloaded": is_downloaded,
+                    "is_updated": False,
+                    "existing_document_id": None
+                })
+
+            return {
+                "success": True,
+                "pagination": pagination,
+                "publications": parsed_items,
+                "doc_type": "INFOGRAFIS"
+            }
+
+        except Exception as e:
+            logger.error(f"Exception during BPS Infographics fetch: {e}")
+            return {"success": False, "error": f"Gagal menghubungi BPS Web API: {str(e)}"}
+
 
     def is_publication_downloaded(
         self,

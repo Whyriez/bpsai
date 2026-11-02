@@ -33,8 +33,15 @@ def generate_publication_summary_and_wa(
     Mendukung publikasi buku statistik dan Berita Resmi Statistik (BRS) baru maupun revisi.
     Mengembalikan tuple: (summary, wa_message, short_code, bps_web_url)
     """
-    is_brs = (doc_type or "").upper() == "BRS"
-    doc_noun = "Berita Resmi Statistik (BRS)" if is_brs else "Publikasi Statistik"
+    dt = (doc_type or "").upper()
+    is_infographic = dt in ["INFOGRAFIS", "INFOGRAPHIC"]
+    is_brs = dt == "BRS"
+    if is_infographic:
+        doc_noun = "Infografis Statistik"
+    elif is_brs:
+        doc_noun = "Berita Resmi Statistik (BRS)"
+    else:
+        doc_noun = "Publikasi Statistik"
 
     revision_header = ""
     if is_update:
@@ -105,7 +112,7 @@ Keluarkan hasil dalam format JSON persis seperti berikut (tanpa markdown backtic
     # Fallback ringkasan jika Gemini menghasilkan teks kosong
     if not summary_text:
         if abstract:
-            summary_text = f"• {abstract[:300]}..."
+            summary_text = abstract if is_infographic else f"• {abstract[:300]}..."
         else:
             status_ket = f"pembaruan/revisi {doc_noun.lower()}" if is_update else f"{doc_noun.lower()}"
             summary_text = f"• Dokumen {status_ket} mengenai {title} telah resmi diterbitkan oleh BPS."
@@ -246,19 +253,49 @@ def _execute_sync_process(ctx_app, max_items: int = 3, force_resummarize: bool =
 
         logger.info("Memulai pemeriksaan berkala data terbaru dari BPS Web API (Publikasi & BRS)...")
 
-        # 1. Fetch halaman pertama publikasi buku statistik DAN Berita Resmi Statistik (BRS)
-        raw_items = []
-        fetch_res_pub = bps_service.fetch_publications(page=1)
-        if fetch_res_pub.get("success"):
-            raw_items.extend(fetch_res_pub.get("publications", []))
-        else:
-            logger.warning(f"Gagal mengambil publikasi BPS: {fetch_res_pub.get('error')}")
+        # 1. Periksa jenis konten yang diaktifkan untuk siaran (Infografis, BRS, Publikasi)
+        broadcast_infographic = config.get("broadcast_infographic", True)
+        broadcast_brs = config.get("broadcast_brs", False)
+        broadcast_publication = config.get("broadcast_publication", False)
 
-        fetch_res_brs = bps_service.fetch_press_releases(page=1)
-        if fetch_res_brs.get("success"):
-            raw_items.extend(fetch_res_brs.get("publications", []))
-        else:
-            logger.warning(f"Gagal mengambil BRS BPS: {fetch_res_brs.get('error')}")
+        active_types = []
+        if broadcast_infographic: active_types.append("Infografis")
+        if broadcast_brs: active_types.append("BRS")
+        if broadcast_publication: active_types.append("Publikasi")
+        type_summary = ", ".join(active_types) if active_types else "Tidak ada pilihan aktif"
+
+        logger.info(f"Memulai pemeriksaan berkala data terbaru dari BPS Web API ({type_summary})...")
+        if job_id:
+            try:
+                db.session.query(BatchJob).filter_by(id=job_id).update({
+                    "last_error": f"Memeriksa rilis terbaru ({type_summary}) dari BPS Web API...",
+                    "last_updated": datetime.utcnow()
+                })
+                db.session.commit()
+            except Exception:
+                pass
+
+        raw_items = []
+        if broadcast_infographic:
+            fetch_res_info = bps_service.fetch_infographics(page=1)
+            if fetch_res_info.get("success"):
+                raw_items.extend(fetch_res_info.get("publications", []))
+            else:
+                logger.warning(f"Gagal mengambil Infografis BPS: {fetch_res_info.get('error')}")
+
+        if broadcast_brs:
+            fetch_res_brs = bps_service.fetch_press_releases(page=1)
+            if fetch_res_brs.get("success"):
+                raw_items.extend(fetch_res_brs.get("publications", []))
+            else:
+                logger.warning(f"Gagal mengambil BRS BPS: {fetch_res_brs.get('error')}")
+
+        if broadcast_publication:
+            fetch_res_pub = bps_service.fetch_publications(page=1)
+            if fetch_res_pub.get("success"):
+                raw_items.extend(fetch_res_pub.get("publications", []))
+            else:
+                logger.warning(f"Gagal mengambil publikasi BPS: {fetch_res_pub.get('error')}")
 
         if not raw_items:
             err_msg = fetch_res_pub.get("error") or fetch_res_brs.get("error") or "Gagal menghubungi BPS Web API"
@@ -295,6 +332,19 @@ def _execute_sync_process(ctx_app, max_items: int = 3, force_resummarize: bool =
             
             # Cek riwayat alert di database terlebih dahulu
             existing_alert = BpsPublicationAlert.query.filter_by(pub_id=pub_id).first() if pub_id else None
+
+            item_doc_type = (it.get("doc_type") or "PUBLIKASI").upper()
+
+            if item_doc_type in ["INFOGRAFIS", "INFOGRAPHIC"]:
+                if not existing_alert:
+                    it["sync_type"] = "NEW"
+                    it["is_updated"] = False
+                    candidates.append(it)
+                elif force_resummarize:
+                    it["sync_type"] = "UPDATED"
+                    it["is_updated"] = False
+                    candidates.append(it)
+                continue
 
             is_downloaded, existing_id, is_updated = bps_service.is_publication_downloaded(
                 pub_id=pub_id,
@@ -403,51 +453,56 @@ def _execute_sync_process(ctx_app, max_items: int = 3, force_resummarize: bool =
                     except Exception as err:
                         logger.warning(f"Error updating job step: {err}")
 
-            # 3. Unduh PDF
-            report_step(f"Mengunduh PDF ({type_label})")
-            dl_ok, local_pdf_path, dl_msg = bps_service.download_publication_pdf(
-                pdf_url=pdf_url,
-                title=title,
-                pub_id=pub_id
-            )
-
-            if not dl_ok:
-                logger.warning(f"Gagal mengunduh {title}: {dl_msg}")
-                processed_results.append({
-                    "pub_id": pub_id,
-                    "title": title,
-                    "doc_type": doc_type,
-                    "status": "download_failed",
-                    "error": dl_msg
-                })
-                continue
-
-            # 4. Chunking & Vektorisasi
-            report_step("Ekstraksi & Vektorisasi pgvector")
-            doc_meta = {
-                "pub_id": pub_id,
-                "release_date": release_date,
-                "updt_date": updt_date,
-                "abstract": abstract,
-                "doc_type": doc_type,
-                "source": "bps_web_api_auto_monitor"
-            }
-
-            try:
-                res_chunk = process_and_save_pdf(
-                    pdf_path=local_pdf_path,
-                    link=pdf_url,
-                    doc_metadata=doc_meta
+            if doc_type in ["INFOGRAFIS", "INFOGRAPHIC"]:
+                local_pdf_path = None
+                doc_id = None
+                report_step("Menyiapkan Gambar & Ulasan Infografis")
+            else:
+                # 3. Unduh PDF
+                report_step(f"Mengunduh PDF ({type_label})")
+                dl_ok, local_pdf_path, dl_msg = bps_service.download_publication_pdf(
+                    pdf_url=pdf_url,
+                    title=title,
+                    pub_id=pub_id
                 )
-            except Exception as pe:
-                logger.error(f"Error memproses chunk PDF {title}: {pe}")
-                res_chunk = {"status": "error", "reason": str(pe)}
 
-            # Ambil referensi record dokumen dari database
-            created_doc = PdfDocument.query.filter(
-                (PdfDocument.link == pdf_url) | (PdfDocument.filename == os.path.basename(local_pdf_path))
-            ).first()
-            doc_id = str(created_doc.id) if created_doc else None
+                if not dl_ok:
+                    logger.warning(f"Gagal mengunduh {title}: {dl_msg}")
+                    processed_results.append({
+                        "pub_id": pub_id,
+                        "title": title,
+                        "doc_type": doc_type,
+                        "status": "download_failed",
+                        "error": dl_msg
+                    })
+                    continue
+
+                # 4. Chunking & Vektorisasi
+                report_step("Ekstraksi & Vektorisasi pgvector")
+                doc_meta = {
+                    "pub_id": pub_id,
+                    "release_date": release_date,
+                    "updt_date": updt_date,
+                    "abstract": abstract,
+                    "doc_type": doc_type,
+                    "source": "bps_web_api_auto_monitor"
+                }
+
+                try:
+                    res_chunk = process_and_save_pdf(
+                        pdf_path=local_pdf_path,
+                        link=pdf_url,
+                        doc_metadata=doc_meta
+                    )
+                except Exception as pe:
+                    logger.error(f"Error memproses chunk PDF {title}: {pe}")
+                    res_chunk = {"status": "error", "reason": str(pe)}
+
+                # Ambil referensi record dokumen dari database
+                created_doc = PdfDocument.query.filter(
+                    (PdfDocument.link == pdf_url) | (PdfDocument.filename == os.path.basename(local_pdf_path))
+                ).first()
+                doc_id = str(created_doc.id) if created_doc else None
 
             # 5. Gemini AI Summarizer & Format WhatsApp
             report_step("Perangkuman Eksekutif AI (Gemini)")

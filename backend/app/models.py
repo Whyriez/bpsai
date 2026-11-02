@@ -112,6 +112,9 @@ class BpsApiConfig(db.Model):
     sync_interval_hours = db.Column(db.Integer, default=6)       # Nilai interval pengecekan
     sync_interval_unit = db.Column(db.String(20), default='hours') # Satuan: 'hours', 'minutes', 'seconds'
     wa_channel_enabled = db.Column(db.Boolean, default=True) # Forward rilis ke WhatsApp
+    broadcast_infographic = db.Column(db.Boolean, default=True)   # Forward Infografis ke WhatsApp
+    broadcast_brs = db.Column(db.Boolean, default=False)          # Forward Berita Resmi Statistik (BRS) ke WhatsApp
+    broadcast_publication = db.Column(db.Boolean, default=False)  # Forward Publikasi Buku Statistik ke WhatsApp
     wa_target = db.Column(db.String(255), nullable=True)     # Nomor penerima / ID Grup / Channel
     wa_gateway_type = db.Column(db.String(50), default='local') # 'local' (Baileys / Local Webhook Gateway)
     wa_webhook_url = db.Column(db.Text, nullable=True)       # Endpoint WhatsApp webhook/gateway
@@ -431,4 +434,4 @@ class ThematicMapping(db.Model):
         }
 
     def __repr__(self):
-        return f'<ThematicMapping {self.keyword} -> {self.target_patterns}>'
+        return f'<ThematicMapping {self.keyword} -> {self.target_patterns}>'

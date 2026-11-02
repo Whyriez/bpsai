@@ -1611,6 +1611,9 @@ def save_bps_api_config():
         wa_api_token = data.get('wa_api_token', '')
         chatbot_url = data.get('chatbot_url', '')
         portal_url = data.get('portal_url', '')
+        broadcast_infographic = data.get('broadcast_infographic', True)
+        broadcast_brs = data.get('broadcast_brs', False)
+        broadcast_publication = data.get('broadcast_publication', False)
 
         service = BpsApiService()
         cfg = service.save_config(
@@ -1626,7 +1629,10 @@ def save_bps_api_config():
             wa_webhook_url=wa_webhook_url,
             wa_api_token=wa_api_token,
             chatbot_url=chatbot_url,
-            portal_url=portal_url
+            portal_url=portal_url,
+            broadcast_infographic=broadcast_infographic,
+            broadcast_brs=broadcast_brs,
+            broadcast_publication=broadcast_publication
         )
 
         # Sinkronkan seluruh wa_message riwayat publikasi dengan domain chatbot dan portal baru
@@ -1663,12 +1669,12 @@ def save_bps_api_config():
                         )
                 db.session.commit()
             except Exception as e:
-                logger.warning(f"Gagal memperbarui pesan WA saat update config: {e}")
+                current_app.logger.warning(f"Gagal memperbarui pesan WA saat update config: {e}")
 
         return jsonify({"message": "Konfigurasi BPS Web API dan WhatsApp berhasil disimpan.", "config": cfg}), 200
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Gagal menyimpan konfigurasi BPS API: {e}", exc_info=True)
+        current_app.logger.error(f"Gagal menyimpan konfigurasi BPS API: {e}", exc_info=True)
         return jsonify({"error": f"Gagal menyimpan konfigurasi: {str(e)}"}), 500
 
 
@@ -1682,7 +1688,9 @@ def preview_bps_publications():
     doc_type = request.args.get('type', 'publication', type=str).lower()
 
     service = BpsApiService()
-    if doc_type in ['brs', 'pressrelease', 'press_release']:
+    if doc_type in ['infographic', 'infografis']:
+        result = service.fetch_infographics(page=page, year=year, keyword=keyword, domain=domain)
+    elif doc_type in ['brs', 'pressrelease', 'press_release']:
         result = service.fetch_press_releases(page=page, year=year, keyword=keyword, domain=domain)
     else:
         result = service.fetch_publications(page=page, year=year, keyword=keyword, domain=domain)
@@ -1877,7 +1885,7 @@ def get_bps_alerts():
             (BpsPublicationAlert.wa_message.ilike(search_pattern))
         )
 
-    if doc_type in ['PUBLIKASI', 'BRS']:
+    if doc_type in ['PUBLIKASI', 'BRS', 'INFOGRAFIS']:
         query = query.filter(BpsPublicationAlert.doc_type == doc_type)
 
     if wa_status in ['SENT', 'FAILED', 'READY']:
@@ -1899,7 +1907,7 @@ def get_bps_alerts():
             "release_date": a.release_date,
             "updt_date": a.updt_date,
             "is_update": bool(a.is_update),
-            "doc_type": a.doc_type or ("BRS" if str(a.pub_id).startswith("brs_") else "PUBLIKASI"),
+            "doc_type": a.doc_type or ("INFOGRAFIS" if str(a.pub_id).startswith("inf_") else ("BRS" if str(a.pub_id).startswith("brs_") else "PUBLIKASI")),
             "cover_url": a.cover_url,
             "pdf_url": a.pdf_url,
             "summary": a.summary,

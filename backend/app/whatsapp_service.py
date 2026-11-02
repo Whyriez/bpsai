@@ -22,9 +22,22 @@ def format_publication_whatsapp_message(
     Menyusun teks siaran resmi publikasi buku atau Berita Resmi Statistik (BRS) baru atau revisi
     dengan format teks WhatsApp (*bold*, _italic_, emoji).
     """
-    is_brs = (doc_type or "").upper() == "BRS"
-    type_label = "BERITA RESMI STATISTIK (BRS)" if is_brs else "PUBLIKASI"
-    doc_noun = "Berita Resmi Statistik (BRS)" if is_brs else "Publikasi"
+    dt = (doc_type or "").upper()
+    is_infographic = dt in ["INFOGRAFIS", "INFOGRAPHIC"]
+    is_brs = dt == "BRS"
+
+    if is_infographic:
+        type_label = "INFOGRAFIS"
+        doc_noun = "Infografis Statistik"
+        header = "📢 *INFOGRAFIS DATA TERBARU BPS* 📊"
+    elif is_brs:
+        type_label = "BERITA RESMI STATISTIK (BRS)"
+        doc_noun = "Berita Resmi Statistik (BRS)"
+        header = f"📢 *PEMBARUAN / REVISI {type_label} BPS* 🔄" if is_update else f"📢 *RILIS {type_label} TERBARU BPS* 📊"
+    else:
+        type_label = "PUBLIKASI"
+        doc_noun = "Publikasi Statistik"
+        header = f"📢 *PEMBARUAN / REVISI {type_label} BPS* 🔄" if is_update else "📢 *RILIS PUBLIKASI TERBARU BPS* 📘"
 
     clean_title = (title or f"{type_label} BPS Terbaru").strip()
     clean_date = (release_date or "Terbaru").strip()
@@ -33,11 +46,6 @@ def format_publication_whatsapp_message(
     clean_pdf = (pdf_url or "").strip()
     clean_short = (short_url or "").strip()
     clean_bps_web = (bps_web_url or "").strip()
-
-    if is_update:
-        header = f"📢 *PEMBARUAN / REVISI {type_label} BPS* 🔄"
-    else:
-        header = f"📢 *RILIS {type_label} TERBARU BPS* 📊" if is_brs else f"📢 *RILIS PUBLIKASI TERBARU BPS* 📘"
 
     date_str = f"🗓️ *Tanggal Rilis:* {clean_date}"
     if is_update and clean_updt:
@@ -56,24 +64,39 @@ def format_publication_whatsapp_message(
         lines.append(f"⚠️ *Pemberitahuan Revisi:* Dokumen {doc_noun.lower()} ini telah diperbarui/direvisi oleh BPS dengan penyempurnaan data terbaru.")
         lines.append("")
 
-    if clean_summary:
-        lines.append("📊 *Sorotan Perubahan & Indikator Data:*" if is_update else "📊 *Ringkasan & Sorotan Indikator Statistik:*")
-        lines.append(clean_summary)
-        lines.append("")
+    if is_infographic:
+        if clean_summary:
+            lines.append("📊 *Ulasan Indikator Data Statistik:*")
+            lines.append(clean_summary)
+            lines.append("")
+        doc_link = clean_short or clean_pdf
+        if doc_link:
+            lines.append("🔗 *Tautan Unduh Gambar Resolusi Penuh:*" if "download.php" in doc_link or "cover.php" in doc_link else "🔗 *Akses Dokumen/Gambar Resmi:*")
+            lines.append(doc_link)
+            lines.append("")
+        if clean_bps_web:
+            lines.append("🌐 *Galeri Infografis (Website Resmi BPS):*")
+            lines.append(clean_bps_web)
+            lines.append("")
+    else:
+        if clean_summary:
+            lines.append("📊 *Sorotan Perubahan & Indikator Data:*" if is_update else "📊 *Ringkasan & Sorotan Indikator Statistik:*")
+            lines.append(clean_summary)
+            lines.append("")
 
-    # Gunakan tautan singkat jika tersedia, atau fallback ke URL asli jika belum ada
-    doc_link = clean_short or clean_pdf
-    if doc_link:
-        lines.append("🔗 *Akses Dokumen Resmi Terbaru (PDF):*" if is_update else "🔗 *Akses Dokumen Resmi (PDF):*")
-        lines.append(doc_link)
-        lines.append("")
+        # Gunakan tautan singkat jika tersedia, atau fallback ke URL asli jika belum ada
+        doc_link = clean_short or clean_pdf
+        if doc_link:
+            lines.append("🔗 *Akses Dokumen Resmi Terbaru (PDF):*" if is_update else "🔗 *Akses Dokumen Resmi (PDF):*")
+            lines.append(doc_link)
+            lines.append("")
 
-    # Tautan Laman Berita / Publikasi di Website Resmi BPS
-    if clean_bps_web:
-        web_label = "Laman Berita Resmi Statistik (Website BPS)" if is_brs else "Laman Publikasi Resmi (Website BPS)"
-        lines.append(f"🌐 *{web_label}:*")
-        lines.append(clean_bps_web)
-        lines.append("")
+        # Tautan Laman Berita / Publikasi di Website Resmi BPS
+        if clean_bps_web:
+            web_label = "Laman Berita Resmi Statistik (Website BPS)" if is_brs else "Laman Publikasi Resmi (Website BPS)"
+            lines.append(f"🌐 *{web_label}:*")
+            lines.append(clean_bps_web)
+            lines.append("")
 
     lines.append("─────────────────────")
     lines.append("✨ _Disusun secara otomatis oleh Sistem SIGAP BPS_")
